@@ -1,0 +1,21 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Enviar Documento
+{% endblock %}
+
+{% block conteudo %}
+<h1>Enviar Documento</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <p style="color: green;">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Enviar</button>
+</form>
+{% endblock %}

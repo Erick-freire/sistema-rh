@@ -2,8 +2,8 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import Usuario, Funcionario
-from .forms import MeuPerfilForm
+from .models import Usuario, Funcionario, Documento
+from .forms import MeuPerfilForm, EnviarDocumentoForm
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -64,4 +64,27 @@ def meu_perfil_view(request):
     return render(request, 'funcionarios/meu_perfil.html', {
         'form': form,
         'funcionario': funcionario,
+    })
+    
+@login_required
+def enviar_documento_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    if request.method == 'POST':
+        form = EnviarDocumentoForm(request.POST, request.FILES)
+        if form.is_valid():
+            documento = form.save(commit=False)
+            documento.funcionario = funcionario
+            documento.enviado_por = request.user
+            documento.save()
+            messages.success(request, 'Documento enviado com sucesso.')
+            return redirect('enviar_documento')
+    else:
+        form = EnviarDocumentoForm()
+
+    return render(request, 'funcionarios/enviar_documento.html', {
+        'form': form,
     })

@@ -6,4 +6,5 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('', views.dashboard_view, name='dashboard'),
     path('meu-perfil/', views.meu_perfil_view, name='meu_perfil'),
+    path('enviar-documento/', views.enviar_documento_view, name='enviar_documento'),
 ]
