@@ -1,0 +1,26 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Meu Perfil
+{% endblock %}
+
+{% block conteudo %}
+<h1>Meu Perfil</h1>
+
+<p>Nome: {{ funcionario.nome }}</p>
+<p>Matrícula: {{ funcionario.matricula }}</p>
+<p>Cargo: {{ funcionario.cargo }}</p>
+<p>Setor: {{ funcionario.setor }}</p>
+
+{% if messages %}
+    {% for message in messages %}
+        <p style="color: green;">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Salvar</button>
+</form>
+{% endblock %}

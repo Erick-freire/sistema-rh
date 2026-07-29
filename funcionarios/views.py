@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from .models import Usuario
-
+from django.contrib import messages
+from .models import Usuario, Funcionario
+from .forms import MeuPerfilForm
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -43,3 +44,24 @@ def dashboard_view(request):
         return render(request, 'funcionarios/colaborador/dashboard.html')
 
     return render(request, 'funcionarios/rh/dashboard.html')
+
+@login_required
+def meu_perfil_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    if request.method == 'POST':
+        form = MeuPerfilForm(request.POST, request.FILES, instance=funcionario)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Perfil atualizado com sucesso.')
+            return redirect('meu_perfil')
+    else:
+        form = MeuPerfilForm(instance=funcionario)
+
+    return render(request, 'funcionarios/meu_perfil.html', {
+        'form': form,
+        'funcionario': funcionario,
+    })
