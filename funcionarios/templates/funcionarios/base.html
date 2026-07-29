@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo %}Sistema RH{% endblock %}</title>
+</head>
+<body>
+
+    {% if usuario_atual %}
+    <nav>
+        <ul>
+            {% if usuario_atual.papel == 'rh' or usuario_atual.papel == 'gestor' %}
+                <li><a href="#">Funcionários</a></li>
+            {% endif %}
+
+            <li><a href="{% url 'dashboard' %}">Início</a></li>
+            <li><a href="#">Meu Perfil</a></li>
+            <li><a href="#">Enviar Documento</a></li>
+            <li><a href="#">Meus Documentos</a></li>
+            <li><a href="#">Assinar Documentos com Gov.br</a></li>
+            <li><a href="#">Solicitar Férias</a></li>
+            <li><a href="{% url 'logout' %}">Sair</a></li>
+        </ul>
+    </nav>
+    {% endif %}
+
+    <main>
+        {% block conteudo %}
+        {% endblock %}
+    </main>
+
+</body>
+</html>
