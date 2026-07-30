@@ -1,34 +1,46 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block titulo %}Sistema RH{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    {% if usuario_atual %}
-    <nav>
+{% if usuario_atual %}
+<input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
+<label for="menu-toggle" class="menu-toggle-label" aria-label="Abrir menu">☰</label>
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="sidebar__brand">Sistema RH</div>
         <ul>
             {% if usuario_atual.papel == 'rh' or usuario_atual.papel == 'gestor' %}
                 <li><a href="{% url 'listar_funcionarios' %}">Funcionários</a></li>
             {% endif %}
-
             <li><a href="{% url 'dashboard' %}">Início</a></li>
             <li><a href="{% url 'meu_perfil' %}">Meu Perfil</a></li>
             <li><a href="{% url 'enviar_documento' %}">Enviar Documento</a></li>
             <li><a href="{% url 'meus_documentos' %}">Meus Documentos</a></li>
             <li><a href="#">Assinar Documentos com Gov.br</a></li>
             <li><a href="#">Solicitar Férias</a></li>
-            <li><a href="{% url 'logout' %}">Sair</a></li>
+            <li class="sair"><a href="{% url 'logout' %}">Sair</a></li>
         </ul>
-    </nav>
-    {% endif %}
+    </aside>
 
-    <main>
+    <main class="content">
         {% block conteudo %}
         {% endblock %}
     </main>
+</div>
+{% else %}
+{% block conteudo_sem_login %}
+{% endblock %}
+{% endif %}
 
 </body>
 </html>

@@ -9,13 +9,15 @@ Enviar Documento
 
 {% if messages %}
     {% for message in messages %}
-        <p style="color: green;">{{ message }}</p>
+        <p class="message message-success">{{ message }}</p>
     {% endfor %}
 {% endif %}
 
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Enviar</button>
-</form>
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Enviar</button>
+    </form>
+</div>
 {% endblock %}

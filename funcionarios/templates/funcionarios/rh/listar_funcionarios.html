@@ -7,7 +7,7 @@ Funcionários
 {% block conteudo %}
 <h1>Funcionários</h1>
 
-<a href="{% url 'cadastrar_funcionario' %}">+ Novo Funcionário</a>
+<a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo">+ Novo Funcionário</a>
 
 <table>
     <thead>
@@ -22,7 +22,7 @@ Funcionários
     <tbody>
         {% for funcionario in funcionarios %}
         <tr>
-            <td>{{ funcionario.nome }}</td>
+            <td><a href="{% url 'detalhe_funcionario' funcionario.id %}">{{ funcionario.nome }}</a></td>
             <td>{{ funcionario.matricula }}</td>
             <td>{{ funcionario.cargo }}</td>
             <td>{{ funcionario.setor }}</td>

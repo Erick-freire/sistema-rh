@@ -4,17 +4,29 @@
 Login
 {% endblock %}
 
-{% block conteudo %}
-<form method="post">
-    {% csrf_token %}
+{% block conteudo_sem_login %}
+<div class="login-shell">
+    <div class="login-card">
+        <h1>Sistema RH</h1>
 
-    <input type="text" name="username" placeholder="Usuário">
-    <input type="password" name="password" placeholder="Senha">
+        <form method="post">
+            {% csrf_token %}
 
-    <button type="submit">Entrar</button>
+            <p>
+                <label for="username">Usuário</label>
+                <input type="text" id="username" name="username" placeholder="Usuário">
+            </p>
+            <p>
+                <label for="password">Senha</label>
+                <input type="password" id="password" name="password" placeholder="Senha">
+            </p>
 
-    {% if erro %}
-        <p style="color: red;">{{ erro }}</p>
-    {% endif %}
-</form>
+            <button type="submit">Entrar</button>
+
+            {% if erro %}
+                <p class="message message-error">{{ erro }}</p>
+            {% endif %}
+        </form>
+    </div>
+</div>
 {% endblock %}

@@ -5,5 +5,30 @@ Início
 {% endblock %}
 
 {% block conteudo %}
-<h1>Bem-vindo, {{ usuario_atual.funcionario.nome }}</h1>
+<h1>Painel do RH</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="valor">{{ total_funcionarios }}</div>
+        <div class="rotulo">Funcionários ativos</div>
+    </div>
+</div>
+
+<h2>Funcionários por Setor</h2>
+<div class="card">
+    <ul>
+        {% for item in funcionarios_por_setor %}
+            <li>{{ item.setor__nome }}: {{ item.total }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<h2>Documentos Recentes</h2>
+<div class="card">
+    <ul>
+        {% for documento in documentos_recentes %}
+            <li>{{ documento.funcionario.nome }} — {{ documento.tipo_documento }} ({{ documento.data_upload }})</li>
+        {% endfor %}
+    </ul>
+</div>
 {% endblock %}

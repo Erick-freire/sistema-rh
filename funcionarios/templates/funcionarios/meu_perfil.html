@@ -7,20 +7,24 @@ Meu Perfil
 {% block conteudo %}
 <h1>Meu Perfil</h1>
 
-<p>Nome: {{ funcionario.nome }}</p>
-<p>Matrícula: {{ funcionario.matricula }}</p>
-<p>Cargo: {{ funcionario.cargo }}</p>
-<p>Setor: {{ funcionario.setor }}</p>
+<div class="card">
+    <p><strong>Nome:</strong> {{ funcionario.nome }}</p>
+    <p><strong>Matrícula:</strong> {{ funcionario.matricula }}</p>
+    <p><strong>Cargo:</strong> {{ funcionario.cargo }}</p>
+    <p><strong>Setor:</strong> {{ funcionario.setor }}</p>
+</div>
 
 {% if messages %}
     {% for message in messages %}
-        <p style="color: green;">{{ message }}</p>
+        <p class="message message-success">{{ message }}</p>
     {% endfor %}
 {% endif %}
 
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Salvar</button>
-</form>
+<div class="card">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Salvar</button>
+    </form>
+</div>
 {% endblock %}
