@@ -1,0 +1,15 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Cadastrar Funcionário
+{% endblock %}
+
+{% block conteudo %}
+<h1>Cadastrar Funcionário</h1>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Cadastrar</button>
+</form>
+{% endblock %}

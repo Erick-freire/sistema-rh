@@ -1,0 +1,32 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Meus Documentos
+{% endblock %}
+
+{% block conteudo %}
+<h1>Meus Documentos</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Tipo</th>
+            <th>Arquivo</th>
+            <th>Data de Envio</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for documento in documentos %}
+        <tr>
+            <td>{{ documento.tipo_documento }}</td>
+            <td><a href="{{ documento.arquivo.url }}" target="_blank">{{ documento.arquivo.name }}</a></td>
+            <td>{{ documento.data_upload }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="3">Nenhum documento enviado ainda.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

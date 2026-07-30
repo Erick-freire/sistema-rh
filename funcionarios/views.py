@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .models import Usuario, Funcionario, Documento
-from .forms import MeuPerfilForm, EnviarDocumentoForm
+from .forms import MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -86,5 +86,51 @@ def enviar_documento_view(request):
         form = EnviarDocumentoForm()
 
     return render(request, 'funcionarios/enviar_documento.html', {
+        'form': form,
+    })
+
+@login_required
+def meus_documentos_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    documentos = funcionario.documentos.all().order_by('-data_upload')
+
+    return render(request, 'funcionarios/meus_documentos.html', {
+        'documentos': documentos,
+    })
+    
+from .decorators import papel_required
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def listar_funcionarios_view(request):
+    usuario = request.user.usuario
+
+    if usuario.papel == 'rh':
+        funcionarios = Funcionario.objects.all()
+    else:
+        funcionarios = Funcionario.objects.filter(setor=usuario.funcionario.setor)
+
+    return render(request, 'funcionarios/rh/listar_funcionarios.html', {
+        'funcionarios': funcionarios,
+    })
+    
+@login_required
+@papel_required('rh', 'gestor')
+def cadastrar_funcionario_view(request):
+    if request.method == 'POST':
+        form = FuncionarioForm(request.POST, request.FILES)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Funcionário cadastrado com sucesso.')
+            return redirect('listar_funcionarios')
+    else:
+        form = FuncionarioForm()
+
+    return render(request, 'funcionarios/rh/cadastrar_funcionario.html', {
         'form': form,
     })

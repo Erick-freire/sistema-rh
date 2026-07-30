@@ -11,3 +11,8 @@ class EnviarDocumentoForm(forms.ModelForm):
     class Meta:
         model = Documento
         fields = ['tipo_documento', 'arquivo']
+
+class FuncionarioForm(forms.ModelForm):
+    class Meta:
+        model = Funcionario
+        fields = ['nome', 'matricula', 'cargo', 'setor', 'status', 'cpf', 'telefone', 'endereco', 'foto']
