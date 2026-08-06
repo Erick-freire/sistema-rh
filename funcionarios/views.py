@@ -4,7 +4,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Count
 from .models import Usuario, Funcionario, Documento
-from .forms import MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm
+import secrets
+from django.contrib.auth.models import User
+from .forms import MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth import update_session_auth_hash
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -173,4 +177,66 @@ def dashboard_rh_view(request):
         'total_funcionarios': total_funcionarios,
         'funcionarios_por_setor': funcionarios_por_setor,
         'documentos_recentes': documentos_recentes,
+    })
+    
+@login_required
+@papel_required('rh', 'gestor')
+def cadastrar_funcionario_view(request):
+    if request.method == 'POST':
+        form = PreCadastroFuncionarioForm(request.POST)
+        if form.is_valid():
+            funcionario = form.save(commit=False)
+            funcionario.status = 'pendente'
+            funcionario.save()
+
+            senha_gerada = secrets.token_urlsafe(9)
+
+            user = User.objects.create_user(
+                username=funcionario.matricula,
+                password=senha_gerada,
+            )
+
+            Usuario.objects.create(
+                user=user,
+                funcionario=funcionario,
+                papel='colaborador',
+                senha_provisoria=True,
+            )
+
+            return render(request, 'funcionarios/rh/senha_gerada.html', {
+                'funcionario': funcionario,
+                'username': user.username,
+                'senha_gerada': senha_gerada,
+            })
+    else:
+        form = PreCadastroFuncionarioForm()
+
+    return render(request, 'funcionarios/rh/cadastrar_funcionario.html', {
+        'form': form,
+    })
+    
+@login_required
+def trocar_senha_view(request):
+    try:
+        usuario = request.user.usuario
+    except Usuario.DoesNotExist:
+        return redirect('dashboard')
+
+    if not usuario.senha_provisoria:
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        form = SetPasswordForm(request.user, request.POST)
+        if form.is_valid():
+            form.save()
+            usuario.senha_provisoria = False
+            usuario.save()
+            update_session_auth_hash(request, request.user)
+            messages.success(request, 'Senha alterada com sucesso.')
+            return redirect('dashboard')
+    else:
+        form = SetPasswordForm(request.user)
+
+    return render(request, 'funcionarios/trocar_senha.html', {
+        'form': form,
     })

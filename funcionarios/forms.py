@@ -16,3 +16,8 @@ class FuncionarioForm(forms.ModelForm):
     class Meta:
         model = Funcionario
         fields = ['nome', 'matricula', 'cargo', 'setor', 'status', 'cpf', 'telefone', 'endereco', 'foto']
+
+class PreCadastroFuncionarioForm(forms.ModelForm):
+    class Meta:
+        model = Funcionario
+        fields = ['nome', 'cpf', 'matricula', 'cargo', 'setor']

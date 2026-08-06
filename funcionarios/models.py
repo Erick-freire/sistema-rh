@@ -17,6 +17,7 @@ class Funcionario(models.Model):
     STATUS_CHOICES = [
         ('ativo', 'Ativo'),
         ('inativo', 'Inativo'),
+        ('pendente', 'pendente'),
     ]
 
     nome = models.CharField(max_length=150)
@@ -62,13 +63,14 @@ class Usuario(models.Model):
         max_length=15,
         choices=PAPEL_CHOICES
     )
+    senha_provisoria = models.BooleanField(default=False)
 
     def __str__(self):
         return f'{self.user.username} ({self.papel})'
     
 class TipoDocumento(models.Model):
     nome = models.CharField(max_length=100)
-
+    obrigatorio = models.BooleanField(default=False)
     def __str__(self):
         return self.nome
 

@@ -11,4 +11,5 @@ urlpatterns = [
     path('funcionarios/', views.listar_funcionarios_view, name='listar_funcionarios'),
     path('funcionarios/novo/', views.cadastrar_funcionario_view, name='cadastrar_funcionario'),
     path('funcionarios/<int:funcionario_id>/', views.detalhe_funcionario_view, name='detalhe_funcionario'),
+    path('trocar-senha/', views.trocar_senha_view, name='trocar_senha'),
 ]
