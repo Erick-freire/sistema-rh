@@ -9,6 +9,11 @@ Funcionários
 
 <a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo">+ Novo Funcionário</a>
 
+<div style="margin-bottom: 16px;">
+    <a href="?status=ativo" class="btn{% if status_filtro != 'ativo' %} btn-novo{% endif %}">Ativos</a>
+    <a href="?status=pendente" class="btn{% if status_filtro != 'pendente' %} btn-novo{% endif %}">Pendentes</a>
+</div>
+
 <table>
     <thead>
         <tr>

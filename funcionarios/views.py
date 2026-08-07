@@ -85,7 +85,14 @@ def enviar_documento_view(request):
             documento.funcionario = funcionario
             documento.enviado_por = request.user
             documento.save()
-            messages.success(request, 'Documento enviado com sucesso.')
+
+            if funcionario.status == 'pendente' and funcionario.cadastro_completo():
+                funcionario.status = 'ativo'
+                funcionario.save()
+                messages.success(request, 'Documento enviado. Seu cadastro foi concluído com sucesso!')
+            else:
+                messages.success(request, 'Documento enviado com sucesso.')
+
             return redirect('enviar_documento')
     else:
         form = EnviarDocumentoForm()
@@ -114,14 +121,16 @@ from .decorators import papel_required
 @papel_required('rh', 'gestor')
 def listar_funcionarios_view(request):
     usuario = request.user.usuario
+    status_filtro = request.GET.get('status', 'ativo')
 
     if usuario.papel == 'rh':
-        funcionarios = Funcionario.objects.all()
+        funcionarios = Funcionario.objects.filter(status=status_filtro)
     else:
-        funcionarios = Funcionario.objects.filter(setor=usuario.funcionario.setor)
+        funcionarios = Funcionario.objects.filter(status=status_filtro, setor=usuario.funcionario.setor)
 
     return render(request, 'funcionarios/rh/listar_funcionarios.html', {
         'funcionarios': funcionarios,
+        'status_filtro': status_filtro,
     })
     
 @login_required

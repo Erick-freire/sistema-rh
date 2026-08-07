@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 class Setor(models.Model):
     nome = models.CharField(max_length=100)
@@ -40,10 +41,17 @@ class Funcionario(models.Model):
 
     def __str__(self):
         return f'{self.nome} ({self.matricula})'
+
+    def cadastro_completo(self):
+        tipos_obrigatorios = TipoDocumento.objects.filter(obrigatorio=True)
+        tipos_enviados = self.documentos.values_list('tipo_documento_id', flat=True)
+
+        for tipo in tipos_obrigatorios:
+            if tipo.id not in tipos_enviados:
+                return False
+
+        return True
     
-from django.contrib.auth.models import User
-
-
 class Usuario(models.Model):
     PAPEL_CHOICES = [
         ('rh', 'RH'),
@@ -95,3 +103,13 @@ class Documento(models.Model):
 
     def __str__(self):
         return f'{self.tipo_documento} - {self.funcionario}'
+
+def cadastro_completo(self):
+        tipos_obrigatorios = TipoDocumento.objects.filter(obrigatorio=True)
+        tipos_enviados = self.documentos.values_list('tipo_documento_id', flat=True)
+
+        for tipo in tipos_obrigatorios:
+            if tipo.id not in tipos_enviados:
+                return False
+
+        return True
