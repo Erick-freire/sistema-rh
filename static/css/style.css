@@ -170,6 +170,10 @@ button:hover, .btn:hover {
     text-decoration: none;
 }
 
+button:focus, .btn:focus {
+    outline: none;
+}
+
 .btn-novo {
     display: inline-block;
     margin-bottom: 16px;
@@ -177,6 +181,26 @@ button:hover, .btn:hover {
 }
 
 .btn-novo:hover { background-color: var(--color-primary-dark); }
+
+/* ---------- Formulário de busca (listagem de funcionários) ---------- */
+
+.form-busca {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.form-busca input[type="text"] {
+    width: auto;
+    flex: 1;
+}
+
+.filtros-status {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+}
 
 /* ---------- Tabelas ---------- */
 
@@ -205,6 +229,15 @@ th {
 }
 
 tr:last-child td { border-bottom: none; }
+
+/* ---------- Paginação ---------- */
+
+.paginacao {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 16px;
+}
 
 /* ---------- Mensagens (sucesso / erro) ---------- */
 

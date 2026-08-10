@@ -9,7 +9,13 @@ Funcionários
 
 <a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo">+ Novo Funcionário</a>
 
-<div style="margin-bottom: 16px;">
+<form method="get" class="form-busca">
+    <input type="hidden" name="status" value="{{ status_filtro }}">
+    <input type="text" name="busca" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
+    <button type="submit">Buscar</button>
+</form>
+
+<div class="filtros-status">
     <a href="?status=ativo" class="btn{% if status_filtro != 'ativo' %} btn-novo{% endif %}">Ativos</a>
     <a href="?status=pendente" class="btn{% if status_filtro != 'pendente' %} btn-novo{% endif %}">Pendentes</a>
 </div>
@@ -25,7 +31,7 @@ Funcionários
         </tr>
     </thead>
     <tbody>
-        {% for funcionario in funcionarios %}
+        {% for funcionario in pagina %}
         <tr>
             <td><a href="{% url 'detalhe_funcionario' funcionario.id %}">{{ funcionario.nome }}</a></td>
             <td>{{ funcionario.matricula }}</td>
@@ -40,4 +46,28 @@ Funcionários
         {% endfor %}
     </tbody>
 </table>
+
+<div class="paginacao">
+    {% if pagina.number != 1 %}
+        <a href="?status={{ status_filtro }}&busca={{ busca }}&page=1" class="pagina-link">« Primeira</a>
+    {% endif %}
+
+    {% if pagina.has_previous %}
+        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.previous_page_number }}" class="pagina-link">‹ Anterior</a>
+    {% endif %}
+
+    {% for numero in intervalo_paginas %}
+        {% if numero == pagina.paginator.ELLIPSIS %}
+            <span class="pagina-reticencias">…</span>
+        {% elif numero == pagina.number %}
+            <span class="pagina-link pagina-atual">{{ numero }}</span>
+        {% else %}
+            <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ numero }}" class="pagina-link">{{ numero }}</a>
+        {% endif %}
+    {% endfor %}
+
+    {% if pagina.has_next %}
+        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.next_page_number }}" class="pagina-link">Próxima ›</a>
+    {% endif %}
+</div>
 {% endblock %}

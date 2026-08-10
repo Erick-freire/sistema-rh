@@ -9,6 +9,8 @@ from django.contrib.auth.models import User
 from .forms import MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth import update_session_auth_hash
+from django.db.models import Q
+from django.core.paginator import Paginator
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -122,15 +124,33 @@ from .decorators import papel_required
 def listar_funcionarios_view(request):
     usuario = request.user.usuario
     status_filtro = request.GET.get('status', 'ativo')
+    busca = request.GET.get('busca', '').strip()
 
     if usuario.papel == 'rh':
         funcionarios = Funcionario.objects.filter(status=status_filtro)
     else:
         funcionarios = Funcionario.objects.filter(status=status_filtro, setor=usuario.funcionario.setor)
 
+    if busca:
+        funcionarios = funcionarios.filter(
+            Q(nome__icontains=busca) | Q(cpf__icontains=busca)
+        )
+
+    funcionarios = funcionarios.order_by('nome')
+
+    paginator = Paginator(funcionarios, 50)
+    numero_pagina = request.GET.get('page', 1)
+    pagina = paginator.get_page(numero_pagina)
+
+    intervalo_paginas = paginator.get_elided_page_range(
+        pagina.number, on_each_side=2, on_ends=1
+    )
+
     return render(request, 'funcionarios/rh/listar_funcionarios.html', {
-        'funcionarios': funcionarios,
+        'pagina': pagina,
+        'intervalo_paginas': intervalo_paginas,
         'status_filtro': status_filtro,
+        'busca': busca,
     })
     
 @login_required
