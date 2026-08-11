@@ -334,3 +334,18 @@ tr:last-child td { border-bottom: none; }
         padding: 72px 20px 32px;
     }
 }
+
+form input[type="text"],
+form input[type="password"],
+form input[type="tel"],
+form input[type="date"],
+form input[type="number"],
+form select,
+form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+}

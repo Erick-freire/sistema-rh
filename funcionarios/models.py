@@ -24,6 +24,7 @@ class Funcionario(models.Model):
     nome = models.CharField(max_length=150)
     matricula = models.CharField(max_length=20, unique=True)
     cargo = models.CharField(max_length=100)
+    data_admissao = models.DateField(null=True, blank=True)
     setor = models.ForeignKey(
         Setor,
         on_delete=models.PROTECT,
@@ -113,3 +114,41 @@ def cadastro_completo(self):
                 return False
 
         return True
+    
+class SolicitacaoFerias(models.Model):
+    STATUS_CHOICES = [
+        ('pendente_gestor', 'Aguardando Gestor'),
+        ('sugestao_gestor', 'Gestor sugeriu alteração'),
+        ('pendente_rh', 'Aguardando RH'),
+        ('aprovada', 'Aprovada'),
+        ('adiada', 'Adiada pelo colaborador'),
+    ]
+
+    funcionario = models.ForeignKey(
+        Funcionario,
+        on_delete=models.CASCADE,
+        related_name='solicitacoes_ferias'
+    )
+    data_solicitada = models.DateField()
+    dias_solicitados = models.PositiveIntegerField(default=30)
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente_gestor')
+
+    data_sugerida = models.DateField(null=True, blank=True)
+    dias_sugeridos = models.PositiveIntegerField(null=True, blank=True)
+    observacao_gestor = models.TextField(blank=True)
+
+    analisado_por_gestor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ferias_analisadas_gestor'
+    )
+    concluido_por_rh = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ferias_concluidas_rh'
+    )
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.funcionario.nome} - {self.data_solicitada} ({self.get_status_display()})'

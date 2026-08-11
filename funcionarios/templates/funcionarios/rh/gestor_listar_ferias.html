@@ -1,0 +1,48 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Aprovação de Férias
+{% endblock %}
+
+{% block conteudo %}
+<h1>Solicitações de Férias — Análise</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <p class="message message-success">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+<table>
+    <thead>
+        <tr>
+            <th>Funcionário</th>
+            <th>Setor</th>
+            <th>Data solicitada</th>
+            <th>Dias</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in solicitacoes %}
+        <tr>
+            <td>{{ s.funcionario.nome }}</td>
+            <td>{{ s.funcionario.setor }}</td>
+            <td>{{ s.data_solicitada }}</td>
+            <td>{{ s.dias_solicitados }}</td>
+            <td>
+                <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit">Aprovar</button>
+                </form>
+                <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn btn-novo">Sugerir alteração</a>
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5">Nenhuma solicitação pendente.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Sugerir Alteração
+{% endblock %}
+
+{% block conteudo %}
+<h1>Sugerir Alteração</h1>
+
+<div class="card">
+    <p><strong>Funcionário:</strong> {{ solicitacao.funcionario.nome }}</p>
+    <p><strong>Data solicitada:</strong> {{ solicitacao.data_solicitada }} ({{ solicitacao.dias_solicitados }} dias)</p>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Enviar sugestão</button>
+    </form>
+</div>
+{% endblock %}

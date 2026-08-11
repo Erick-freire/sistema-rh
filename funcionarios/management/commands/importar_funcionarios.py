@@ -2,6 +2,7 @@ import openpyxl
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from funcionarios.models import Setor, Funcionario
+from datetime import datetime
 
 
 class DryRunRollback(Exception):
@@ -51,6 +52,7 @@ class Command(BaseCommand):
                     setor_nome = row[idx['Setor']].strip()
                     endereco = self._montar_endereco(row, idx)
                     telefone = self._montar_telefone(row, idx)
+                    data_admissao = self._parse_data_admissao(row[idx['Data de Admissão']])
 
                     setor, criado = Setor.objects.get_or_create(nome=setor_nome)
                     if criado:
@@ -66,6 +68,7 @@ class Command(BaseCommand):
                             'status': 'ativo',
                             'telefone': telefone,
                             'endereco': endereco,
+                            'data_admissao': data_admissao,
                         }
                     )
                     if criado:
@@ -119,6 +122,21 @@ class Command(BaseCommand):
             row[idx['Estado']],
         ]
         return ', '.join(str(p) for p in partes if p)
+    
+    def _parse_data_admissao(self, valor):
+        if valor is None or valor == '':
+            return None
+
+        if hasattr(valor, 'date'):
+            return valor.date()
+
+        if isinstance(valor, str):
+            try:
+                return datetime.strptime(valor.strip(), '%d/%m/%Y').date()
+            except ValueError:
+                return None
+
+        return valor
 
     def _montar_telefone(self, row, idx):
         if row[idx['DDD Celular']] and row[idx['Celular']]:

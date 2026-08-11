@@ -1,0 +1,19 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Propor Outra Data
+{% endblock %}
+
+{% block conteudo %}
+<h1>Propor Outra Data</h1>
+
+<div class="card">
+    <p>Sugestão do gestor: {{ solicitacao.data_sugerida }} ({{ solicitacao.dias_sugeridos }} dias)</p>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Enviar nova proposta</button>
+    </form>
+</div>
+{% endblock %}

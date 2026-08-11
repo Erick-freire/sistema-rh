@@ -15,6 +15,21 @@
     <p><strong>CPF:</strong> {{ funcionario.cpf }}</p>
 </div>
 
+{% if messages %}
+    {% for message in messages %}
+        <p class="message message-error">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+{% if not funcionario.usuario %}
+<form method="post" action="{% url 'gerar_acesso_funcionario' funcionario.id %}">
+    {% csrf_token %}
+    <button type="submit" class="btn">Gerar Acesso ao Sistema</button>
+</form>
+{% else %}
+<p>Este funcionário já possui acesso ao sistema.</p>
+{% endif %}
+
 <h2>Documentos</h2>
 
 <table>

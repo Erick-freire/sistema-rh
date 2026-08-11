@@ -1,0 +1,71 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Solicitar Férias
+{% endblock %}
+
+{% block conteudo %}
+<h1>Férias</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <p class="message message-success">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+{% if not tem_ativa %}
+<div class="card">
+    <h2>Nova solicitação</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Solicitar</button>
+    </form>
+</div>
+{% else %}
+<p>Você já tem uma solicitação em andamento. Aguarde a conclusão antes de solicitar outra.</p>
+{% endif %}
+
+<h2>Minhas solicitações</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Data solicitada</th>
+            <th>Dias</th>
+            <th>Status</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in solicitacoes %}
+        <tr>
+            <td>{{ s.data_solicitada }}</td>
+            <td>{{ s.dias_solicitados }}</td>
+            <td>{{ s.get_status_display }}</td>
+            <td>
+                {% if s.status == 'sugestao_gestor' %}
+                    <p><strong>Sugestão do gestor:</strong> {{ s.data_sugerida }} ({{ s.dias_sugeridos }} dias)</p>
+                    {% if s.observacao_gestor %}<p>{{ s.observacao_gestor }}</p>{% endif %}
+
+                    <form method="post" action="{% url 'aceitar_sugestao_ferias' s.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit">Aceitar sugestão</button>
+                    </form>
+
+                    <a href="{% url 'propor_outra_data_ferias' s.id %}" class="btn btn-novo">Propor outra data</a>
+
+                    <form method="post" action="{% url 'adiar_ferias' s.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-novo">Adiar</button>
+                    </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="4">Nenhuma solicitação ainda.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
