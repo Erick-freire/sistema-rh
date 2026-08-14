@@ -1,9 +1,17 @@
 asgiref==3.11.1
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.0
+cryptography==50.0.0
 Django==6.0.6
 et_xmlfile==2.0.0
+idna==3.18
 mysqlclient==2.2.8
 openpyxl==3.1.5
 pillow==12.3.0
+pycparser==3.0
 python-decouple==3.8
+requests==2.34.2
 sqlparse==0.5.5
 tzdata==2026.2
+urllib3==2.7.0

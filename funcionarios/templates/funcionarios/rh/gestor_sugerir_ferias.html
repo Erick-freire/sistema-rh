@@ -1,20 +1,48 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
-Sugerir Alteração
+Sugerir outra data
 {% endblock %}
 
 {% block conteudo %}
-<h1>Sugerir Alteração</h1>
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'gestor_listar_ferias' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Sugerir outra data
+</h1>
 
-<div class="card">
-    <p><strong>Funcionário:</strong> {{ solicitacao.funcionario.nome }}</p>
-    <p><strong>Data solicitada:</strong> {{ solicitacao.data_solicitada }} ({{ solicitacao.dias_solicitados }} dias)</p>
+<div class="card" style="max-width: 480px;">
+    <div class="painel-credenciais" style="margin-top: 0;">
+        <strong>{{ solicitacao.funcionario.nome }}</strong> · {{ solicitacao.funcionario.setor }}
+        <div style="color: var(--color-text-muted); font-size: 0.88rem; margin-top: 4px;">
+            Pediu {{ solicitacao.data_solicitada|date:"d/m/Y" }} · {{ solicitacao.dias_solicitados }} dias
+        </div>
+    </div>
 
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Enviar sugestão</button>
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.data_sugerida.id_for_label }}">Data sugerida</label>
+                {{ form.data_sugerida }}
+                {{ form.data_sugerida.errors }}
+            </div>
+            <div>
+                <label for="{{ form.dias_sugeridos.id_for_label }}">Dias</label>
+                {{ form.dias_sugeridos }}
+                {{ form.dias_sugeridos.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form.observacao_gestor.id_for_label }}">Observação</label>
+                {{ form.observacao_gestor }}
+                {{ form.observacao_gestor.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <a href="{% url 'gestor_listar_ferias' %}" class="btn-outline">Cancelar</a>
+            <button type="submit">Enviar sugestão</button>
+        </div>
     </form>
 </div>
 {% endblock %}

@@ -1,0 +1,79 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Vencimento de Férias
+{% endblock %}
+
+{% block conteudo %}
+<h1>Férias próximas do vencimento</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Setor</th>
+                <th>Vencimento</th>
+                <th>Situação</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in proximos_vencimento %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ item.funcionario.iniciais }}</span>
+                        {{ item.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ item.funcionario.setor }}</td>
+                <td>{{ item.vencimento|date:"d/m/Y" }}</td>
+                <td>
+                    {% if item.vencida %}
+                    <span class="badge-status badge-status--erro">Vencida há {{ item.dias_abs }} dias</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">{{ item.dias }} dias restantes</span>
+                    {% endif %}
+                    <div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">{{ item.dias_pendentes }} dia(s) pendente(s)</div>
+                </td>
+                <td><a href="{% url 'criar_aviso_ferias' item.funcionario.id %}" class="btn btn-sm">Avisar gestor</a></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">Nenhuma férias vencendo nos próximos {{ 60 }} dias.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for item in proximos_vencimento %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ item.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ item.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ item.funcionario.setor }}</div>
+            </div>
+        </div>
+        {% if item.vencida %}
+        <span class="badge-status badge-status--erro">Vencida há {{ item.dias_abs }} dias</span>
+        {% else %}
+        <span class="badge-status badge-status--pendente">{{ item.dias }} dias restantes</span>
+        {% endif %}
+        <a href="{% url 'criar_aviso_ferias' item.funcionario.id %}" class="btn btn-sm btn-bloco">Avisar gestor</a>
+    </div>
+    {% empty %}
+    <p>Nenhuma férias vencendo nos próximos {{ 60 }} dias.</p>
+    {% endfor %}
+</div>
+{% endblock %}

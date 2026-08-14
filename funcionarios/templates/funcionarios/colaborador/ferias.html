@@ -1,7 +1,8 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
-Solicitar Férias
+Férias
 {% endblock %}
 
 {% block conteudo %}
@@ -9,63 +10,151 @@ Solicitar Férias
 
 {% if messages %}
     {% for message in messages %}
-        <p class="message message-success">{{ message }}</p>
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
     {% endfor %}
 {% endif %}
 
-{% if not tem_ativa %}
+{% if solicitacao_ativa.status == 'sugestao_gestor' %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <span class="badge-status badge-status--sugestao">Gestor sugeriu alteração</span>
+    <p style="margin: 10px 0 16px; font-size: 0.95rem;">
+        Você pediu <strong>{{ solicitacao_ativa.dias_solicitados }} dias</strong> a partir de {{ solicitacao_ativa.data_solicitada|date:"d/m/Y" }}, enviado em {{ solicitacao_ativa.criado_em|date:"d/m/Y" }}.
+    </p>
+
+    <div class="painel-credenciais">
+        <div style="font-size: 0.82rem; color: var(--color-text-muted);">
+            {% if solicitacao_ativa.analisado_por_gestor %}{{ solicitacao_ativa.analisado_por_gestor.get_full_name|default:solicitacao_ativa.analisado_por_gestor.username }} sugeriu{% else %}Seu gestor sugeriu{% endif %}
+        </div>
+        <div style="font-weight: 700; font-size: 1.05rem; margin: 2px 0 8px;">
+            {{ solicitacao_ativa.data_sugerida|date:"d/m/Y" }} · {{ solicitacao_ativa.dias_sugeridos }} dias
+        </div>
+        {% if solicitacao_ativa.observacao_gestor %}
+        <p style="font-style: italic; color: var(--color-text-muted); font-size: 0.9rem;">"{{ solicitacao_ativa.observacao_gestor }}"</p>
+        {% endif %}
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+        <form method="post" action="{% url 'aceitar_sugestao_ferias' solicitacao_ativa.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario btn-bloco">Aceitar {{ solicitacao_ativa.data_sugerida|date:"d/m/Y" }}</button>
+        </form>
+        <a href="{% url 'propor_outra_data_ferias' solicitacao_ativa.id %}" class="btn-outline btn-bloco">Propor outra data</a>
+        <form method="post" action="{% url 'adiar_ferias' solicitacao_ativa.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-bloco">Adiar solicitação</button>
+        </form>
+    </div>
+</div>
+
+{% elif tem_ativa %}
 <div class="card">
-    <h2>Nova solicitação</h2>
+    <span class="badge-status badge-status--aguardando">{{ solicitacao_ativa.get_status_display }}</span>
+    <p style="margin-top: 10px; font-size: 0.95rem;">
+        Solicitação de <strong>{{ solicitacao_ativa.dias_solicitados }} dias</strong> a partir de {{ solicitacao_ativa.data_solicitada|date:"d/m/Y" }}, enviada em {{ solicitacao_ativa.criado_em|date:"d/m/Y" }}.
+    </p>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card__header"><span class="card__title">Nova solicitação</span></div>
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Solicitar</button>
+        <label for="{{ form.data_solicitada.id_for_label }}">{{ form.data_solicitada.label }}</label>
+        {{ form.data_solicitada }}
+        {{ form.data_solicitada.errors }}
+
+        <label style="margin-top: 16px;">Quantidade de dias</label>
+        <div class="filtros-status" id="dias-chips">
+            <button type="button" class="chip" data-dias="30">30</button>
+            <button type="button" class="chip" data-dias="15">15</button>
+            <button type="button" class="chip" data-dias="20">20</button>
+            <button type="button" class="chip" data-dias="outro">Outro</button>
+        </div>
+        {{ form.dias_solicitados }}
+        {{ form.dias_solicitados.errors }}
+
+        <button type="submit" class="btn-primario" style="margin-top: 16px;">Solicitar</button>
     </form>
 </div>
-{% else %}
-<p>Você já tem uma solicitação em andamento. Aguarde a conclusão antes de solicitar outra.</p>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var chips = document.getElementById('dias-chips');
+    var campoDias = document.getElementById('{{ form.dias_solicitados.id_for_label }}');
+    if (!chips || !campoDias) return;
+
+    function marcar(valor) {
+        chips.querySelectorAll('.chip').forEach(function (chip) {
+            chip.classList.toggle('chip--ativo', chip.dataset.dias === String(valor));
+        });
+    }
+    chips.querySelectorAll('.chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            if (chip.dataset.dias === 'outro') {
+                campoDias.focus();
+                return;
+            }
+            campoDias.value = chip.dataset.dias;
+            marcar(chip.dataset.dias);
+        });
+    });
+    marcar(campoDias.value);
+});
+</script>
 {% endif %}
 
 <h2>Minhas solicitações</h2>
-<table>
-    <thead>
-        <tr>
-            <th>Data solicitada</th>
-            <th>Dias</th>
-            <th>Status</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for s in solicitacoes %}
-        <tr>
-            <td>{{ s.data_solicitada }}</td>
-            <td>{{ s.dias_solicitados }}</td>
-            <td>{{ s.get_status_display }}</td>
-            <td>
-                {% if s.status == 'sugestao_gestor' %}
-                    <p><strong>Sugestão do gestor:</strong> {{ s.data_sugerida }} ({{ s.dias_sugeridos }} dias)</p>
-                    {% if s.observacao_gestor %}<p>{{ s.observacao_gestor }}</p>{% endif %}
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Data solicitada</th>
+                <th>Dias</th>
+                <th>Situação</th>
+                <th>Atualizado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in solicitacoes %}
+            <tr>
+                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
+                <td>{{ s.dias_solicitados }}</td>
+                <td>
+                    <span class="badge-status
+                        {% if s.status == 'aprovada' %}badge-status--aprovada
+                        {% elif s.status == 'adiada' %}badge-status--adiada
+                        {% elif s.status == 'sugestao_gestor' %}badge-status--sugestao
+                        {% else %}badge-status--aguardando{% endif %}">
+                        {{ s.get_status_display }}
+                    </span>
+                </td>
+                <td>{{ s.atualizado_em|date:"d/m/Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4">Nenhuma solicitação ainda.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 
-                    <form method="post" action="{% url 'aceitar_sugestao_ferias' s.id %}" style="display:inline;">
-                        {% csrf_token %}
-                        <button type="submit">Aceitar sugestão</button>
-                    </form>
-
-                    <a href="{% url 'propor_outra_data_ferias' s.id %}" class="btn btn-novo">Propor outra data</a>
-
-                    <form method="post" action="{% url 'adiar_ferias' s.id %}" style="display:inline;">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-novo">Adiar</button>
-                    </form>
-                {% endif %}
-            </td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="4">Nenhuma solicitação ainda.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="lista-cards mobile-only">
+    {% for s in solicitacoes %}
+    <div class="item-card">
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">{{ s.data_solicitada|date:"d/m/Y" }} · {{ s.dias_solicitados }} dias</div>
+            <div class="item-card__subtitulo">{{ s.atualizado_em|date:"d/m/Y" }}</div>
+        </div>
+        <span class="badge-status
+            {% if s.status == 'aprovada' %}badge-status--aprovada
+            {% elif s.status == 'adiada' %}badge-status--adiada
+            {% elif s.status == 'sugestao_gestor' %}badge-status--sugestao
+            {% else %}badge-status--aguardando{% endif %}">
+            {{ s.get_status_display }}
+        </span>
+    </div>
+    {% empty %}
+    <p>Nenhuma solicitação ainda.</p>
+    {% endfor %}
+</div>
 {% endblock %}

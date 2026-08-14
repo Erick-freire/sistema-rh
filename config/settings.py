@@ -7,9 +7,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.136']
+ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.88']
+
+# Segurança de cookies e transporte — só entram em vigor quando DEBUG=False
+# (em produção, defina DEBUG=False no .env para ativar HTTPS/cookies seguros)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_HTTPONLY = True
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 
 # Application definition
@@ -22,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'funcionarios',
+    'integracao_gov',
 ]
 
 MIDDLEWARE = [
@@ -112,3 +123,18 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 LOGIN_URL = 'login'
+
+
+# Integração Assinatura Gov.br (Conecta gov.br + Assina gov.br)
+# Credenciais reais ainda não emitidas — valores default abaixo são placeholders de sandbox
+# e precisam ser confirmados na documentação oficial (ver especificação, seção 8).
+
+GOVBR_CLIENT_ID = config('GOVBR_CLIENT_ID', default='')
+GOVBR_CLIENT_SECRET = config('GOVBR_CLIENT_SECRET', default='')
+GOVBR_REDIRECT_URI = config('GOVBR_REDIRECT_URI', default='http://localhost:8000/integracao-gov/callback/')
+GOVBR_AMBIENTE = config('GOVBR_AMBIENTE', default='sandbox')
+GOVBR_AUTHORIZE_URL = config('GOVBR_AUTHORIZE_URL', default='https://sso.staging.acesso.gov.br/authorize')
+GOVBR_TOKEN_URL = config('GOVBR_TOKEN_URL', default='https://sso.staging.acesso.gov.br/token')
+GOVBR_ASSINATURA_BASE_URL = config('GOVBR_ASSINATURA_BASE_URL', default='https://assinatura-api.staging.iti.gov.br')
+GOVBR_WEBHOOK_SECRET = config('GOVBR_WEBHOOK_SECRET', default='')
+GOVBR_TOKEN_ENCRYPTION_KEY = config('GOVBR_TOKEN_ENCRYPTION_KEY', default='')

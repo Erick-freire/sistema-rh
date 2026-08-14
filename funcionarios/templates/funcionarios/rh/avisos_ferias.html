@@ -1,0 +1,77 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Avisos de Férias
+{% endblock %}
+
+{% block conteudo %}
+<h1>Avisos de Férias</h1>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Data prevista</th>
+                <th>Mensagem</th>
+                <th>Status</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for aviso in avisos %}
+            <tr>
+                <td>{{ aviso.funcionario.nome }}</td>
+                <td>{{ aviso.data_prevista|date:"d/m/Y" }}</td>
+                <td>{{ aviso.mensagem|default:"—" }}</td>
+                <td>
+                    {% if aviso.visualizado %}
+                    <span class="badge-status badge-status--ativo">Visualizado</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">Novo</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not aviso.visualizado %}
+                    <form method="post" action="{% url 'marcar_aviso_visualizado' aviso.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Marcar como visto</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">Nenhum aviso.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for aviso in avisos %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="item-card__titulo">{{ aviso.funcionario.nome }}</div>
+            {% if aviso.visualizado %}
+            <span class="badge-status badge-status--ativo">Visualizado</span>
+            {% else %}
+            <span class="badge-status badge-status--pendente">Novo</span>
+            {% endif %}
+        </div>
+        <div class="item-card__subtitulo">Previsto para {{ aviso.data_prevista|date:"d/m/Y" }}</div>
+        {% if aviso.mensagem %}<div style="font-size: 0.88rem;">{{ aviso.mensagem }}</div>{% endif %}
+        {% if not aviso.visualizado %}
+        <form method="post" action="{% url 'marcar_aviso_visualizado' aviso.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-bloco">Marcar como visto</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p>Nenhum aviso.</p>
+    {% endfor %}
+</div>
+{% endblock %}

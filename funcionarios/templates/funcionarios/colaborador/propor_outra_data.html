@@ -1,19 +1,35 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
-Propor Outra Data
+Propor outra data
 {% endblock %}
 
 {% block conteudo %}
-<h1>Propor Outra Data</h1>
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'solicitar_ferias' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Propor outra data
+</h1>
 
-<div class="card">
-    <p>Sugestão do gestor: {{ solicitacao.data_sugerida }} ({{ solicitacao.dias_sugeridos }} dias)</p>
+<div class="card" style="max-width: 440px;">
+    <div class="painel-credenciais" style="margin-top: 0;">
+        <span style="font-size: 0.82rem; color: var(--color-text-muted);">Sugestão do gestor</span>
+        <div style="font-weight: 700; font-size: 1.05rem;">
+            {{ solicitacao.data_sugerida|date:"d/m/Y" }} · {{ solicitacao.dias_sugeridos }} dias
+        </div>
+    </div>
 
     <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Enviar nova proposta</button>
+        <label for="{{ form.data_solicitada.id_for_label }}">{{ form.data_solicitada.label }}</label>
+        {{ form.data_solicitada }}
+        {{ form.data_solicitada.errors }}
+
+        <label style="margin-top: 16px;">{{ form.dias_solicitados.label }}</label>
+        {{ form.dias_solicitados }}
+        {{ form.dias_solicitados.errors }}
+
+        <button type="submit" class="btn-primario btn-bloco" style="margin-top: 20px;">Enviar nova proposta</button>
     </form>
 </div>
 {% endblock %}

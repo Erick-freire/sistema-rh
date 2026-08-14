@@ -1,21 +1,39 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
-Cadastro Realizado
+Cadastro concluído
 {% endblock %}
 
 {% block conteudo %}
-<h1>Funcionário cadastrado</h1>
+<div class="card" style="max-width: 440px; margin: 0 auto; text-align: center;">
+    <span class="avatar avatar--lg" style="background-color: var(--color-success-bg); color: var(--color-success); margin: 0 auto 16px;">
+        {% icon 'check-circle' %}
+    </span>
+    <h1 style="font-size: 1.2rem;">Funcionário cadastrado</h1>
+    <p style="color: var(--color-text-muted); margin-top: 4px;">{{ funcionario.nome }} · {{ funcionario.setor }}</p>
 
-<div class="card">
-    <p><strong>Nome:</strong> {{ funcionario.nome }}</p>
-    <p><strong>Usuário de acesso:</strong> {{ username }}</p>
-    <p><strong>Senha provisória:</strong> {{ senha_gerada }}</p>
+    <div class="painel-credenciais" style="text-align: left;">
+        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted);">Usuário</div>
+        <div style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;">{{ username }}</div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--color-border); padding-top: 12px;">
+            <div>
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted);">Senha provisória</div>
+                <div id="senha-provisoria" style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700;">{{ senha_gerada }}</div>
+            </div>
+            <button type="button" class="btn-sm btn-outline" data-copy="senha-provisoria">{% icon 'copy' %} Copiar</button>
+        </div>
+    </div>
+
+    <div class="alert alert--erro" style="text-align: left;">
+        {% icon 'alert-triangle' %}
+        <span>Anote ou copie esta senha agora — ela não poderá ser exibida novamente. Repasse ao colaborador para o primeiro acesso.</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+        <a href="{% url 'cadastrar_funcionario' %}" class="btn">Cadastrar outro</a>
+        <a href="{% url 'listar_funcionarios' %}" class="btn-outline">Voltar para Funcionários</a>
+    </div>
 </div>
-
-<p class="message message-error">
-    Anote ou copie esta senha agora — ela não poderá ser exibida novamente. Repasse ao colaborador para o primeiro acesso.
-</p>
-
-<a href="{% url 'listar_funcionarios' %}" class="btn">Voltar para Funcionários</a>
 {% endblock %}

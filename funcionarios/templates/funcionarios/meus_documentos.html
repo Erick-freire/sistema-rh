@@ -1,32 +1,42 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Meus Documentos
 {% endblock %}
 
 {% block conteudo %}
-<h1>Meus Documentos</h1>
+<h1>Meus documentos</h1>
 
-<table>
-    <thead>
-        <tr>
-            <th>Tipo</th>
-            <th>Arquivo</th>
-            <th>Data de Envio</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for documento in documentos %}
-        <tr>
-            <td>{{ documento.tipo_documento }}</td>
-            <td><a href="{{ documento.arquivo.url }}" target="_blank">{{ documento.arquivo.name }}</a></td>
-            <td>{{ documento.data_upload }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="3">Nenhum documento enviado ainda.</td>
-        </tr>
+{% if tipos_pendentes %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <div class="card__title" style="margin-bottom: 12px;">Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }}</div>
+    <div class="lista-cards">
+        {% for tipo in tipos_pendentes %}
+        <div class="item-card">
+            <div class="item-card__corpo">{{ tipo.nome }}</div>
+            <a href="{% url 'enviar_documento' %}" class="btn btn-sm">Enviar</a>
+        </div>
         {% endfor %}
-    </tbody>
-</table>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card__title" style="margin-bottom: 12px;">Enviados</div>
+    <div class="lista-cards">
+        {% for documento in documentos %}
+        <div class="item-card">
+            <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ documento.tipo_documento }}</div>
+                <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.data_upload|date:"d/m/Y" }}</div>
+            </div>
+            <a href="{{ documento.arquivo.url }}" download title="Baixar" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
+        </div>
+        {% empty %}
+        <p>Nenhum documento enviado ainda.</p>
+        {% endfor %}
+    </div>
+</div>
 {% endblock %}

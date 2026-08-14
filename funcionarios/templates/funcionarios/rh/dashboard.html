@@ -1,7 +1,7 @@
 {% extends 'funcionarios/base.html' %}
 
 {% block titulo %}
-Início
+Painel do RH
 {% endblock %}
 
 {% block conteudo %}
@@ -9,26 +9,69 @@ Início
 
 <div class="stats-grid">
     <div class="stat-card">
-        <div class="valor">{{ total_funcionarios }}</div>
         <div class="rotulo">Funcionários ativos</div>
+        <div class="valor">{{ total_funcionarios }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="rotulo">Cadastros pendentes</div>
+        <div class="valor">{{ cadastros_pendentes }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="rotulo">Férias aguardando gestor</div>
+        <div class="valor">{{ ferias_aguardando_gestor }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="rotulo">Férias aguardando RH</div>
+        <div class="valor">{{ ferias_aguardando_rh }}</div>
     </div>
 </div>
 
-<h2>Funcionários por Setor</h2>
-<div class="card">
-    <ul>
+<div class="duas-colunas">
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">Funcionários por setor</span>
+        </div>
         {% for item in funcionarios_por_setor %}
-            <li>{{ item.setor__nome }}: {{ item.total }}</li>
+        <div class="setor-item">
+            <div class="setor-item__topo">
+                <span>{{ item.setor__nome }}</span>
+                <span class="setor-item__valor">{{ item.total }}</span>
+            </div>
+            <div class="progress">
+                <div class="progress__bar" style="width: {% widthratio item.total maior_total_setor 100 %}%;"></div>
+            </div>
+        </div>
+        {% empty %}
+        <p>Nenhum funcionário ativo neste escopo.</p>
         {% endfor %}
-    </ul>
-</div>
+    </div>
 
-<h2>Documentos Recentes</h2>
-<div class="card">
-    <ul>
-        {% for documento in documentos_recentes %}
-            <li>{{ documento.funcionario.nome }} — {{ documento.tipo_documento }} ({{ documento.data_upload }})</li>
-        {% endfor %}
-    </ul>
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">Documentos recentes</span>
+        </div>
+        <table class="tabela-limpa">
+            <thead>
+                <tr>
+                    <th>Funcionário</th>
+                    <th>Tipo</th>
+                    <th>Envio</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for documento in documentos_recentes %}
+                <tr>
+                    <td>{{ documento.funcionario.nome }}</td>
+                    <td>{{ documento.tipo_documento }}</td>
+                    <td>{{ documento.data_upload|date:"d/m H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">Nenhum documento recente.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

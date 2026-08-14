@@ -11,7 +11,7 @@ class DryRunRollback(Exception):
 
 
 class Command(BaseCommand):
-    help = 'Importa data de admissao e ultima ferias registradas no Secullum'
+    help = 'Importa data de admissao e historico de ferias registradas no Secullum'
 
     def add_arguments(self, parser):
         parser.add_argument('caminho_admissao', type=str)
@@ -36,11 +36,15 @@ class Command(BaseCommand):
                     for linha in leitor:
                         cpf_bruto = linha['cpf'].strip()
 
-                        if cpf_bruto.lower().startswith('d'):
+                        if cpf_bruto.lower().startswith('d') or cpf_bruto.upper() == 'NULL':
                             admissoes_ignoradas_demitidos += 1
                             continue
 
                         cpf = self._limpar_cpf(cpf_bruto)
+                        if not cpf:
+                            admissoes_nao_encontradas += 1
+                            continue
+
                         data_admissao = self._parse_data(linha['admissao'])
 
                         try:
@@ -58,11 +62,15 @@ class Command(BaseCommand):
                     for linha in leitor:
                         cpf_bruto = linha['cpf'].strip()
 
-                        if cpf_bruto.lower().startswith('d'):
+                        if cpf_bruto.lower().startswith('d') or cpf_bruto.upper() == 'NULL':
                             ferias_ignoradas_demitidos += 1
                             continue
 
                         cpf = self._limpar_cpf(cpf_bruto)
+                        if not cpf:
+                            ferias_nao_encontradas += 1
+                            continue
+
                         data_inicio = self._parse_data(linha['data_inicio'])
                         data_fim = self._parse_data(linha['data_fim'])
                         dias = (data_fim - data_inicio).days
@@ -89,11 +97,11 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(
                     f'Admissões atualizadas: {admissoes_atualizadas}\n'
                     f'Admissões sem funcionário correspondente: {admissoes_nao_encontradas}\n'
-                    f'Admissões ignoradas (demitidos): {admissoes_ignoradas_demitidos}\n'
+                    f'Admissões ignoradas (demitidos/nulos): {admissoes_ignoradas_demitidos}\n'
                     f'Férias criadas: {ferias_criadas}\n'
                     f'Férias atualizadas: {ferias_atualizadas}\n'
                     f'Férias sem funcionário correspondente: {ferias_nao_encontradas}\n'
-                    f'Férias ignoradas (demitidos): {ferias_ignoradas_demitidos}'
+                    f'Férias ignoradas (demitidos/nulos): {ferias_ignoradas_demitidos}'
                 ))
 
                 if dry_run:

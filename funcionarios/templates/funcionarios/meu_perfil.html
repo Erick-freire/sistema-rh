@@ -1,4 +1,5 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Meu Perfil
@@ -7,24 +8,163 @@ Meu Perfil
 {% block conteudo %}
 <h1>Meu Perfil</h1>
 
-<div class="card">
-    <p><strong>Nome:</strong> {{ funcionario.nome }}</p>
-    <p><strong>Matrícula:</strong> {{ funcionario.matricula }}</p>
-    <p><strong>Cargo:</strong> {{ funcionario.cargo }}</p>
-    <p><strong>Setor:</strong> {{ funcionario.setor }}</p>
-</div>
-
 {% if messages %}
     {% for message in messages %}
-        <p class="message message-success">{{ message }}</p>
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
     {% endfor %}
 {% endif %}
 
-<div class="card">
-    <form method="post" enctype="multipart/form-data">
+<div class="duas-colunas">
+    <form method="post" enctype="multipart/form-data" action="{% url 'atualizar_foto' %}">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Salvar</button>
+        <div class="card" style="text-align: center;">
+            {% if funcionario.foto %}
+            <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}" style="width: 96px; height: 96px; border-radius: 999px; object-fit: cover; margin-bottom: 12px;">
+            {% else %}
+            <span class="avatar avatar--lg" style="width: 96px; height: 96px; font-size: 1.6rem; margin-bottom: 12px;">{{ funcionario.iniciais }}</span>
+            {% endif %}
+
+            <div>
+                <label for="{{ foto_form.foto.id_for_label }}" class="btn-outline btn-sm" style="cursor: pointer;">{% icon 'camera' %} Trocar foto</label>
+                <div style="display: none;">{{ foto_form.foto }}</div>
+            </div>
+
+            <div style="text-align: left; margin-top: 24px;">
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); margin-bottom: 6px;">Dados do RH</div>
+                <div class="linha-dado"><span class="linha-dado__rotulo">Nome</span><span class="linha-dado__valor">{{ funcionario.nome }}</span></div>
+                <div class="linha-dado"><span class="linha-dado__rotulo">CPF</span><span class="linha-dado__valor">{{ funcionario.cpf }}</span></div>
+                <div class="linha-dado"><span class="linha-dado__rotulo">Matrícula</span><span class="linha-dado__valor">{{ funcionario.matricula }}</span></div>
+                <div class="linha-dado"><span class="linha-dado__rotulo">Cargo</span><span class="linha-dado__valor">{{ funcionario.cargo }}</span></div>
+                <div class="linha-dado"><span class="linha-dado__rotulo">Setor</span><span class="linha-dado__valor">{{ funcionario.setor }}</span></div>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 10px;">Para corrigir estes dados, fale com o RH.</p>
+            </div>
+        </div>
     </form>
+
+        <div>
+            <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="card">
+                <div class="card__title" style="margin-bottom: 16px;">Dados que você pode atualizar</div>
+                <div class="form-grid">
+                    <div>
+                        <label for="{{ form.telefone.id_for_label }}">Telefone</label>
+                        {{ form.telefone }}
+                        {{ form.telefone.errors }}
+                    </div>
+                    <div class="span-2">
+                        <label for="{{ form.endereco.id_for_label }}">Endereço</label>
+                        {{ form.endereco }}
+                        {{ form.endereco.errors }}
+                    </div>
+                    <div>
+                        <label for="{{ form.sexo.id_for_label }}">Sexo</label>
+                        {{ form.sexo }}
+                        {{ form.sexo.errors }}
+                    </div>
+                    <div>
+                        <label for="{{ form.estado_civil.id_for_label }}">Estado civil</label>
+                        {{ form.estado_civil }}
+                        {{ form.estado_civil.errors }}
+                    </div>
+                    <div class="span-2" style="display: flex; align-items: center; gap: 8px;">
+                        {{ form.tem_filho_menor_idade }}
+                        <label for="{{ form.tem_filho_menor_idade.id_for_label }}" style="margin-bottom: 0;">
+                            Possui filho(a) menor de 18 anos
+                        </label>
+                        {{ form.tem_filho_menor_idade.errors }}
+                    </div>
+                </div>
+
+                <div id="documentos-filho" class="form-grid" style="display: none; margin-top: 4px;">
+                    {% for tipo in tipos_documentos_filho %}
+                    <div>
+                        <label>{{ tipo.nome }}</label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label for="documento_filho_{{ tipo.id }}" class="btn-outline btn-sm" style="cursor: pointer; white-space: nowrap; margin-bottom: 0;">{% icon 'upload' %} Escolher arquivo</label>
+                            <input type="file" name="documento_filho_{{ tipo.id }}" id="documento_filho_{{ tipo.id }}" style="display: none;">
+                            <span class="nome-arquivo-filho" style="font-size: 0.85rem; color: var(--color-text-muted);">
+                                {% if tipo.id in tipos_documentos_filho_enviados %}{% icon 'check-circle' %} Já enviado{% else %}Nenhum arquivo selecionado{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="form-grid" style="margin-top: 4px;">
+                    <div class="span-2">
+                        <label for="{{ form.email.id_for_label }}">E-mail</label>
+                        {{ form.email }}
+                        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">Usado para o envio do holerite.</p>
+                        {{ form.email.errors }}
+                    </div>
+                </div>
+
+                <div class="card__title" style="margin: 20px 0 16px;">Dados bancários</div>
+                <div class="form-grid">
+                    <div>
+                        <label for="{{ form.banco.id_for_label }}">Banco</label>
+                        {{ form.banco }}
+                        {{ form.banco.errors }}
+                    </div>
+                    <div>
+                        <label for="{{ form.agencia.id_for_label }}">Agência</label>
+                        {{ form.agencia }}
+                        {{ form.agencia.errors }}
+                    </div>
+                    <div>
+                        <label for="{{ form.numero_conta.id_for_label }}">Número da conta</label>
+                        {{ form.numero_conta }}
+                        {{ form.numero_conta.errors }}
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="submit" class="btn-primario">Salvar</button>
+                    <a href="{% url 'meu_perfil' %}" class="btn-outline">Cancelar</a>
+                </div>
+            </div>
+            </form>
+
+            <div class="card" style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div>
+                    <div class="card__title">Senha</div>
+                    <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 4px;">Mantenha sua senha em sigilo e troque periodicamente.</div>
+                </div>
+                <a href="{% url 'trocar_senha' %}" class="btn-outline btn-sm">Trocar senha</a>
+            </div>
+        </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var checkbox = document.getElementById('{{ form.tem_filho_menor_idade.id_for_label }}');
+    var painel = document.getElementById('documentos-filho');
+    if (checkbox && painel) {
+        var atualizarPainel = function () {
+            painel.style.display = checkbox.checked ? 'grid' : 'none';
+        };
+        checkbox.addEventListener('change', atualizarPainel);
+        atualizarPainel();
+    }
+
+    var inputFoto = document.getElementById('{{ foto_form.foto.id_for_label }}');
+    if (inputFoto) {
+        inputFoto.addEventListener('change', function () {
+            if (inputFoto.files && inputFoto.files.length > 0) {
+                inputFoto.form.submit();
+            }
+        });
+    }
+
+    document.querySelectorAll('#documentos-filho input[type="file"]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            var span = input.parentElement.querySelector('.nome-arquivo-filho');
+            if (span && input.files && input.files.length > 0) {
+                span.textContent = input.files[0].name;
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

@@ -6,11 +6,13 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('', views.dashboard_view, name='dashboard'),
     path('meu-perfil/', views.meu_perfil_view, name='meu_perfil'),
+    path('meu-perfil/foto/', views.atualizar_foto_view, name='atualizar_foto'),
     path('enviar-documento/', views.enviar_documento_view, name='enviar_documento'),
     path('meus-documentos/', views.meus_documentos_view, name='meus_documentos'),
     path('funcionarios/', views.listar_funcionarios_view, name='listar_funcionarios'),
     path('funcionarios/<int:funcionario_id>/gerar-acesso/', views.gerar_acesso_funcionario_view, name='gerar_acesso_funcionario'),
     path('funcionarios/novo/', views.cadastrar_funcionario_view, name='cadastrar_funcionario'),
+    path('funcionarios/<int:funcionario_id>/alternar-acesso-rh/', views.alternar_acesso_rh_view, name='alternar_acesso_rh'),
     path('funcionarios/<int:funcionario_id>/', views.detalhe_funcionario_view, name='detalhe_funcionario'),
     path('trocar-senha/', views.trocar_senha_view, name='trocar_senha'),
     path('ferias/', views.solicitar_ferias_view, name='solicitar_ferias'),
@@ -24,4 +26,8 @@ urlpatterns = [
 
     path('rh/ferias/', views.rh_listar_ferias_view, name='rh_listar_ferias'),
     path('rh/ferias/<int:solicitacao_id>/concluir/', views.rh_concluir_ferias_view, name='rh_concluir_ferias'),
+    path('rh/ferias/vencimento/', views.rh_vencimento_ferias_view, name='rh_vencimento_ferias'),
+    path('rh/ferias/<int:funcionario_id>/avisar/', views.criar_aviso_ferias_view, name='criar_aviso_ferias'),
+    path('gestor/ferias/avisos/', views.gestor_avisos_ferias_view, name='gestor_avisos_ferias'),
+    path('gestor/ferias/avisos/<int:aviso_id>/visualizar/', views.marcar_aviso_visualizado_view, name='marcar_aviso_visualizado'),
 ]

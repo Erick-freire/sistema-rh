@@ -1,17 +1,60 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
-Cadastrar Funcionário
+Novo funcionário
 {% endblock %}
 
 {% block conteudo %}
-<h1>Cadastrar Funcionário</h1>
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_funcionarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Novo funcionário
+</h1>
 
 <div class="card">
-    <form method="post" enctype="multipart/form-data">
+    <div class="card__header">
+        <span class="card__title">Dados do pré-cadastro</span>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        O colaborador completa dados pessoais, dados bancários e documentos no primeiro acesso. O cadastro fica
+        <strong>pendente</strong> até tudo isso ser preenchido e os documentos obrigatórios chegarem.
+    </p>
+
+    <form method="post">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Cadastrar</button>
+        <div class="form-grid">
+            <div class="span-2">
+                <label for="{{ form.nome.id_for_label }}">Nome completo</label>
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cpf.id_for_label }}">CPF</label>
+                {{ form.cpf }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">Será usado como login do colaborador.</p>
+                {{ form.cpf.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cargo.id_for_label }}">Cargo</label>
+                {{ form.cargo }}
+                {{ form.cargo.errors }}
+            </div>
+            <div>
+                <label for="{{ form.setor.id_for_label }}">Setor</label>
+                {{ form.setor }}
+                {{ form.setor.errors }}
+            </div>
+            <div>
+                <label for="{{ form.data_admissao.id_for_label }}">Data de admissão</label>
+                {{ form.data_admissao }}
+                {{ form.data_admissao.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Cadastrar e gerar acesso</button>
+            <a href="{% url 'listar_funcionarios' %}" class="btn-outline">Cancelar</a>
+        </div>
     </form>
 </div>
 {% endblock %}

@@ -1,23 +1,69 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Enviar Documento
 {% endblock %}
 
 {% block conteudo %}
-<h1>Enviar Documento</h1>
+<h1>Enviar documento</h1>
 
 {% if messages %}
     {% for message in messages %}
-        <p class="message message-success">{{ message }}</p>
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
     {% endfor %}
 {% endif %}
 
-<div class="card">
+<div class="card" style="max-width: 480px;">
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Enviar</button>
+
+        <label for="{{ form.tipo_documento.id_for_label }}">Tipo de documento</label>
+        {{ form.tipo_documento }}
+        {{ form.tipo_documento.errors }}
+
+        <label style="margin-top: 16px;">Arquivo</label>
+        <label for="{{ form.arquivo.id_for_label }}" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 28px 16px; cursor: pointer; color: var(--color-text-muted); text-align: center;">
+            {% icon 'upload' %}
+            <strong style="color: var(--color-text);">Toque para escolher</strong>
+            <span style="font-size: 0.8rem;">PDF, JPG ou PNG até 10 MB</span>
+        </label>
+        <div style="display: none;">{{ form.arquivo }}</div>
+        {{ form.arquivo.errors }}
+
+        <div id="arquivo-selecionado" class="item-card" style="display: none; margin-top: 12px;">
+            <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo" id="arquivo-nome"></div>
+            </div>
+            <button type="button" id="arquivo-remover" style="background: transparent; color: var(--color-text-muted); padding: 4px;">{% icon 'x' %}</button>
+        </div>
+
+        <button type="submit" class="btn-primario btn-bloco" style="margin-top: 20px;">Enviar</button>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var input = document.getElementById('{{ form.arquivo.id_for_label }}');
+    var selecionado = document.getElementById('arquivo-selecionado');
+    var nomeEl = document.getElementById('arquivo-nome');
+    var remover = document.getElementById('arquivo-remover');
+    if (!input) return;
+
+    input.addEventListener('change', function () {
+        if (input.files && input.files.length > 0) {
+            nomeEl.textContent = input.files[0].name;
+            selecionado.style.display = 'flex';
+        } else {
+            selecionado.style.display = 'none';
+        }
+    });
+
+    remover.addEventListener('click', function () {
+        input.value = '';
+        selecionado.style.display = 'none';
+    });
+});
+</script>
 {% endblock %}

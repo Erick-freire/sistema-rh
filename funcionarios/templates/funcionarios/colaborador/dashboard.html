@@ -4,6 +4,77 @@
 Início
 {% endblock %}
 
+{% load rh_icons %}
 {% block conteudo %}
-<h1>Bem-vindo, {{ usuario_atual.funcionario.nome }}</h1>
+<h1>Olá, {{ funcionario.primeiro_nome }}</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ funcionario.cargo }} · {{ funcionario.setor }} · matrícula {{ funcionario.matricula }}
+</p>
+
+<div class="duas-colunas">
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">
+                {% if tipos_pendentes %}Seu cadastro está pendente{% else %}Seu cadastro está completo{% endif %}
+            </span>
+            <span class="badge-status {% if tipos_pendentes %}badge-status--pendente{% else %}badge-status--ativo{% endif %}">{{ total_enviados }} de {{ total_obrigatorios }}</span>
+        </div>
+
+        {% if tipos_pendentes %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+            Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }} obrigatório{{ tipos_pendentes|length|pluralize }}. Quando todos chegarem, seu cadastro passa para ativo automaticamente.
+        </p>
+        <div class="progress" style="margin-bottom: 16px;">
+            <div class="progress__bar progress__bar--accent" style="width: {% widthratio total_enviados total_obrigatorios 100 %}%;"></div>
+        </div>
+        <div class="lista-cards">
+            {% for tipo in tipos_pendentes %}
+            <div class="item-card">
+                <div class="item-card__corpo">{{ tipo.nome }}</div>
+                <a href="{% url 'enviar_documento' %}" class="btn btn-sm">Enviar</a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem;">Todos os documentos obrigatórios foram enviados.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">Minhas férias</span>
+        </div>
+        {% if solicitacao_ferias %}
+        <p>
+            <span class="badge-status
+                {% if solicitacao_ferias.status == 'aprovada' %}badge-status--aprovada
+                {% elif solicitacao_ferias.status == 'adiada' %}badge-status--adiada
+                {% elif solicitacao_ferias.status == 'sugestao_gestor' %}badge-status--sugestao
+                {% else %}badge-status--aguardando{% endif %}">
+                {{ solicitacao_ferias.get_status_display }}
+            </span>
+        </p>
+        <p style="margin: 12px 0 16px; font-size: 0.92rem;">
+            Pedido de <strong>{{ solicitacao_ferias.dias_solicitados }} dias</strong> a partir de {{ solicitacao_ferias.data_solicitada|date:"d/m/Y" }}, enviado em {{ solicitacao_ferias.criado_em|date:"d/m" }}.
+        </p>
+        <a href="{% url 'solicitar_ferias' %}" class="btn btn-outline">Ver solicitação</a>
+        {% else %}
+        <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 16px;">Você ainda não tem nenhuma solicitação de férias.</p>
+        <a href="{% url 'solicitar_ferias' %}" class="btn">Solicitar férias</a>
+        {% endif %}
+
+        <h2 style="margin-top: 24px;">Atalhos</h2>
+        <div class="lista-cards">
+            <a href="{% url 'enviar_documento' %}" class="item-card">
+                {% icon 'upload' %} Enviar documento
+            </a>
+            <a href="{% url 'minhas_assinaturas' %}" class="item-card">
+                {% icon 'pen' %} Assinar com Gov.br
+            </a>
+            <a href="{% url 'meu_perfil' %}" class="item-card">
+                {% icon 'user' %} Atualizar meus dados
+            </a>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -4,29 +4,33 @@
 Login
 {% endblock %}
 
+{% load rh_icons %}
 {% block conteudo_sem_login %}
 <div class="login-shell">
     <div class="login-card">
+        <div class="login-card__mark">{% icon 'check-circle' %}</div>
         <h1>Sistema RH</h1>
 
         <form method="post">
             {% csrf_token %}
 
+            {% if erro %}
+                <p class="message message-error">{{ erro }}</p>
+            {% endif %}
+
             <p>
                 <label for="username">Usuário</label>
-                <input type="text" id="username" name="username" placeholder="Usuário">
+                <input type="text" id="username" name="username" placeholder="Matrícula" autofocus>
             </p>
             <p>
                 <label for="password">Senha</label>
                 <input type="password" id="password" name="password" placeholder="Senha">
             </p>
 
-            <button type="submit">Entrar</button>
-
-            {% if erro %}
-                <p class="message message-error">{{ erro }}</p>
-            {% endif %}
+            <button type="submit" class="btn-primario btn-bloco">Entrar</button>
         </form>
+
+        <p class="login-card__aviso">Primeiro acesso? Use a senha provisória entregue pelo RH.</p>
     </div>
 </div>
 {% endblock %}

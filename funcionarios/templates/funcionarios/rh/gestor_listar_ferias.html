@@ -1,48 +1,91 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Aprovação de Férias
 {% endblock %}
 
 {% block conteudo %}
-<h1>Solicitações de Férias — Análise</h1>
+<h1>Aprovação de Férias</h1>
 
 {% if messages %}
     {% for message in messages %}
-        <p class="message message-success">{{ message }}</p>
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
     {% endfor %}
 {% endif %}
 
-<table>
-    <thead>
-        <tr>
-            <th>Funcionário</th>
-            <th>Setor</th>
-            <th>Data solicitada</th>
-            <th>Dias</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for s in solicitacoes %}
-        <tr>
-            <td>{{ s.funcionario.nome }}</td>
-            <td>{{ s.funcionario.setor }}</td>
-            <td>{{ s.data_solicitada }}</td>
-            <td>{{ s.dias_solicitados }}</td>
-            <td>
-                <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}" style="display:inline;">
-                    {% csrf_token %}
-                    <button type="submit">Aprovar</button>
-                </form>
-                <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn btn-novo">Sugerir alteração</a>
-            </td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="5">Nenhuma solicitação pendente.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+{% if solicitacoes %}
+<div class="alert alert--aviso">
+    {% icon 'alert-triangle' %}
+    <span>{{ solicitacoes|length }} solicitaç{{ solicitacoes|length|pluralize:"ão,ões" }} aguardando sua análise. Aprovar envia ao RH para conclusão.</span>
+</div>
+{% endif %}
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Setor</th>
+                <th>Data solicitada</th>
+                <th>Dias</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in solicitacoes %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+                        {{ s.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ s.funcionario.setor }}</td>
+                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
+                <td>{{ s.dias_solicitados }}</td>
+                <td>
+                    <span class="acoes-tabela" style="gap: 10px;">
+                        <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-primario btn-sm">Aprovar</button>
+                        </form>
+                        <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn-outline btn-sm">Sugerir data</a>
+                    </span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">Nenhuma solicitação pendente.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for s in solicitacoes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ s.funcionario.setor }} · mat. {{ s.funcionario.matricula }}</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 20px; font-size: 0.88rem;">
+            <div><span class="linha-dado__rotulo">Início</span><br><strong>{{ s.data_solicitada|date:"d/m/Y" }}</strong></div>
+            <div><span class="linha-dado__rotulo">Dias</span><br><strong>{{ s.dias_solicitados }}</strong></div>
+            <div><span class="linha-dado__rotulo">Pedido em</span><br><strong>{{ s.criado_em|date:"d/m" }}</strong></div>
+        </div>
+        <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario btn-bloco">Aprovar e enviar ao RH</button>
+        </form>
+        <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn-outline btn-bloco">Sugerir outra data</a>
+    </div>
+    {% empty %}
+    <p>Nenhuma solicitação pendente.</p>
+    {% endfor %}
+</div>
 {% endblock %}

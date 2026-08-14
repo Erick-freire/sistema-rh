@@ -1,0 +1,19 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Erro no login gov.br
+{% endblock %}
+
+{% block conteudo %}
+<h1>Não foi possível concluir o login com o gov.br</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <p class="message message-error">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+<p>Isso pode acontecer se o login foi cancelado, demorou demais para ser concluído, ou o gov.br está indisponível no momento. Tente novamente a partir de "Assinar Documentos com Gov.br".</p>
+
+<a href="{% url 'minhas_assinaturas' %}" class="btn">Voltar para Assinar com Gov.br</a>
+{% endblock %}

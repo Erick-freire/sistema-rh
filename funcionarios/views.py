@@ -1,36 +1,65 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.db.models import Count
-from .models import Usuario, Funcionario, Documento, SolicitacaoFerias
 import secrets
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from .forms import MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm
 from django.contrib.auth.forms import SetPasswordForm
-from django.contrib.auth import update_session_auth_hash
-from django.db.models import Q
+from django.contrib import messages
+from django.core.cache import cache
+from django.db.models import Q, Count
 from django.core.paginator import Paginator
+from django.utils import timezone
+
+from .decorators import papel_required
+from .models import Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
 from .forms import (
-    MeuPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
-    SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm
+    MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
+    SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm
 )
+
+
+LIMITE_DIAS_ALERTA_FERIAS = 60
+
+LIMITE_TENTATIVAS_LOGIN_USUARIO = 5
+LIMITE_TENTATIVAS_LOGIN_IP = 20
+JANELA_BLOQUEIO_LOGIN = 15 * 60  # segundos
+
+MENSAGEM_BLOQUEIO_LOGIN = 'Muitas tentativas de login. Tente novamente em alguns minutos.'
+MENSAGEM_CREDENCIAL_INVALIDA = 'Usuário ou senha inválidos.'
+
+
+# ---------- Autenticação ----------
 
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
 
     if request.method == 'POST':
-        username = request.POST.get('username')
+        username = request.POST.get('username', '')
         password = request.POST.get('password')
+        ip = request.META.get('REMOTE_ADDR', 'desconhecido')
+
+        chave_usuario = f'login_falhas:usuario:{username}'
+        chave_ip = f'login_falhas:ip:{ip}'
+
+        if cache.get(chave_usuario, 0) >= LIMITE_TENTATIVAS_LOGIN_USUARIO or \
+           cache.get(chave_ip, 0) >= LIMITE_TENTATIVAS_LOGIN_IP:
+            return render(request, 'funcionarios/login.html', {
+                'erro': MENSAGEM_BLOQUEIO_LOGIN
+            })
+
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
+            cache.delete(chave_usuario)
             login(request, user)
             return redirect('dashboard')
         else:
+            cache.set(chave_usuario, cache.get(chave_usuario, 0) + 1, JANELA_BLOQUEIO_LOGIN)
+            cache.set(chave_ip, cache.get(chave_ip, 0) + 1, JANELA_BLOQUEIO_LOGIN)
             return render(request, 'funcionarios/login.html', {
-                'erro': 'Usuário ou senha inválidos.'
+                'erro': MENSAGEM_CREDENCIAL_INVALIDA
             })
 
     return render(request, 'funcionarios/login.html')
@@ -40,6 +69,34 @@ def logout_view(request):
     logout(request)
     return redirect('login')
 
+
+@login_required
+def trocar_senha_view(request):
+    try:
+        usuario = request.user.usuario
+    except Usuario.DoesNotExist:
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        form = SetPasswordForm(request.user, request.POST)
+        if form.is_valid():
+            form.save()
+            if usuario.senha_provisoria:
+                usuario.senha_provisoria = False
+                usuario.save()
+            update_session_auth_hash(request, request.user)
+            messages.success(request, 'Senha alterada com sucesso.')
+            return redirect('dashboard')
+    else:
+        form = SetPasswordForm(request.user)
+
+    return render(request, 'funcionarios/trocar_senha.html', {
+        'form': form,
+        'senha_provisoria': usuario.senha_provisoria,
+    })
+
+
+# ---------- Dashboard ----------
 
 @login_required
 def dashboard_view(request):
@@ -52,9 +109,66 @@ def dashboard_view(request):
         return render(request, 'funcionarios/sem_perfil.html')
 
     if usuario.papel == 'colaborador':
-        return render(request, 'funcionarios/colaborador/dashboard.html')
+        funcionario = usuario.funcionario
+        tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
+        tipos_enviados_ids = set(funcionario.documentos.values_list('tipo_documento_id', flat=True))
+        tipos_pendentes = [t for t in tipos_obrigatorios if t.id not in tipos_enviados_ids]
+        total_obrigatorios = len(tipos_obrigatorios)
+
+        solicitacao_ferias = funcionario.solicitacoes_ferias.order_by('-criado_em').first()
+
+        return render(request, 'funcionarios/colaborador/dashboard.html', {
+            'funcionario': funcionario,
+            'tipos_pendentes': tipos_pendentes,
+            'total_obrigatorios': total_obrigatorios,
+            'total_enviados': total_obrigatorios - len(tipos_pendentes),
+            'solicitacao_ferias': solicitacao_ferias,
+        })
 
     return dashboard_rh_view(request)
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def dashboard_rh_view(request):
+    usuario = request.user.usuario
+
+    if usuario.papel == 'rh' or usuario.acesso_rh:
+        funcionarios_do_escopo = Funcionario.objects.all()
+    else:
+        funcionarios_do_escopo = Funcionario.objects.filter(setor=usuario.funcionario.setor)
+
+    funcionarios_ativos = funcionarios_do_escopo.filter(status='ativo')
+    total_funcionarios = funcionarios_ativos.count()
+    cadastros_pendentes = funcionarios_do_escopo.filter(status='pendente').count()
+    funcionarios_por_setor = funcionarios_ativos.values('setor__nome').annotate(total=Count('id')).order_by('-total')
+    documentos_recentes = Documento.objects.filter(
+        funcionario__in=funcionarios_do_escopo
+    ).order_by('-data_upload')[:5]
+
+    ferias_aguardando_gestor = SolicitacaoFerias.objects.filter(
+        status='pendente_gestor', funcionario__in=funcionarios_do_escopo
+    ).count()
+    ferias_aguardando_rh = SolicitacaoFerias.objects.filter(
+        status='pendente_rh', funcionario__in=funcionarios_do_escopo
+    ).count()
+
+    maior_total_setor = max(
+        [item['total'] for item in funcionarios_por_setor], default=0
+    )
+
+    return render(request, 'funcionarios/rh/dashboard.html', {
+        'total_funcionarios': total_funcionarios,
+        'cadastros_pendentes': cadastros_pendentes,
+        'ferias_aguardando_gestor': ferias_aguardando_gestor,
+        'ferias_aguardando_rh': ferias_aguardando_rh,
+        'funcionarios_por_setor': funcionarios_por_setor,
+        'maior_total_setor': maior_total_setor,
+        'documentos_recentes': documentos_recentes,
+    })
+
+
+# ---------- Meu Perfil ----------
 
 @login_required
 def meu_perfil_view(request):
@@ -63,20 +177,69 @@ def meu_perfil_view(request):
     except Usuario.DoesNotExist:
         return render(request, 'funcionarios/sem_perfil.html')
 
+    tipos_documentos_filho = TipoDocumento.objects.filter(condicao='filho_menor_idade', obrigatorio=True)
+
     if request.method == 'POST':
         form = MeuPerfilForm(request.POST, request.FILES, instance=funcionario)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Perfil atualizado com sucesso.')
+
+            for tipo in tipos_documentos_filho:
+                arquivo = request.FILES.get(f'documento_filho_{tipo.id}')
+                if arquivo:
+                    Documento.objects.create(
+                        funcionario=funcionario,
+                        tipo_documento=tipo,
+                        arquivo=arquivo,
+                        enviado_por=request.user,
+                    )
+
+            if funcionario.status == 'pendente' and funcionario.cadastro_completo():
+                funcionario.status = 'ativo'
+                funcionario.save()
+                messages.success(request, 'Perfil atualizado. Seu cadastro foi concluído com sucesso!')
+            else:
+                messages.success(request, 'Perfil atualizado com sucesso.')
+
             return redirect('meu_perfil')
     else:
         form = MeuPerfilForm(instance=funcionario)
 
+    tipos_documentos_filho_enviados = set(
+        funcionario.documentos.filter(
+            tipo_documento__in=tipos_documentos_filho
+        ).values_list('tipo_documento_id', flat=True)
+    )
+
     return render(request, 'funcionarios/meu_perfil.html', {
         'form': form,
+        'foto_form': FotoPerfilForm(instance=funcionario),
         'funcionario': funcionario,
+        'tipos_documentos_filho': tipos_documentos_filho,
+        'tipos_documentos_filho_enviados': tipos_documentos_filho_enviados,
     })
-    
+
+
+@login_required
+def atualizar_foto_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    if request.method == 'POST':
+        form = FotoPerfilForm(request.POST, request.FILES, instance=funcionario)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Foto atualizada com sucesso.')
+        else:
+            messages.error(request, 'Não foi possível atualizar a foto. Verifique o arquivo enviado.')
+
+    return redirect('meu_perfil')
+
+
+# ---------- Documentos ----------
+
 @login_required
 def enviar_documento_view(request):
     try:
@@ -107,6 +270,7 @@ def enviar_documento_view(request):
         'form': form,
     })
 
+
 @login_required
 def meus_documentos_view(request):
     try:
@@ -116,12 +280,17 @@ def meus_documentos_view(request):
 
     documentos = funcionario.documentos.all().order_by('-data_upload')
 
+    tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
+    tipos_enviados_ids = set(documentos.values_list('tipo_documento_id', flat=True))
+    tipos_pendentes = [t for t in tipos_obrigatorios if t.id not in tipos_enviados_ids]
+
     return render(request, 'funcionarios/meus_documentos.html', {
         'documentos': documentos,
+        'tipos_pendentes': tipos_pendentes,
     })
-    
-from .decorators import papel_required
 
+
+# ---------- Funcionários (RH / Gestor) ----------
 
 @login_required
 @papel_required('rh', 'gestor')
@@ -131,9 +300,15 @@ def listar_funcionarios_view(request):
     busca = request.GET.get('busca', '').strip()
 
     if usuario.papel == 'rh':
-        funcionarios = Funcionario.objects.filter(status=status_filtro)
+        base_qs = Funcionario.objects.all()
     else:
-        funcionarios = Funcionario.objects.filter(status=status_filtro, setor=usuario.funcionario.setor)
+        base_qs = Funcionario.objects.filter(setor=usuario.funcionario.setor)
+
+    contagem_ativos = base_qs.filter(status='ativo').count()
+    contagem_pendentes = base_qs.filter(status='pendente').count()
+    contagem_inativos = base_qs.filter(status='inativo').count()
+
+    funcionarios = base_qs.filter(status=status_filtro)
 
     if busca:
         funcionarios = funcionarios.filter(
@@ -155,63 +330,12 @@ def listar_funcionarios_view(request):
         'intervalo_paginas': intervalo_paginas,
         'status_filtro': status_filtro,
         'busca': busca,
-    })
-    
-@login_required
-@papel_required('rh', 'gestor')
-def cadastrar_funcionario_view(request):
-    if request.method == 'POST':
-        form = FuncionarioForm(request.POST, request.FILES)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Funcionário cadastrado com sucesso.')
-            return redirect('listar_funcionarios')
-    else:
-        form = FuncionarioForm()
-
-    return render(request, 'funcionarios/rh/cadastrar_funcionario.html', {
-        'form': form,
-    })
-    
-@login_required
-@papel_required('rh', 'gestor')
-def detalhe_funcionario_view(request, funcionario_id):
-    usuario = request.user.usuario
-    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
-
-    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
-        messages.error(request, 'Você não tem permissão para ver este funcionário.')
-        return redirect('listar_funcionarios')
-
-    documentos = funcionario.documentos.all().order_by('-data_upload')
-
-    return render(request, 'funcionarios/rh/detalhe_funcionario.html', {
-        'funcionario': funcionario,
-        'documentos': documentos,
+        'contagem_ativos': contagem_ativos,
+        'contagem_pendentes': contagem_pendentes,
+        'contagem_inativos': contagem_inativos,
     })
 
-@login_required
-@papel_required('rh', 'gestor')
-def dashboard_rh_view(request):
-    usuario = request.user.usuario
 
-    if usuario.papel == 'rh':
-        funcionarios = Funcionario.objects.filter(status='ativo')
-    else:
-        funcionarios = Funcionario.objects.filter(status='ativo', setor=usuario.funcionario.setor)
-
-    total_funcionarios = funcionarios.count()
-    funcionarios_por_setor = funcionarios.values('setor__nome').annotate(total=Count('id'))
-    documentos_recentes = Documento.objects.filter(
-        funcionario__in=funcionarios
-    ).order_by('-data_upload')[:5]
-
-    return render(request, 'funcionarios/rh/dashboard.html', {
-        'total_funcionarios': total_funcionarios,
-        'funcionarios_por_setor': funcionarios_por_setor,
-        'documentos_recentes': documentos_recentes,
-    })
-    
 @login_required
 @papel_required('rh', 'gestor')
 def cadastrar_funcionario_view(request):
@@ -225,7 +349,7 @@ def cadastrar_funcionario_view(request):
             senha_gerada = secrets.token_urlsafe(9)
 
             user = User.objects.create_user(
-                username=funcionario.matricula,
+                username=funcionario.cpf,
                 password=senha_gerada,
             )
 
@@ -247,33 +371,100 @@ def cadastrar_funcionario_view(request):
     return render(request, 'funcionarios/rh/cadastrar_funcionario.html', {
         'form': form,
     })
-    
+
+
 @login_required
-def trocar_senha_view(request):
-    try:
-        usuario = request.user.usuario
-    except Usuario.DoesNotExist:
-        return redirect('dashboard')
+@papel_required('rh', 'gestor')
+def detalhe_funcionario_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if not usuario.senha_provisoria:
-        return redirect('dashboard')
+    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
+        messages.error(request, 'Você não tem permissão para ver este funcionário.')
+        return redirect('listar_funcionarios')
 
-    if request.method == 'POST':
-        form = SetPasswordForm(request.user, request.POST)
-        if form.is_valid():
-            form.save()
-            usuario.senha_provisoria = False
-            usuario.save()
-            update_session_auth_hash(request, request.user)
-            messages.success(request, 'Senha alterada com sucesso.')
-            return redirect('dashboard')
-    else:
-        form = SetPasswordForm(request.user)
+    documentos = funcionario.documentos.all().order_by('-data_upload')
 
-    return render(request, 'funcionarios/trocar_senha.html', {
-        'form': form,
+    tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
+    tipos_enviados_ids = set(documentos.values_list('tipo_documento_id', flat=True))
+    checklist_documentos = [
+        {'tipo': tipo, 'enviado': tipo.id in tipos_enviados_ids}
+        for tipo in tipos_obrigatorios
+    ]
+    total_obrigatorios = len(tipos_obrigatorios)
+    total_enviados_obrigatorios = sum(1 for item in checklist_documentos if item['enviado'])
+
+    return render(request, 'funcionarios/rh/detalhe_funcionario.html', {
+        'funcionario': funcionario,
+        'documentos': documentos,
+        'checklist_documentos': checklist_documentos,
+        'total_obrigatorios': total_obrigatorios,
+        'total_enviados_obrigatorios': total_enviados_obrigatorios,
     })
-    
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def gerar_acesso_funcionario_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('listar_funcionarios')
+
+    if hasattr(funcionario, 'usuario'):
+        messages.error(request, 'Este funcionário já possui acesso ao sistema.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if not funcionario.cpf:
+        messages.error(request, 'Este funcionário não tem CPF cadastrado. Preencha o CPF antes de gerar o acesso.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    senha_gerada = secrets.token_urlsafe(9)
+
+    user = User.objects.create_user(
+        username=funcionario.cpf,
+        password=senha_gerada,
+    )
+
+    Usuario.objects.create(
+        user=user,
+        funcionario=funcionario,
+        papel='colaborador',
+        senha_provisoria=True,
+    )
+
+    return render(request, 'funcionarios/rh/senha_gerada.html', {
+        'funcionario': funcionario,
+        'username': user.username,
+        'senha_gerada': senha_gerada,
+    })
+
+
+@login_required
+@papel_required('rh')
+def alternar_acesso_rh_view(request, funcionario_id):
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if not hasattr(funcionario, 'usuario'):
+        messages.error(request, 'Este funcionário ainda não tem acesso ao sistema.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    usuario = funcionario.usuario
+    usuario.acesso_rh = not usuario.acesso_rh
+    usuario.save()
+
+    if usuario.acesso_rh:
+        messages.success(request, f'Acesso ao RH concedido para {funcionario.nome}.')
+    else:
+        messages.success(request, f'Acesso ao RH removido de {funcionario.nome}.')
+
+    return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+
+# ---------- Férias — Colaborador ----------
+
 @login_required
 def solicitar_ferias_view(request):
     try:
@@ -282,7 +473,8 @@ def solicitar_ferias_view(request):
         return render(request, 'funcionarios/sem_perfil.html')
 
     solicitacoes = funcionario.solicitacoes_ferias.all().order_by('-criado_em')
-    tem_ativa = solicitacoes.exclude(status__in=['aprovada', 'adiada']).exists()
+    solicitacao_ativa = solicitacoes.exclude(status__in=['aprovada', 'adiada']).first()
+    tem_ativa = solicitacao_ativa is not None
 
     if request.method == 'POST' and not tem_ativa:
         form = SolicitarFeriasForm(request.POST)
@@ -298,6 +490,7 @@ def solicitar_ferias_view(request):
     return render(request, 'funcionarios/colaborador/ferias.html', {
         'form': form,
         'solicitacoes': solicitacoes,
+        'solicitacao_ativa': solicitacao_ativa,
         'tem_ativa': tem_ativa,
     })
 
@@ -365,6 +558,9 @@ def adiar_ferias_view(request, solicitacao_id):
 
     return redirect('solicitar_ferias')
 
+
+# ---------- Férias — Gestor ----------
+
 @login_required
 @papel_required('gestor', 'rh')
 def gestor_listar_ferias_view(request):
@@ -428,7 +624,10 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
         'form': form,
         'solicitacao': solicitacao,
     })
-    
+
+
+# ---------- Férias — RH ----------
+
 @login_required
 @papel_required('rh')
 def rh_listar_ferias_view(request):
@@ -452,36 +651,88 @@ def rh_concluir_ferias_view(request, solicitacao_id):
 
     return redirect('rh_listar_ferias')
 
+
+# ---------- Vencimento de Férias e Avisos ----------
+
 @login_required
-@papel_required('rh', 'gestor')
-def gerar_acesso_funcionario_view(request, funcionario_id):
-    usuario = request.user.usuario
+@papel_required('rh')
+def rh_vencimento_ferias_view(request):
+    funcionarios = Funcionario.objects.filter(status='ativo', data_admissao__isnull=False)
+
+    proximos_vencimento = []
+    for funcionario in funcionarios:
+        dias = funcionario.dias_para_vencer_ferias()
+        if dias is not None and dias <= LIMITE_DIAS_ALERTA_FERIAS:
+            proximos_vencimento.append({
+                'funcionario': funcionario,
+                'dias': dias,
+                'dias_abs': abs(dias),
+                'dias_pendentes': funcionario.dias_pendentes_ferias(),
+                'vencida': funcionario.ferias_vencidas(),
+                'vencimento': funcionario.proxima_data_vencimento(),
+            })
+
+    proximos_vencimento.sort(key=lambda item: item['dias'])
+
+    return render(request, 'funcionarios/rh/vencimento_ferias.html', {
+        'proximos_vencimento': proximos_vencimento,
+    })
+
+
+@login_required
+@papel_required('rh')
+def criar_aviso_ferias_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
-        messages.error(request, 'Você não tem permissão para essa ação.')
-        return redirect('listar_funcionarios')
+    if request.method == 'POST':
+        form = AvisoFeriasForm(request.POST)
+        if form.is_valid():
+            AvisoFerias.objects.create(
+                funcionario=funcionario,
+                data_prevista=form.cleaned_data['data_prevista'],
+                mensagem=form.cleaned_data['mensagem'],
+                criado_por=request.user,
+            )
+            messages.success(request, 'Aviso enviado ao gestor.')
+            return redirect('rh_vencimento_ferias')
+    else:
+        form = AvisoFeriasForm()
 
-    if hasattr(funcionario, 'usuario'):
-        messages.error(request, 'Este funcionário já possui acesso ao sistema.')
-        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
-
-    senha_gerada = secrets.token_urlsafe(9)
-
-    user = User.objects.create_user(
-        username=funcionario.matricula,
-        password=senha_gerada,
-    )
-
-    Usuario.objects.create(
-        user=user,
-        funcionario=funcionario,
-        papel='colaborador',
-        senha_provisoria=True,
-    )
-
-    return render(request, 'funcionarios/rh/senha_gerada.html', {
+    return render(request, 'funcionarios/rh/criar_aviso_ferias.html', {
+        'form': form,
         'funcionario': funcionario,
-        'username': user.username,
-        'senha_gerada': senha_gerada,
     })
+
+
+@login_required
+@papel_required('gestor', 'rh')
+def gestor_avisos_ferias_view(request):
+    usuario = request.user.usuario
+
+    avisos = AvisoFerias.objects.all()
+    if usuario.papel == 'gestor':
+        avisos = avisos.filter(funcionario__setor=usuario.funcionario.setor)
+
+    avisos = avisos.order_by('visualizado', '-criado_em')
+
+    return render(request, 'funcionarios/rh/avisos_ferias.html', {
+        'avisos': avisos,
+    })
+
+
+@login_required
+@papel_required('gestor', 'rh')
+def marcar_aviso_visualizado_view(request, aviso_id):
+    usuario = request.user.usuario
+    aviso = get_object_or_404(AvisoFerias, id=aviso_id)
+
+    if usuario.papel == 'gestor' and aviso.funcionario.setor != usuario.funcionario.setor:
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('gestor_avisos_ferias')
+
+    if not aviso.visualizado:
+        aviso.visualizado = True
+        aviso.visualizado_em = timezone.now()
+        aviso.save()
+
+    return redirect('gestor_avisos_ferias')

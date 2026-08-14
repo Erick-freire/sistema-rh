@@ -1,19 +1,16 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 {{ funcionario.nome }}
 {% endblock %}
 
 {% block conteudo %}
-<h1>{{ funcionario.nome }}</h1>
-
-<div class="card">
-    <p><strong>Matrícula:</strong> {{ funcionario.matricula }}</p>
-    <p><strong>Cargo:</strong> {{ funcionario.cargo }}</p>
-    <p><strong>Setor:</strong> {{ funcionario.setor }}</p>
-    <p><strong>Status:</strong> {{ funcionario.get_status_display }}</p>
-    <p><strong>CPF:</strong> {{ funcionario.cpf }}</p>
-</div>
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_funcionarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {{ funcionario.nome }}
+    <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
+</h1>
 
 {% if messages %}
     {% for message in messages %}
@@ -21,37 +18,127 @@
     {% endfor %}
 {% endif %}
 
-{% if not funcionario.usuario %}
-<form method="post" action="{% url 'gerar_acesso_funcionario' funcionario.id %}">
-    {% csrf_token %}
-    <button type="submit" class="btn">Gerar Acesso ao Sistema</button>
-</form>
-{% else %}
-<p>Este funcionário já possui acesso ao sistema.</p>
-{% endif %}
+<div class="duas-colunas">
+    <div>
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+                <span class="avatar avatar--lg">{{ funcionario.iniciais }}</span>
+                <div>
+                    <div class="card__title">{{ funcionario.nome }}</div>
+                    <div style="color: var(--color-text-muted); font-size: 0.88rem;">{{ funcionario.cargo }}</div>
+                </div>
+            </div>
 
-<h2>Documentos</h2>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Matrícula</span>
+                <span class="linha-dado__valor">{{ funcionario.matricula }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">CPF</span>
+                <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Setor</span>
+                <span class="linha-dado__valor">{{ funcionario.setor }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Admissão</span>
+                <span class="linha-dado__valor">{{ funcionario.data_admissao|date:"d/m/Y"|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Telefone</span>
+                <span class="linha-dado__valor">{{ funcionario.telefone|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Endereço</span>
+                <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
+            </div>
+        </div>
 
-<table>
-    <thead>
-        <tr>
-            <th>Tipo</th>
-            <th>Arquivo</th>
-            <th>Data de Envio</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for documento in documentos %}
-        <tr>
-            <td>{{ documento.tipo_documento }}</td>
-            <td><a href="{{ documento.arquivo.url }}" target="_blank">{{ documento.arquivo.name }}</a></td>
-            <td>{{ documento.data_upload }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="3">Nenhum documento enviado.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Acesso ao sistema</div>
+            {% if not funcionario.usuario %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+                Esta pessoa ainda não tem usuário. Gerar acesso cria o login com a matrícula e uma senha provisória.
+            </p>
+            <form method="post" action="{% url 'gerar_acesso_funcionario' funcionario.id %}">
+                {% csrf_token %}
+                <button type="submit">{% icon 'user' %} Gerar acesso</button>
+            </form>
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem;">Este funcionário já possui acesso ao sistema.</p>
+            {% if funcionario.usuario.papel != 'rh' %}
+                {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+                <form method="post" action="{% url 'alternar_acesso_rh' funcionario.id %}" style="margin-top: 12px;">
+                    {% csrf_token %}
+                    {% if funcionario.usuario.acesso_rh %}
+                    <button type="submit" class="btn-outline btn-sm">{% icon 'check-square' %} Remover acesso ao RH</button>
+                    {% else %}
+                    <button type="submit" class="btn-outline btn-sm">{% icon 'check-square' %} Conceder acesso ao RH</button>
+                    {% endif %}
+                </form>
+                {% endif %}
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Documentos obrigatórios</span>
+                <span style="color: var(--color-text-muted); font-size: 0.85rem;">{{ total_enviados_obrigatorios }} de {{ total_obrigatorios }} enviados</span>
+            </div>
+            <div class="progress" style="margin-bottom: 16px;">
+                <div class="progress__bar progress__bar--accent" style="width: {% widthratio total_enviados_obrigatorios total_obrigatorios 100 %}%;"></div>
+            </div>
+            <div class="checklist-docs">
+                {% for item in checklist_documentos %}
+                <div class="checklist-docs__item {% if item.enviado %}checklist-docs__item--ok{% else %}checklist-docs__item--pendente{% endif %}">
+                    {% if item.enviado %}{% icon 'check-circle' %}{% else %}{% icon 'alert-triangle' %}{% endif %}
+                    {{ item.tipo.nome }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Documentos enviados</span>
+                <a href="{% url 'enviar_documento' %}" class="btn btn-sm btn-outline">{% icon 'upload' %} Anexar</a>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Arquivo</th>
+                            <th>Envio</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for documento in documentos %}
+                        <tr>
+                            <td>{{ documento.tipo_documento }}</td>
+                            <td>{{ documento.nome_arquivo }}</td>
+                            <td>{{ documento.data_upload|date:"d/m/Y" }}</td>
+                            <td>
+                                <span class="acoes-tabela">
+                                    <a href="{{ documento.arquivo.url }}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                                    <a href="{{ documento.arquivo.url }}" download title="Baixar">{% icon 'download' %}</a>
+                                </span>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4">Nenhum documento enviado.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -1,49 +1,85 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Concluir Férias
 {% endblock %}
 
 {% block conteudo %}
-<h1>Férias Aprovadas pelo Gestor — Aguardando RH</h1>
+<h1>Concluir Férias</h1>
+<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Férias aprovadas pelo gestor, aguardando conclusão do RH.</p>
 
 {% if messages %}
     {% for message in messages %}
-        <p class="message message-success">{{ message }}</p>
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
     {% endfor %}
 {% endif %}
 
-<table>
-    <thead>
-        <tr>
-            <th>Funcionário</th>
-            <th>Setor</th>
-            <th>Data</th>
-            <th>Dias</th>
-            <th>Aprovado por (gestor)</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for s in solicitacoes %}
-        <tr>
-            <td>{{ s.funcionario.nome }}</td>
-            <td>{{ s.funcionario.setor }}</td>
-            <td>{{ s.data_solicitada }}</td>
-            <td>{{ s.dias_solicitados }}</td>
-            <td>{{ s.analisado_por_gestor }}</td>
-            <td>
-                <form method="post" action="{% url 'rh_concluir_ferias' s.id %}" style="display:inline;">
-                    {% csrf_token %}
-                    <button type="submit">Concluir</button>
-                </form>
-            </td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="6">Nenhuma solicitação aguardando conclusão.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Setor</th>
+                <th>Data</th>
+                <th>Dias</th>
+                <th>Aprovado por</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in solicitacoes %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+                        {{ s.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ s.funcionario.setor }}</td>
+                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
+                <td>{{ s.dias_solicitados }}</td>
+                <td>{{ s.analisado_por_gestor }}</td>
+                <td>
+                    <form method="post" action="{% url 'rh_concluir_ferias' s.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-primario btn-sm">Concluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhuma solicitação aguardando conclusão.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for s in solicitacoes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ s.funcionario.setor }} · mat. {{ s.funcionario.matricula }}</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 20px; font-size: 0.88rem;">
+            <div><span class="linha-dado__rotulo">Início</span><br><strong>{{ s.data_solicitada|date:"d/m/Y" }}</strong></div>
+            <div><span class="linha-dado__rotulo">Dias</span><br><strong>{{ s.dias_solicitados }}</strong></div>
+        </div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted);">
+            Aprovado por <strong>{{ s.analisado_por_gestor }}</strong> em {{ s.atualizado_em|date:"d/m/Y" }}
+        </div>
+        <form method="post" action="{% url 'rh_concluir_ferias' s.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario btn-bloco">Concluir</button>
+        </form>
+    </div>
+    {% empty %}
+    <p>Nenhuma solicitação aguardando conclusão.</p>
+    {% endfor %}
+</div>
 {% endblock %}

@@ -1,0 +1,33 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Avisar Gestor
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'rh_vencimento_ferias' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Avisar gestor sobre férias
+</h1>
+
+<div class="card" style="max-width: 480px;">
+    <div class="painel-credenciais" style="margin-top: 0;">
+        <strong>{{ funcionario.nome }}</strong>
+        <div style="color: var(--color-text-muted); font-size: 0.88rem;">{{ funcionario.setor }}</div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <label for="{{ form.data_prevista.id_for_label }}">{{ form.data_prevista.label }}</label>
+        {{ form.data_prevista }}
+        {{ form.data_prevista.errors }}
+
+        <label style="margin-top: 16px;">{{ form.mensagem.label }}</label>
+        {{ form.mensagem }}
+        {{ form.mensagem.errors }}
+
+        <button type="submit" class="btn-primario btn-bloco" style="margin-top: 20px;">Enviar aviso</button>
+    </form>
+</div>
+{% endblock %}

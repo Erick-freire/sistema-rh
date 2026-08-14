@@ -1,4 +1,5 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Funcionários
@@ -7,45 +8,81 @@ Funcionários
 {% block conteudo %}
 <h1>Funcionários</h1>
 
-<a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo">+ Novo Funcionário</a>
+<a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo">{% icon 'plus' %} Novo funcionário</a>
 
-<form method="get" class="form-busca">
-    <input type="hidden" name="status" value="{{ status_filtro }}">
-    <input type="text" name="busca" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
-    <button type="submit">Buscar</button>
-</form>
-
-<div class="filtros-status">
-    <a href="?status=ativo" class="btn{% if status_filtro != 'ativo' %} btn-novo{% endif %}">Ativos</a>
-    <a href="?status=pendente" class="btn{% if status_filtro != 'pendente' %} btn-novo{% endif %}">Pendentes</a>
+<div class="acoes-linha">
+    <form method="get" class="form-busca">
+        <input type="hidden" name="status" value="{{ status_filtro }}">
+        <div class="form-busca__campo">
+            {% icon 'search' %}
+            <input type="text" name="busca" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
+        </div>
+        <button type="submit" class="btn-outline">Buscar</button>
+    </form>
 </div>
 
-<table>
-    <thead>
-        <tr>
-            <th>Nome</th>
-            <th>Matrícula</th>
-            <th>Cargo</th>
-            <th>Setor</th>
-            <th>Status</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for funcionario in pagina %}
-        <tr>
-            <td><a href="{% url 'detalhe_funcionario' funcionario.id %}">{{ funcionario.nome }}</a></td>
-            <td>{{ funcionario.matricula }}</td>
-            <td>{{ funcionario.cargo }}</td>
-            <td>{{ funcionario.setor }}</td>
-            <td>{{ funcionario.get_status_display }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="5">Nenhum funcionário encontrado.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="filtros-status">
+    <a href="?status=ativo" class="chip{% if status_filtro == 'ativo' %} chip--ativo{% endif %}">Ativos {{ contagem_ativos }}</a>
+    <a href="?status=pendente" class="chip{% if status_filtro == 'pendente' %} chip--ativo{% endif %}">Pendentes {{ contagem_pendentes }}</a>
+    <a href="?status=inativo" class="chip{% if status_filtro == 'inativo' %} chip--ativo{% endif %}">Inativos {{ contagem_inativos }}</a>
+</div>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Matrícula</th>
+                <th>Cargo</th>
+                <th>Setor</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for funcionario in pagina %}
+            <tr class="tabela-linha--link" data-href="{% url 'detalhe_funcionario' funcionario.id %}">
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ funcionario.iniciais }}</span>
+                        {{ funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ funcionario.matricula }}</td>
+                <td>{{ funcionario.cargo }}</td>
+                <td>{{ funcionario.setor }}</td>
+                <td>
+                    <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
+                </td>
+                <td>{% icon 'chevron-right' %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhum funcionário encontrado.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for funcionario in pagina %}
+    <a href="{% url 'detalhe_funcionario' funcionario.id %}" class="item-card">
+        <span class="avatar">{{ funcionario.iniciais }}</span>
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">{{ funcionario.nome }}</div>
+            <div class="item-card__subtitulo">{{ funcionario.cargo }} · {{ funcionario.setor }}</div>
+            <div class="item-card__subtitulo">mat. {{ funcionario.matricula }}</div>
+        </div>
+        <div class="item-card__extra">
+            <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
+            {% icon 'chevron-right' %}
+        </div>
+    </a>
+    {% empty %}
+    <p>Nenhum funcionário encontrado.</p>
+    {% endfor %}
+</div>
 
 <div class="paginacao">
     {% if pagina.number != 1 %}
@@ -60,7 +97,7 @@ Funcionários
         {% if numero == pagina.paginator.ELLIPSIS %}
             <span class="pagina-reticencias">…</span>
         {% elif numero == pagina.number %}
-            <span class="pagina-link pagina-atual">{{ numero }}</span>
+            <span class="pagina-atual">{{ numero }}</span>
         {% else %}
             <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ numero }}" class="pagina-link">{{ numero }}</a>
         {% endif %}

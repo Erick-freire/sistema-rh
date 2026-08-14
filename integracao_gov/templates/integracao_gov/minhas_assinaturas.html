@@ -1,0 +1,57 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Assinar com Gov.br
+{% endblock %}
+
+{% block conteudo %}
+<h1>Assinar Documentos com Gov.br</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <p class="message {% if message.tags %}message-{{ message.tags }}{% endif %}">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+
+<div class="card">
+    <h2>Enviar arquivo para assinar</h2>
+    <p>Envie o arquivo que você recebeu (ex.: contrato enviado por WhatsApp) para assiná-lo com sua conta gov.br. Depois de assinado, baixe o arquivo aqui e envie-o na tela "Enviar Documento", escolhendo o tipo correspondente.</p>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Assinar com Gov.br</button>
+    </form>
+</div>
+
+<h2>Minhas solicitações</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Arquivo</th>
+            <th>Status</th>
+            <th>Solicitado em</th>
+            <th>Arquivo assinado</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for solicitacao in solicitacoes %}
+        <tr>
+            <td>{{ solicitacao.arquivo_original.name }}</td>
+            <td>{{ solicitacao.get_status_display }}</td>
+            <td>{{ solicitacao.solicitado_em }}</td>
+            <td>
+                {% if solicitacao.arquivo_assinado %}
+                <a href="{{ solicitacao.arquivo_assinado.url }}" target="_blank">Baixar</a>
+                {% else %}
+                -
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="4">Nenhuma solicitação de assinatura ainda.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
