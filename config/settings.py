@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'funcionarios',
     'integracao_gov',
+    'ponto',
 ]
 
 MIDDLEWARE = [
@@ -138,3 +139,14 @@ GOVBR_TOKEN_URL = config('GOVBR_TOKEN_URL', default='https://sso.staging.acesso.
 GOVBR_ASSINATURA_BASE_URL = config('GOVBR_ASSINATURA_BASE_URL', default='https://assinatura-api.staging.iti.gov.br')
 GOVBR_WEBHOOK_SECRET = config('GOVBR_WEBHOOK_SECRET', default='')
 GOVBR_TOKEN_ENCRYPTION_KEY = config('GOVBR_TOKEN_ENCRYPTION_KEY', default='')
+
+
+# Secullum Ponto 4 (SQL Server) -- usado só como referência de leitura para
+# importar cadastros já existentes (horários etc). O sistema nunca escreve
+# nesse banco.
+
+SECULLUM_SERVER = config('SECULLUM_SERVER', default='')
+SECULLUM_INSTANCE = config('SECULLUM_INSTANCE', default='')
+SECULLUM_DATABASE = config('SECULLUM_DATABASE', default='')
+SECULLUM_USER = config('SECULLUM_USER', default='')
+SECULLUM_PASSWORD = config('SECULLUM_PASSWORD', default='')

@@ -1,0 +1,42 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Marcações{% endblock %}
+
+{% block conteudo %}
+<h1>Marcações</h1>
+{% include 'ponto/_subnav.html' %}
+
+<div class="acoes-linha">
+    <form method="get" class="form-busca">
+        <input type="number" name="funcionario" placeholder="ID do funcionário" value="{{ funcionario_id }}">
+        <input type="date" name="data" value="{{ data }}">
+        <button type="submit" class="btn-outline">Filtrar</button>
+    </form>
+</div>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Equipamento</th>
+                <th>Momento</th>
+                <th>Tipo</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for marcacao in marcacoes %}
+            <tr>
+                <td>{{ marcacao.funcionario.nome|default:'Desconhecido' }}</td>
+                <td>{{ marcacao.equipamento.nome }}</td>
+                <td>{{ marcacao.momento }}</td>
+                <td>{{ marcacao.get_tipo_evento_display }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">Nenhuma marcação encontrada.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

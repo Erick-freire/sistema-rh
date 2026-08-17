@@ -1,0 +1,84 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Equipamentos de Ponto{% endblock %}
+
+{% block conteudo %}
+<h1>Equipamentos de Ponto</h1>
+{% include 'ponto/_subnav.html' %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
+            {% icon 'check-circle' %} {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px;">
+    <a href="{% url 'ponto:cadastrar_equipamento' %}" class="btn btn-novo">{% icon 'plus' %} Novo equipamento</a>
+    <form method="post" action="{% url 'ponto:sincronizar_todos' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-primario btn-novo">{% icon 'check-square' %} Sincronizar todos</button>
+    </form>
+</div>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>IP</th>
+                <th>Modelo</th>
+                <th>Local</th>
+                <th>Status</th>
+                <th>Última comunicação</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for equipamento in equipamentos %}
+            <tr>
+                <td>{{ equipamento.nome }}</td>
+                <td>{% if equipamento.usa_https %}https{% else %}http{% endif %}://{{ equipamento.ip }}:{{ equipamento.porta }}</td>
+                <td>{{ equipamento.modelo }}</td>
+                <td>{{ equipamento.local }}</td>
+                <td>
+                    {% if equipamento.status_conexao == 'online' %}
+                        <span class="badge-status badge-status--ativo">🟢 Online</span>
+                    {% elif equipamento.status_conexao == 'offline' %}
+                        <span class="badge-status badge-status--erro">🔴 Offline</span>
+                    {% else %}
+                        <span class="badge-status badge-status--inativo">Desconhecido</span>
+                    {% endif %}
+                    {% if not equipamento.ativo %}<span class="badge-status badge-status--inativo">Inativo</span>{% endif %}
+                </td>
+                <td>{{ equipamento.ultima_comunicacao|default:'—' }}</td>
+                <td>
+                    <form method="post" action="{% url 'ponto:sincronizar_equipamento' equipamento.id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">{% icon 'check-square' %} Sincronizar</button>
+                    </form>
+                    <form method="post" action="{% url 'ponto:testar_conexao_equipamento' equipamento.id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Testar conexão</button>
+                    </form>
+                    <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm">Editar</a>
+                    <form method="post" action="{% url 'ponto:alternar_status_equipamento' equipamento.id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">{% if equipamento.ativo %}Desativar{% else %}Ativar{% endif %}</button>
+                    </form>
+                    <form method="post" action="{% url 'ponto:excluir_equipamento' equipamento.id %}" style="display:inline"
+                          onsubmit="return confirm('Excluir \'{{ equipamento.nome }}\'? Só funciona se ele nunca tiver coletado marcações.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">Nenhum equipamento cadastrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

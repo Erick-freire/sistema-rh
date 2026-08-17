@@ -1,0 +1,77 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{% if horario %}Editar horário{% else %}Novo horário{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'ponto:listar_horarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {% if horario %}Editar horário {{ horario.numero }}{% else %}Novo horário{% endif %}
+</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.numero.id_for_label }}">Número</label>
+                {{ form.numero }}
+                {{ form.numero.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form.nome.id_for_label }}">Nome</label>
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.considerar_feriados.id_for_label }}">{{ form.considerar_feriados }} Considerar feriados</label>
+            </div>
+            <div>
+                <label for="{{ form.separar_normais_noturnas.id_for_label }}">{{ form.separar_normais_noturnas }} Separar horas normais noturnas</label>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 24px; margin-bottom: 12px;">Jornada por dia da semana</h3>
+        {{ formset.management_form }}
+        {{ formset.non_form_errors }}
+
+        <div class="table-responsive desktop-only">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Dia</th>
+                        <th>Entrada 1</th><th>Saída 1</th>
+                        <th>Entrada 2</th><th>Saída 2</th>
+                        <th>Entrada 3</th><th>Saída 3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nome_dia, dia_form in dias_com_forms %}
+                    <tr>
+                        <td>
+                            {{ dia_form.id }}
+                            {{ dia_form.dia_semana }}
+                            {{ nome_dia }}
+                        </td>
+                        <td>{{ dia_form.entrada1 }}{{ dia_form.entrada1.errors }}</td>
+                        <td>{{ dia_form.saida1 }}{{ dia_form.saida1.errors }}</td>
+                        <td>{{ dia_form.entrada2 }}{{ dia_form.entrada2.errors }}</td>
+                        <td>{{ dia_form.saida2 }}{{ dia_form.saida2.errors }}</td>
+                        <td>{{ dia_form.entrada3 }}{{ dia_form.entrada3.errors }}</td>
+                        <td>{{ dia_form.saida3 }}{{ dia_form.saida3.errors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">Deixe em branco os campos de um dia sem expediente.</p>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <a href="{% url 'ponto:listar_horarios' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% load rh_icons %}
+<div class="filtros-status" style="margin-bottom: 20px;">
+    <a href="{% url 'ponto:listar_equipamentos' %}" class="chip{% if request.resolver_match.url_name == 'listar_equipamentos' or request.resolver_match.url_name == 'cadastrar_equipamento' or request.resolver_match.url_name == 'editar_equipamento' %} chip--ativo{% endif %}">Equipamentos</a>
+    <a href="{% url 'ponto:listar_marcacoes' %}" class="chip{% if request.resolver_match.url_name == 'listar_marcacoes' %} chip--ativo{% endif %}">Marcações</a>
+    <a href="{% url 'ponto:listar_horarios' %}" class="chip{% if request.resolver_match.url_name == 'listar_horarios' or request.resolver_match.url_name == 'cadastrar_horario' or request.resolver_match.url_name == 'editar_horario' %} chip--ativo{% endif %}">Horários</a>
+    <a href="{% url 'ponto:listar_escalas' %}" class="chip{% if request.resolver_match.url_name == 'listar_escalas' or request.resolver_match.url_name == 'cadastrar_escala' or request.resolver_match.url_name == 'editar_escala' %} chip--ativo{% endif %}">Escalas</a>
+</div>

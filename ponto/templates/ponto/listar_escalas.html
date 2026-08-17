@@ -1,0 +1,57 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Escalas{% endblock %}
+
+{% block conteudo %}
+<h1>Escalas</h1>
+{% include 'ponto/_subnav.html' %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
+            {% icon 'check-circle' %} {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<a href="{% url 'ponto:cadastrar_escala' %}" class="btn btn-novo">{% icon 'plus' %} Nova escala</a>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Número</th>
+                <th>Descrição</th>
+                <th>Ciclo</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for escala in escalas %}
+            <tr>
+                <td>{{ escala.numero|default:'—' }}</td>
+                <td>{{ escala.descricao }}</td>
+                <td>
+                    {% for item in escala.itens.all %}
+                        <span class="badge-status {% if item.folga %}badge-status--inativo{% else %}badge-status--ativo{% endif %}" title="{% if item.folga %}Folga{% else %}{{ item.horario }}{% endif %}">
+                            {% if item.folga %}Folga{% else %}{{ item.horario.numero }}{% endif %}
+                        </span>
+                    {% endfor %}
+                </td>
+                <td>
+                    <a href="{% url 'ponto:editar_escala' escala.id %}" class="btn-outline btn-sm">Editar</a>
+                    <form method="post" action="{% url 'ponto:excluir_escala' escala.id %}" style="display:inline"
+                          onsubmit="return confirm('Excluir escala \'{{ escala.descricao }}\'?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">Nenhuma escala cadastrada.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -29,6 +29,7 @@ ICONS = {
     'alert-triangle': '<path d="M12 4.2 21 19.5H3Z"/><path d="M12 10v4.2"/><path d="M12 17.3h.01"/>',
     'arrow-left': '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
     'dots': '<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>',
+    'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
 }
 
 

@@ -44,6 +44,11 @@
                 <li class="{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'detalhe_funcionario' or request.resolver_match.url_name == 'cadastrar_funcionario' %}active{% endif %}">
                     <a href="{% url 'listar_funcionarios' %}">{% icon 'users' %} Funcionários</a>
                 </li>
+                {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+                <li class="{% if request.resolver_match.app_name == 'ponto' %}active{% endif %}">
+                    <a href="{% url 'ponto:listar_equipamentos' %}">{% icon 'clock' %} Ponto</a>
+                </li>
+                {% endif %}
                 {% if usuario_atual.papel == 'gestor' %}
                 <li class="{% if request.resolver_match.url_name == 'gestor_listar_ferias' %}active{% endif %}">
                     <a href="{% url 'gestor_listar_ferias' %}">

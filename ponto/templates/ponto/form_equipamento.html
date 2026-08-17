@@ -1,0 +1,75 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{% if equipamento %}Editar equipamento{% else %}Novo equipamento{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'ponto:listar_equipamentos' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {% if equipamento %}Editar equipamento{% else %}Novo equipamento{% endif %}
+</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.nome.id_for_label }}">Nome</label>
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.ip.id_for_label }}">IP</label>
+                {{ form.ip }}
+                {{ form.ip.errors }}
+            </div>
+            <div>
+                <label for="{{ form.porta.id_for_label }}">Porta</label>
+                {{ form.porta }}
+                {{ form.porta.errors }}
+            </div>
+            <div>
+                <label for="{{ form.usa_https.id_for_label }}">{{ form.usa_https }} Usa HTTPS</label>
+                {{ form.usa_https.errors }}
+            </div>
+            <div>
+                <label for="{{ form.modelo.id_for_label }}">Modelo</label>
+                {{ form.modelo }}
+                {{ form.modelo.errors }}
+            </div>
+            <div>
+                <label for="{{ form.local.id_for_label }}">Local</label>
+                {{ form.local }}
+                {{ form.local.errors }}
+            </div>
+            <div>
+                <label for="{{ form.numero_serie.id_for_label }}">Número de série</label>
+                {{ form.numero_serie }}
+                {{ form.numero_serie.errors }}
+            </div>
+            <div>
+                <label for="{{ form.usuario_admin.id_for_label }}">Usuário admin</label>
+                {{ form.usuario_admin }}
+                {{ form.usuario_admin.errors }}
+            </div>
+            <div>
+                <label for="{{ form.senha_admin.id_for_label }}">Senha admin</label>
+                {{ form.senha_admin }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">{{ form.senha_admin.help_text }}</p>
+                {{ form.senha_admin.errors }}
+            </div>
+            <div>
+                <label for="{{ form.ativo.id_for_label }}">{{ form.ativo }} Ativo</label>
+                {{ form.ativo.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <a href="{% url 'ponto:listar_equipamentos' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
