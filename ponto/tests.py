@@ -171,6 +171,56 @@ class CadastroNoEquipamentoTests(TestCase):
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.id_usuario_dispositivo, funcionario.cpf)
 
+    @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 2})
+    @patch('ponto.services.client.update_user')
+    @patch('ponto.services.client.add_user')
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_atualiza_pelo_identificador_ja_conhecido_no_equipamento_nao_pelo_cpf(
+        self, mock_login, mock_add, mock_update, mock_buscar,
+    ):
+        """
+        Gente cadastrada no equipamento pelo Secullum antes deste sistema
+        existir pode estar lá pelo PIS, não pelo CPF (comum no relógio ADM).
+        Uma vez que sabemos disso (id_usuario_dispositivo preenchido por uma
+        reconciliação), a atualização tem que usar esse identificador -- usar
+        o CPF aqui devolveria "não encontrado" e duplicaria o cadastro sem a
+        biometria já capturada.
+        """
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario()
+        pis = '12345678901'
+        sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
+        sincronizacao.id_usuario_dispositivo = pis
+        sincronizacao.status = 'sincronizado'
+        sincronizacao.save()
+
+        sincronizar_funcionario_no_equipamento(sincronizacao)
+
+        mock_update.assert_called_once_with(equipamento, 'sessao-fake', pis, funcionario.nome)
+        mock_add.assert_not_called()
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.id_usuario_dispositivo, pis)  # continua o mesmo, não vira o CPF
+
+    @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 0})
+    @patch('ponto.services.client.update_user', side_effect=ControlIdUsuarioNaoEncontradoError('Usuário não encontrado'))
+    @patch('ponto.services.client.add_user')
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_identificador_desatualizado_cai_para_cadastro_novo_pelo_cpf(
+        self, mock_login, mock_add, mock_update, mock_buscar,
+    ):
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario()
+        sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
+        sincronizacao.id_usuario_dispositivo = '00000000000'  # identificador errado/obsoleto
+        sincronizacao.save()
+
+        sincronizar_funcionario_no_equipamento(sincronizacao)
+
+        mock_update.assert_called_once_with(equipamento, 'sessao-fake', '00000000000', funcionario.nome)
+        mock_add.assert_called_once_with(equipamento, 'sessao-fake', funcionario.cpf, funcionario.nome)
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.id_usuario_dispositivo, funcionario.cpf)
+
     @patch('ponto.services.client.remove_user')
     @patch('ponto.services.client.login', return_value='sessao-fake')
     def test_funcionario_inativado_desativa_no_equipamento_sem_apagar_historico(self, mock_login, mock_remove):
@@ -614,6 +664,22 @@ class ImportarJornadasSecullumHelpersTests(TestCase):
 
         self.assertEqual(_normaliza_nome('José  da Conceição'), 'JOSE DA CONCEICAO')
         self.assertEqual(_normaliza_nome(' Maria Antônia '), 'MARIA ANTONIA')
+
+
+class ReconciliarFuncionariosEquipamentoHelpersTests(TestCase):
+    """Normalização usada pra casar o cadastro já existente no equipamento com o funcionário do RH."""
+
+    def test_so_digitos_remove_prefixo_estranho_do_secullum(self):
+        from ponto.management.commands.reconciliar_funcionarios_equipamento import _so_digitos
+
+        # Visto de verdade no Secullum: cpf/n_pis com um "d" grudado na frente.
+        self.assertEqual(_so_digitos('d15524110520'), '15524110520')
+        self.assertEqual(_so_digitos(15524110520), '15524110520')
+
+    def test_normaliza_nome(self):
+        from ponto.management.commands.reconciliar_funcionarios_equipamento import _normaliza_nome
+
+        self.assertEqual(_normaliza_nome('João  Vitor'), 'JOAO VITOR')
 
 
 class EnfileirarFuncionariosExistentesTests(TestCase):

@@ -73,18 +73,28 @@ def testar_conexao(equipamento):
 
 
 def _cadastrar_ou_atualizar(equipamento, session, sincronizacao):
+    """
+    Usa o identificador já registrado no equipamento (`id_usuario_dispositivo`)
+    quando ele existe -- alguns cadastros vieram do Secullum usando o PIS em
+    vez do CPF como chave (ex.: equipamento ADM); se atualizássemos sempre
+    pelo CPF do funcionário, um PIS-cadastrado receberia "usuário não
+    encontrado", cairia no add_user, e duplicaria o cadastro dele sem a
+    biometria já capturada. Só usa o CPF quando ainda não sabemos o
+    identificador de verdade (primeiro cadastro).
+    """
     funcionario = sincronizacao.funcionario
-    cpf = funcionario.cpf
+    identificador = sincronizacao.id_usuario_dispositivo or funcionario.cpf
 
     try:
-        client.update_user(equipamento, session, cpf, funcionario.nome)
+        client.update_user(equipamento, session, identificador, funcionario.nome)
     except ControlIdUsuarioNaoEncontradoError:
-        client.add_user(equipamento, session, cpf, funcionario.nome)
+        identificador = funcionario.cpf
+        client.add_user(equipamento, session, identificador, funcionario.nome)
 
-    usuario_no_equipamento = client.buscar_usuario_por_cpf(equipamento, session, cpf)
+    usuario_no_equipamento = client.buscar_usuario_por_cpf(equipamento, session, identificador)
     tem_biometria = bool(usuario_no_equipamento and usuario_no_equipamento.get('templates_count'))
 
-    sincronizacao.id_usuario_dispositivo = cpf
+    sincronizacao.id_usuario_dispositivo = identificador
     sincronizacao.status = 'sincronizado' if tem_biometria else 'aguardando_biometria'
     sincronizacao.hash_dados_sincronizados = _hash_dados_funcionario(funcionario)
 
@@ -95,12 +105,16 @@ def _desativar(equipamento, session, sincronizacao):
     marcações por biometria/cartão) sem tocar no histórico já coletado --
     MarcacaoRelogio tem FK protegida, não é afetada por isto.
 
+    Usa `id_usuario_dispositivo` (pode ser PIS, não só CPF -- ver
+    `_cadastrar_ou_atualizar`) quando já conhecido, senão tenta pelo CPF.
+
     NOTA: equipamentos REP homologados pela Portaria 671 costumam ser
     obrigados a aceitar marcação manual mesmo sem cadastro -- confirmar esse
     detalhe legal antes de depender só disto para "bloquear" o funcionário.
     """
+    identificador = sincronizacao.id_usuario_dispositivo or sincronizacao.funcionario.cpf
     try:
-        client.remove_user(equipamento, session, sincronizacao.funcionario.cpf)
+        client.remove_user(equipamento, session, identificador)
     except ControlIdUsuarioNaoEncontradoError:
         pass  # já não existia no equipamento -- objetivo alcançado de qualquer forma
 
