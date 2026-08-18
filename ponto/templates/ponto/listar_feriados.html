@@ -1,0 +1,48 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Feriados{% endblock %}
+
+{% block conteudo %}
+<h1>Feriados</h1>
+{% include 'ponto/_subnav.html' %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
+            {% icon 'check-circle' %} {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<a href="{% url 'ponto:cadastrar_feriado' %}" class="btn btn-novo">{% icon 'plus' %} Novo feriado</a>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for feriado in feriados %}
+            <tr>
+                <td>{{ feriado.data|date:'d/m/Y' }}</td>
+                <td>{{ feriado.descricao|default:'—' }}</td>
+                <td>
+                    <form method="post" action="{% url 'ponto:excluir_feriado' feriado.id %}" style="display:inline"
+                          onsubmit="return confirm('Excluir feriado de {{ feriado.data|date:'d/m/Y' }}?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3">Nenhum feriado cadastrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

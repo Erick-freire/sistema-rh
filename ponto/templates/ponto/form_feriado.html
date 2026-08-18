@@ -1,0 +1,34 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Novo feriado{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'ponto:listar_feriados' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Novo feriado
+</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.data.id_for_label }}">Data</label>
+                {{ form.data }}
+                {{ form.data.errors }}
+            </div>
+            <div>
+                <label for="{{ form.descricao.id_for_label }}">Descrição</label>
+                {{ form.descricao }}
+                {{ form.descricao.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <a href="{% url 'ponto:listar_feriados' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -12,8 +12,11 @@ Todo o protocolo abaixo foi validado ao vivo contra o relógio "PONTO
 SALGADINHO" (192.168.0.208): login, listar usuários, criar/atualizar/remover
 um usuário de teste, e ler marcações via get_afd.
 """
+from datetime import datetime
+
 import requests
 import urllib3
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 # Os equipamentos da Sotrigo servem a API em HTTPS com certificado autoassinado
@@ -26,7 +29,14 @@ TIMEOUT_LEITURA = 30  # get_afd pode devolver bastante texto de uma vez
 
 MODE_671 = '671'  # ativa o dialeto CPF (em vez de PIS) exigido pela Portaria 671
 
-TAMANHO_REGISTRO_AFD = 50  # NSR(10) + DATA_ISO(24) + PREFIXO(1) + CPF/PIS(11) + CRC(4)
+# Leiaute oficial do AFD (Portaria 1510/671 do MTE): cada linha é um registro de
+# um tipo (posição 10, 1 caractere) -- só o tipo "3" (marcação de ponto REP-C/
+# REP-A) nos interessa aqui; os demais (1=cabeçalho, 2/5=cadastro de empregado,
+# 4=ajuste de relógio, 6=evento, 9=rodapé) são ignorados.
+# Dois firmwares em uso na Sotrigo codificam a data/hora da marcação (campo 3)
+# de formas diferentes -- detectamos qual pelo tamanho total da linha:
+TAMANHO_REGISTRO_PONTO_ISO = 50       # NSR(9)+TIPO(1)+DH ISO "AAAA-MM-ddThh:mm:00ZZZZZ"(24)+CPF/PIS(12)+CRC(4)
+TAMANHO_REGISTRO_PONTO_COMPACTO = 38  # NSR(9)+TIPO(1)+DH compacta "DDMMAAAAHHMM"(12)+CPF/PIS(12)+CRC(4)
 
 
 class ControlIdAPIError(Exception):
@@ -149,30 +159,57 @@ def get_afd(equipamento, session, nsr_inicial):
     }, session=session, mode=MODE_671, esperar_texto=True)
 
 
+def _parse_data_hora_compacta(valor):
+    """Formato DDMMAAAAHHMM (12 posições), visto no equipamento PONTO ADM."""
+    try:
+        dia, mes, ano = int(valor[0:2]), int(valor[2:4]), int(valor[4:8])
+        hora, minuto = int(valor[8:10]), int(valor[10:12])
+        return timezone.make_aware(datetime(ano, mes, dia, hora, minuto))
+    except (ValueError, IndexError):
+        return None
+
+
 def parse_afd(texto):
     """
-    Cada linha de marcação tem exatamente 50 caracteres:
-    NSR(10) + DATA_ISO(24) + PREFIXO(1, '0'=PIS/'9'=CPF) + IDENTIFICADOR(11) + CRC(4).
-    O arquivo termina com uma linha de rodapé (não numérica) que é ignorada.
-    Formato confirmado ao vivo contra o relógio PONTO SALGADINHO.
+    O AFD tem várias linhas de tipos diferentes (leiaute oficial da Portaria
+    1510/671 do MTE) -- só extraímos o tipo "3" (marcação de ponto REP-C/
+    REP-A), identificado pelo dígito na posição 10. Tipos 1/2/4/5/6/9
+    (cabeçalho, cadastro de empregado, ajuste de relógio, evento, rodapé) são
+    ignorados aqui.
+
+    Dois firmwares em uso na Sotrigo codificam a data/hora de forma diferente
+    (confirmado ao vivo): PONTO SALGADINHO usa ISO completo (linha de 50
+    caracteres), PONTO ADM usa uma versão compacta (linha de 38 caracteres).
+    Detectamos qual pelo tamanho total da linha.
     """
     registros = []
 
     for linha in texto.splitlines():
-        if len(linha) != TAMANHO_REGISTRO_AFD or not linha[:10].isdigit():
+        if len(linha) < 10 or not linha[:9].isdigit() or linha[9] != '3':
             continue
 
-        nsr = int(linha[0:10])
-        momento = parse_datetime(linha[10:34])
+        nsr = int(linha[0:9])
+
+        if len(linha) == TAMANHO_REGISTRO_PONTO_ISO:
+            momento = parse_datetime(linha[10:34])
+            identificador_completo = linha[34:46]
+            crc = linha[46:50]
+        elif len(linha) == TAMANHO_REGISTRO_PONTO_COMPACTO:
+            momento = _parse_data_hora_compacta(linha[10:22])
+            identificador_completo = linha[22:34]
+            crc = linha[34:38]
+        else:
+            continue  # tamanho de linha não reconhecido para tipo "3" -- ignora com segurança
+
         if momento is None:
             continue
 
         registros.append({
             'nsr': nsr,
             'momento': momento,
-            'prefixo': linha[34:35],
-            'identificador': linha[35:46],
-            'crc': linha[46:50],
+            'prefixo': identificador_completo[0:1],
+            'identificador': identificador_completo[1:12],
+            'crc': crc,
             'linha_bruta': linha,
         })
 

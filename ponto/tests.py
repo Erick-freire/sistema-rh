@@ -1,5 +1,5 @@
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -7,11 +7,14 @@ from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from funcionarios.models import Funcionario, Setor, Usuario
+from .calculos import calcular_periodo
 from .controlid_client import ControlIdAPIError, ControlIdTimeoutError, ControlIdUsuarioNaoEncontradoError
 from .models import (
-    Equipamento, Escala, EscalaItem, Horario, HorarioDia, MarcacaoRelogio, SincronizacaoFuncionario,
+    Equipamento, Escala, EscalaItem, Feriado, FuncionarioJornada, Horario, HorarioDia,
+    MarcacaoRelogio, SincronizacaoFuncionario,
 )
 from .services import (
     _hash_dados_funcionario,
@@ -198,8 +201,9 @@ class ColetaMarcacoesTests(TestCase):
     """Itens 7, 8 e 9: coleta em background, imutabilidade e idempotência."""
 
     def _linha_afd(self, nsr, cpf, momento_iso):
-        # Formato real confirmado ao vivo: NSR(10) + DATA_ISO(24) + PREFIXO(1) + CPF(11) + CRC(4).
-        return f'{nsr:010d}{momento_iso}9{cpf}abcd'
+        # Formato oficial (leiaute Portaria 1510/671), tipo "3" = marcação de
+        # ponto: NSR(9) + TIPO(1)='3' + DATA_ISO(24) + PREFIXO(1) + CPF(11) + CRC(4).
+        return f'{nsr:09d}3{momento_iso}9{cpf}abcd'
 
     def _texto_afd(self, registros):
         linhas = [self._linha_afd(nsr, cpf, momento) for nsr, cpf, momento in registros]
@@ -333,6 +337,69 @@ class EquipamentoViewsTests(TestCase):
         self.assertEqual(resposta.status_code, 200)
         self.assertTrue(Equipamento.objects.filter(id=equipamento.id).exists())
         self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=equipamento).count(), 1)
+
+
+class CadastroFuncionarioComJornadaTests(TestCase):
+    """Campo de horário/escala na tela de pré-cadastro (funcionarios/novo/)."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='RH')
+        funcionario_rh = Funcionario.objects.create(
+            nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='22222222222',
+        )
+        user = User.objects.create_user(username='rhteste', password='senha123')
+        Usuario.objects.create(user=user, funcionario=funcionario_rh, papel='rh')
+        self.client.login(username='rhteste', password='senha123')
+
+    def _dados_basicos(self, cpf):
+        return dict(
+            nome='Novo Funcionario', cpf=cpf, cargo='Analista', setor=self.setor.id,
+            data_admissao='2026-08-17',
+        )
+
+    def test_cadastro_com_horario_cria_jornada_a_partir_da_admissao(self):
+        horario = _criar_horario_util(5001)
+        dados = self._dados_basicos('33333333333')
+        dados['horario'] = horario.id
+
+        self.client.post(reverse('cadastrar_funcionario'), dados)
+
+        funcionario = Funcionario.objects.get(cpf='33333333333')
+        jornada = FuncionarioJornada.objects.get(funcionario=funcionario)
+        self.assertEqual(jornada.horario, horario)
+        self.assertIsNone(jornada.escala)
+        self.assertEqual(jornada.data_inicio, date(2026, 8, 17))
+
+    def test_cadastro_com_escala_cria_jornada(self):
+        escala = _criar_escala_12x36(5002, date(2026, 8, 1))
+        dados = self._dados_basicos('44444444445')
+        dados['escala'] = escala.id
+
+        self.client.post(reverse('cadastrar_funcionario'), dados)
+
+        funcionario = Funcionario.objects.get(cpf='44444444445')
+        jornada = FuncionarioJornada.objects.get(funcionario=funcionario)
+        self.assertEqual(jornada.escala, escala)
+        self.assertIsNone(jornada.horario)
+
+    def test_cadastro_sem_horario_nem_escala_nao_cria_jornada(self):
+        dados = self._dados_basicos('44444444444')
+
+        self.client.post(reverse('cadastrar_funcionario'), dados)
+
+        funcionario = Funcionario.objects.get(cpf='44444444444')
+        self.assertFalse(FuncionarioJornada.objects.filter(funcionario=funcionario).exists())
+
+    def test_cadastro_com_horario_e_escala_juntos_e_rejeitado_e_nao_cria_funcionario(self):
+        horario = _criar_horario_util(5003)
+        escala = _criar_escala_12x36(5004, date(2026, 8, 1))
+        dados = self._dados_basicos('55555555556')
+        dados['horario'] = horario.id
+        dados['escala'] = escala.id
+
+        self.client.post(reverse('cadastrar_funcionario'), dados)
+
+        self.assertFalse(Funcionario.objects.filter(cpf='55555555556').exists())
 
 
 class SincronizarBotaoUnicoTests(TestCase):
@@ -569,3 +636,150 @@ class EnfileirarFuncionariosExistentesTests(TestCase):
 
         sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
         self.assertEqual(sincronizacao.status, 'pendente')
+
+
+def _criar_horario_util(numero, entrada1='08:00', saida1='12:00', entrada2='13:00', saida2='17:00'):
+    """Jornada fixa segunda a sexta (08-12/13-17 = 8h/dia), sábado/domingo de folga."""
+    horario = Horario.objects.create(numero=numero, nome=f'Jornada {numero}')
+    for dia in range(1, 6):
+        HorarioDia.objects.create(horario=horario, dia_semana=dia, entrada1=entrada1, saida1=saida1, entrada2=entrada2, saida2=saida2)
+    for dia in (6, 7):
+        HorarioDia.objects.create(horario=horario, dia_semana=dia)
+    return horario
+
+
+def _criar_escala_12x36(numero, data_base, entrada1='06:00', saida1='18:00'):
+    """
+    Ciclo de 2 dias: posição 1 trabalha (turno de 12h diurno, mesmo padrão do
+    horário 1001 real importado do Secullum), posição 2 folga. Turno virando
+    a noite (entrada num dia, saída no outro) não é coberto ainda -- o motor
+    de cálculo processa por dia calendário; ver `calculos.py`.
+    """
+    horario = Horario.objects.create(numero=numero, nome=f'12x36 {numero}')
+    for dia in range(1, 8):
+        HorarioDia.objects.create(horario=horario, dia_semana=dia, entrada1=entrada1, saida1=saida1)
+    escala = Escala.objects.create(numero=numero, descricao=f'Escala {numero}', tamanho_ciclo=2, data_base=data_base)
+    EscalaItem.objects.create(escala=escala, posicao=1, horario=horario)
+    EscalaItem.objects.create(escala=escala, posicao=2, horario=None)
+    return escala
+
+
+def _bater_ponto(funcionario, equipamento, dia, *horarios):
+    """Cria MarcacaoRelogio em sequência num dia, a partir de horas 'HH:MM'."""
+    marcacoes = []
+    for i, hhmm in enumerate(horarios):
+        hora, minuto = map(int, hhmm.split(':'))
+        momento = timezone.make_aware(datetime(dia.year, dia.month, dia.day, hora, minuto))
+        marcacoes.append(MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=funcionario,
+            id_evento_dispositivo=f'{dia.isoformat()}-{i}', momento=momento,
+        ))
+    return marcacoes
+
+
+class CalculosTests(TestCase):
+    """Motor de cálculo (ponto/calculos.py): cada regra confirmada com o usuário, isolada."""
+
+    def setUp(self):
+        self.equipamento = _criar_equipamento()
+        self.funcionario = _criar_funcionario(cpf='55555555555')
+
+    def test_dia_normal_sem_diferenca_saldo_zero(self):
+        horario = _criar_horario_util(4001)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)  # segunda-feira
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00', '17:00')
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        self.assertEqual(resultado['dias'][0]['saldo_segundos'], 0)
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 0)
+        self.assertEqual(resultado['totais']['falta_segundos'], 0)
+
+    def test_hora_extra_dia_util_e_taxa_50(self):
+        horario = _criar_horario_util(4002)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00', '18:00')  # 1h extra
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 3600)
+        self.assertEqual(resultado['totais']['extra_100_segundos'], 0)
+
+        dia = resultado['dias'][0]
+        self.assertEqual(dia['segundos_normais'], 8 * 3600)  # Normais nunca passa do esperado
+        self.assertEqual(dia['segundos_extra_50_dia'], 3600)
+        self.assertEqual(dia['segundos_extra_100_dia'], 0)
+        self.assertEqual(dia['segundos_falta_dia'], 0)
+        self.assertEqual(len(dia['pares']), 2)  # só usou 2 pares nesse dia -- não preenche até 5 à toa
+        pares_preenchidos = [p for p in dia['pares'] if p[0] is not None]
+        self.assertEqual(len(pares_preenchidos), 2)
+
+    def test_hora_extra_domingo_e_taxa_100(self):
+        horario = _criar_horario_util(4003)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        domingo = date(2026, 8, 2)  # domingo -- folga na jornada, mas ele foi e trabalhou
+        _bater_ponto(self.funcionario, self.equipamento, domingo, '08:00', '12:00')  # 4h trabalhadas, 0 esperadas
+
+        resultado = calcular_periodo(self.funcionario, domingo, domingo)
+
+        self.assertEqual(resultado['totais']['extra_100_segundos'], 4 * 3600)
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 0)
+
+    def test_hora_extra_feriado_e_taxa_100(self):
+        horario = _criar_horario_util(4004)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        sexta_feriado = date(2026, 9, 4)  # sexta-feira comum, marcada como feriado
+        Feriado.objects.create(data=sexta_feriado, descricao='Feriado de teste')
+        _bater_ponto(self.funcionario, self.equipamento, sexta_feriado, '08:00', '12:00', '13:00', '19:00')  # 2h extra
+
+        resultado = calcular_periodo(self.funcionario, sexta_feriado, sexta_feriado)
+
+        self.assertEqual(resultado['totais']['extra_100_segundos'], 2 * 3600)
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 0)
+
+    def test_12x36_sempre_50_por_cento_mesmo_no_domingo(self):
+        data_base = date(2026, 8, 2)  # domingo, posição 1 do ciclo = dia de trabalho
+        escala = _criar_escala_12x36(4005, data_base)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), escala=escala)
+        _bater_ponto(self.funcionario, self.equipamento, data_base, '06:00', '19:00')  # 1h extra (13h trabalhadas)
+
+        resultado = calcular_periodo(self.funcionario, data_base, data_base)
+
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 3600)
+        self.assertEqual(resultado['totais']['extra_100_segundos'], 0)
+
+    def test_compensacao_extra_abate_falta_mesma_taxa(self):
+        horario = _criar_horario_util(4006)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        terca = date(2026, 8, 4)
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00', '19:00')  # +2h
+        _bater_ponto(self.funcionario, self.equipamento, terca, '09:00', '12:00', '13:00', '17:00')  # -1h
+
+        resultado = calcular_periodo(self.funcionario, segunda, terca)
+
+        self.assertEqual(resultado['totais']['extra_50_segundos'], 3600)  # 2h extra - 1h compensada = 1h
+        self.assertEqual(resultado['totais']['falta_segundos'], 0)
+
+    def test_marcacao_impar_e_sinalizada_sem_quebrar(self):
+        horario = _criar_horario_util(4007)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00')  # esqueceu de bater a saída
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        self.assertTrue(resultado['dias'][0]['marcacao_impar'])
+        self.assertEqual(resultado['totais']['dias_com_marcacao_impar'], 1)
+        # o par completo (08-12) ainda soma normalmente, a batida solta (13:00) não quebra o cálculo
+        self.assertEqual(resultado['dias'][0]['segundos_trabalhados'], 4 * 3600)
+
+    def test_funcionario_sem_jornada_e_sinalizado(self):
+        segunda = date(2026, 8, 3)
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        self.assertTrue(resultado['dias'][0]['sem_jornada'])
+        self.assertEqual(resultado['totais']['dias_sem_jornada'], 1)
