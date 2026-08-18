@@ -81,6 +81,45 @@
             {% endif %}
             {% endif %}
         </div>
+
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Jornada de trabalho (Ponto)</div>
+            {% if jornada_vigente %}
+                <p style="font-size: 0.88rem;">
+                    {% if jornada_vigente.escala %}
+                        Escala: <strong>{{ jornada_vigente.escala }}</strong>
+                    {% else %}
+                        Horário: <strong>{{ jornada_vigente.horario }}</strong>
+                    {% endif %}
+                    <span style="color: var(--color-text-muted);">(vigente desde {{ jornada_vigente.data_inicio|date:"d/m/Y" }})</span>
+                </p>
+            {% else %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhuma jornada cadastrada ainda.</p>
+            {% endif %}
+
+            <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="proxima" value="{% url 'detalhe_funcionario' funcionario.id %}">
+                <div class="form-grid">
+                    <div>
+                        <label for="{{ jornada_form.data_inicio.id_for_label }}">A partir de</label>
+                        {{ jornada_form.data_inicio }}
+                    </div>
+                    <div>
+                        <label for="{{ jornada_form.horario.id_for_label }}">Horário fixo</label>
+                        {{ jornada_form.horario }}
+                    </div>
+                    <div>
+                        <label for="{{ jornada_form.escala.id_for_label }}">Ou escala</label>
+                        {{ jornada_form.escala }}
+                    </div>
+                </div>
+                <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
+            </form>
+            <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+                Escolha horário fixo OU escala, nunca os dois. Não altera o cálculo de períodos já passados.
+            </p>
+        </div>
     </div>
 
     <div>

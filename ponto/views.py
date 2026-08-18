@@ -1,17 +1,25 @@
+from datetime import date
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from funcionarios.decorators import papel_required
+from funcionarios.models import Funcionario
 
 from . import services
+from .calculos import calcular_periodo
 from .forms import (
-    DIAS_SEMANA_INICIAIS, EquipamentoForm, EscalaForm, HorarioDiaFormSet, HorarioForm,
-    escala_item_formset_factory,
+    DIAS_SEMANA_INICIAIS, EquipamentoForm, EscalaForm, FeriadoForm, FuncionarioJornadaForm,
+    HorarioDiaFormSet, HorarioForm, escala_item_formset_factory,
 )
-from .models import Equipamento, Escala, Horario, HorarioDia, MarcacaoRelogio
+from .models import Equipamento, Escala, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .utils import intervalo_do_dia
 
 
 def _dias_com_forms(formset):
@@ -172,7 +180,8 @@ def listar_marcacoes_view(request):
     if funcionario_id:
         marcacoes = marcacoes.filter(funcionario_id=funcionario_id)
     if data:
-        marcacoes = marcacoes.filter(momento__date=data)
+        inicio, fim = intervalo_do_dia(date.fromisoformat(data))
+        marcacoes = marcacoes.filter(momento__gte=inicio, momento__lt=fim)
 
     return render(request, 'ponto/listar_marcacoes.html', {
         'marcacoes': marcacoes[:500],
@@ -299,3 +308,93 @@ def excluir_escala_view(request, escala_id):
     escala.delete()
     messages.success(request, f'Escala "{descricao}" excluída.')
     return redirect('ponto:listar_escalas')
+
+
+@login_required
+@papel_required('rh')
+def listar_calculo_view(request):
+    hoje = timezone.now().date()
+    data_inicio = date.fromisoformat(request.GET.get('data_inicio') or hoje.replace(day=1).isoformat())
+    data_fim = date.fromisoformat(request.GET.get('data_fim') or hoje.isoformat())
+
+    funcionario_id = request.GET.get('funcionario')
+    funcionario = None
+    resultado = None
+    jornada_vigente = None
+    numeros_dos_pares = []
+
+    if funcionario_id:
+        funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+        resultado = calcular_periodo(funcionario, data_inicio, data_fim)
+        jornada_vigente = FuncionarioJornada.vigente_em(funcionario, data_fim)
+        numeros_dos_pares = list(range(1, resultado['pares_no_periodo'] + 1))
+
+    return render(request, 'ponto/calculo.html', {
+        'funcionarios': Funcionario.objects.order_by('nome'),
+        'funcionario': funcionario,
+        'funcionario_id': funcionario_id or '',
+        'data_inicio': data_inicio.isoformat(),
+        'data_fim': data_fim.isoformat(),
+        'resultado': resultado,
+        'jornada_vigente': jornada_vigente,
+        'jornada_form': FuncionarioJornadaForm(),
+        'numeros_dos_pares': numeros_dos_pares,
+    })
+
+
+@login_required
+@papel_required('rh')
+def atribuir_jornada_view(request, funcionario_id):
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if request.method == 'POST':
+        form = FuncionarioJornadaForm(request.POST)
+        if form.is_valid():
+            jornada = form.save(commit=False)
+            jornada.funcionario = funcionario
+            jornada.save()
+            messages.success(request, f'Jornada de {funcionario.nome} definida a partir de {jornada.data_inicio}.')
+        else:
+            messages.error(request, 'Não foi possível salvar: escolha um horário fixo OU uma escala.')
+
+    proxima = request.POST.get('proxima')
+    if proxima and url_has_allowed_host_and_scheme(proxima, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(proxima)
+
+    url = f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+    data_inicio = request.POST.get('data_inicio')
+    data_fim = request.POST.get('data_fim')
+    if data_inicio and data_fim:
+        url += f'&data_inicio={data_inicio}&data_fim={data_fim}'
+
+    return redirect(url)
+
+
+@login_required
+@papel_required('rh')
+def listar_feriados_view(request):
+    return render(request, 'ponto/listar_feriados.html', {'feriados': Feriado.objects.all()})
+
+
+@login_required
+@papel_required('rh')
+def cadastrar_feriado_view(request):
+    if request.method == 'POST':
+        form = FeriadoForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Feriado cadastrado com sucesso.')
+            return redirect('ponto:listar_feriados')
+    else:
+        form = FeriadoForm()
+
+    return render(request, 'ponto/form_feriado.html', {'form': form})
+
+
+@login_required
+@papel_required('rh')
+def excluir_feriado_view(request, feriado_id):
+    feriado = get_object_or_404(Feriado, id=feriado_id)
+    feriado.delete()
+    messages.success(request, 'Feriado excluído.')
+    return redirect('ponto:listar_feriados')

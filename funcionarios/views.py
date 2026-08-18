@@ -18,6 +18,11 @@ from .forms import (
     SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm
 )
 
+# Só pra mostrar/atribuir a jornada de ponto na ficha do funcionário -- a
+# atribuição em si continua sendo feita pela view do app `ponto`.
+from ponto.forms import FuncionarioJornadaForm, JornadaOpcionalForm
+from ponto.models import FuncionarioJornada
+
 
 LIMITE_DIAS_ALERTA_FERIAS = 60
 
@@ -341,10 +346,21 @@ def listar_funcionarios_view(request):
 def cadastrar_funcionario_view(request):
     if request.method == 'POST':
         form = PreCadastroFuncionarioForm(request.POST)
-        if form.is_valid():
+        jornada_form = JornadaOpcionalForm(request.POST)
+        if form.is_valid() and jornada_form.is_valid():
             funcionario = form.save(commit=False)
             funcionario.status = 'pendente'
             funcionario.save()
+
+            horario = jornada_form.cleaned_data.get('horario')
+            escala = jornada_form.cleaned_data.get('escala')
+            if horario or escala:
+                FuncionarioJornada.objects.create(
+                    funcionario=funcionario,
+                    data_inicio=funcionario.data_admissao or timezone.now().date(),
+                    horario=horario,
+                    escala=escala,
+                )
 
             senha_gerada = secrets.token_urlsafe(9)
 
@@ -367,9 +383,11 @@ def cadastrar_funcionario_view(request):
             })
     else:
         form = PreCadastroFuncionarioForm()
+        jornada_form = JornadaOpcionalForm()
 
     return render(request, 'funcionarios/rh/cadastrar_funcionario.html', {
         'form': form,
+        'jornada_form': jornada_form,
     })
 
 
@@ -400,6 +418,8 @@ def detalhe_funcionario_view(request, funcionario_id):
         'checklist_documentos': checklist_documentos,
         'total_obrigatorios': total_obrigatorios,
         'total_enviados_obrigatorios': total_enviados_obrigatorios,
+        'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
+        'jornada_form': FuncionarioJornadaForm(),
     })
 
 

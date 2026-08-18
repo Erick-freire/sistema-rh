@@ -1,7 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory
 
-from .models import Equipamento, Escala, EscalaItem, Horario, HorarioDia
+from .models import Equipamento, Escala, EscalaItem, Feriado, FuncionarioJornada, Horario, HorarioDia
 
 
 class EquipamentoForm(forms.ModelForm):
@@ -79,3 +79,46 @@ def escala_item_formset_factory(escala):
         extra=0, max_num=escala.tamanho_ciclo, can_delete=False,
         widgets={'posicao': forms.HiddenInput()},
     )
+
+
+class FuncionarioJornadaForm(forms.ModelForm):
+    class Meta:
+        model = FuncionarioJornada
+        fields = ['data_inicio', 'horario', 'escala']
+        widgets = {'data_inicio': forms.DateInput(attrs={'type': 'date'})}
+
+    def clean(self):
+        cleaned_data = super().clean()
+        horario = cleaned_data.get('horario')
+        escala = cleaned_data.get('escala')
+
+        if bool(horario) == bool(escala):
+            raise forms.ValidationError('Escolha um horário fixo OU uma escala -- nunca os dois, nem nenhum.')
+
+        return cleaned_data
+
+
+class JornadaOpcionalForm(forms.Form):
+    """
+    Igual ao FuncionarioJornadaForm, mas sem exigir horário/escala -- usado no
+    pré-cadastro do funcionário, onde ainda não se sabe a jornada dele.
+    """
+    horario = forms.ModelChoiceField(queryset=Horario.objects.all(), required=False, label='Horário fixo')
+    escala = forms.ModelChoiceField(queryset=Escala.objects.all(), required=False, label='Ou escala')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        horario = cleaned_data.get('horario')
+        escala = cleaned_data.get('escala')
+
+        if horario and escala:
+            raise forms.ValidationError('Escolha um horário fixo OU uma escala -- nunca os dois.')
+
+        return cleaned_data
+
+
+class FeriadoForm(forms.ModelForm):
+    class Meta:
+        model = Feriado
+        fields = ['data', 'descricao']
+        widgets = {'data': forms.DateInput(attrs={'type': 'date'})}

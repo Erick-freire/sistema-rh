@@ -562,6 +562,14 @@ tr:last-child td { border-bottom: none; }
 .tabela-limpa td { padding-left: 0; padding-right: 0; }
 .tabela-limpa tbody tr:hover { background: transparent; }
 
+/* Tabelas com muitas colunas (ex.: espelho de ponto) -- cabe sem rolagem lateral. */
+.tabela-compacta th, .tabela-compacta td {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.tabela-compacta th { font-size: 0.65rem; }
+
 .tabela-linha--link { cursor: pointer; }
 .tabela-nome {
     display: flex;

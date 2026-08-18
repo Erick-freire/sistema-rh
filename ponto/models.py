@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from funcionarios.models import Funcionario
 from integracao_gov.fields import EncryptedTextField
@@ -296,3 +297,47 @@ class EscalaItem(models.Model):
     @property
     def folga(self):
         return self.horario_id is None
+
+
+class Feriado(models.Model):
+    data = models.DateField(unique=True)
+    descricao = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ['data']
+
+    def __str__(self):
+        return f'{self.data} - {self.descricao}' if self.descricao else str(self.data)
+
+
+class FuncionarioJornada(models.Model):
+    """
+    Histórico de qual Horario (jornada fixa) ou Escala (rotação) vale para um
+    funcionário a partir de uma data. Nunca editar/apagar um registro antigo
+    ao trocar de turno -- cria um novo com `data_inicio` a partir de quando
+    passa a valer, preservando o cálculo de períodos passados intacto.
+    """
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.CASCADE, related_name='jornadas')
+    data_inicio = models.DateField(help_text='A partir desta data este horário/escala passa a valer para o cálculo.')
+    horario = models.ForeignKey(Horario, on_delete=models.PROTECT, null=True, blank=True, related_name='+')
+    escala = models.ForeignKey(Escala, on_delete=models.PROTECT, null=True, blank=True, related_name='+')
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['funcionario', '-data_inicio']
+        constraints = [
+            models.UniqueConstraint(fields=['funcionario', 'data_inicio'], name='uma_jornada_por_funcionario_por_data'),
+            models.CheckConstraint(
+                condition=(Q(horario__isnull=False, escala__isnull=True) | Q(horario__isnull=True, escala__isnull=False)),
+                name='jornada_tem_horario_xor_escala',
+            ),
+        ]
+
+    def __str__(self):
+        alvo = self.horario or self.escala
+        return f'{self.funcionario.nome} -> {alvo} (desde {self.data_inicio})'
+
+    @classmethod
+    def vigente_em(cls, funcionario, data):
+        """A jornada com data_inicio mais recente que ainda seja <= data, ou None se nenhuma."""
+        return cls.objects.filter(funcionario=funcionario, data_inicio__lte=data).order_by('-data_inicio').first()
