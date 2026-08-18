@@ -26,12 +26,20 @@
                 {{ form.nome.errors }}
             </div>
             <div>
+                <label for="{{ form.eh_12x36.id_for_label }}">{{ form.eh_12x36 }} É 12x36</label>
+            </div>
+            <div>
                 <label for="{{ form.considerar_feriados.id_for_label }}">{{ form.considerar_feriados }} Considerar feriados</label>
             </div>
             <div>
                 <label for="{{ form.separar_normais_noturnas.id_for_label }}">{{ form.separar_normais_noturnas }} Separar horas normais noturnas</label>
             </div>
         </div>
+        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+            Marcando "É 12x36": preencha entrada/saída igual em todos os dias da semana abaixo (é o horário do dia
+            trabalhado, sempre o mesmo) -- quem trabalha em qual dia é decidido por funcionário (par ou ímpar do mês)
+            na hora de atribuir a jornada, não aqui.
+        </p>
 
         <h3 style="margin-top: 24px; margin-bottom: 12px;">Jornada por dia da semana</h3>
         {{ formset.management_form }}

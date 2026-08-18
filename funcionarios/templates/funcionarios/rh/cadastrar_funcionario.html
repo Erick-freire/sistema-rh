@@ -50,19 +50,20 @@ Novo funcionário
                 {{ form.data_admissao.errors }}
             </div>
             <div>
-                <label for="{{ jornada_form.horario.id_for_label }}">Horário fixo</label>
+                <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
                 {{ jornada_form.horario }}
                 {{ jornada_form.horario.errors }}
             </div>
             <div>
-                <label for="{{ jornada_form.escala.id_for_label }}">Ou escala</label>
-                {{ jornada_form.escala }}
-                {{ jornada_form.escala.errors }}
+                <label for="{{ jornada_form.paridade_ciclo.id_for_label }}">Par/ímpar (só 12x36)</label>
+                {{ jornada_form.paridade_ciclo }}
+                {{ jornada_form.paridade_ciclo.errors }}
             </div>
         </div>
         {{ jornada_form.non_field_errors }}
         <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-            Horário/escala é opcional aqui -- escolha um dos dois, ou deixe em branco e defina depois na ficha do funcionário.
+            Horário é opcional aqui -- pode deixar em branco e definir depois na ficha do funcionário. Se o horário
+            escolhido for 12x36, par/ímpar também pode ficar em branco: descobrimos sozinhos pela data de admissão.
         </p>
 
         <div style="display: flex; gap: 12px; margin-top: 20px;">

@@ -1,8 +1,8 @@
 # Módulo de Ponto — configurar após puxar
 
 O banco é por ambiente: as migrations trazem só a **estrutura** das tabelas
-novas. Dados de referência (horários, escalas) e cadastros (equipamentos,
-fila de sincronização) precisam ser recriados em cada banco.
+novas. Dados de referência (horários) e cadastros (equipamentos, fila de
+sincronização) precisam ser recriados em cada banco.
 
 ## 1. Dependências
 
@@ -19,8 +19,8 @@ python manage.py migrate
 ```
 
 Cria as tabelas do app `ponto`: `Equipamento`, `SincronizacaoFuncionario`,
-`MarcacaoRelogio`, `AjustePonto`, `Horario`, `HorarioDia`, `Escala`,
-`EscalaItem`.
+`MarcacaoRelogio`, `AjustePonto`, `Horario`, `HorarioDia`, `Feriado`,
+`FuncionarioJornada`.
 
 ## 3. Variáveis do Secullum (`.env` local, não versionado)
 
@@ -35,18 +35,18 @@ SECULLUM_PASSWORD=<senha>
 Só é necessário se for rodar os comandos de importação abaixo. O sistema
 nunca escreve nesse banco (somente leitura).
 
-## 4. Repovoar horários e escalas
+## 4. Repovoar horários
 
 Não vêm no Git — são reimportados direto do Secullum:
 
 ```
 python manage.py importar_horarios_secullum 1001 1048
-python manage.py importar_escalas_secullum
 ```
 
-O segundo comando importa também qualquer horário referenciado por uma
-escala que ainda não exista (ex.: os "vazios" usados como marcador de
-folga entre dias trabalhados).
+Horário 12x36: marque "É 12x36" ao cadastrar/editar o horário (tela
+**Ponto > Horários**) -- os dias trabalhados/de folga são decididos por
+funcionário (time par ou ímpar do mês) na hora de atribuir a jornada a ele,
+não existe mais um cadastro de "Escala" separado.
 
 ## 5. Cadastrar os equipamentos reais
 

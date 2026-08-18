@@ -1,0 +1,51 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Ajustar ponto{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{{ voltar }}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Ajustar ponto de {{ funcionario.nome }}
+</h1>
+
+<div class="card">
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        {{ data|date:'d/m/Y' }} --
+        {% if marcacao_original %}
+            corrigindo a batida das <strong>{{ marcacao_original.momento|time:'H:i' }}</strong> registrada pelo relógio.
+            A batida original não é apagada, só deixa de entrar na conta a partir deste ajuste.
+        {% else %}
+            lançando uma batida que não veio do relógio (esquecimento, por exemplo).
+        {% endif %}
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        {% if marcacao_original %}<input type="hidden" name="marcacao_original" value="{{ marcacao_original.id }}">{% endif %}
+        <input type="hidden" name="voltar" value="{{ voltar }}">
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.tipo_evento.id_for_label }}">Tipo</label>
+                {{ form.tipo_evento }}
+                {{ form.tipo_evento.errors }}
+            </div>
+            <div>
+                <label for="{{ form.horario_ajustado.id_for_label }}">Horário</label>
+                {{ form.horario_ajustado }}
+                {{ form.horario_ajustado.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form.motivo.id_for_label }}">Motivo</label>
+                {{ form.motivo }}
+                {{ form.motivo.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Salvar ajuste</button>
+            <a href="{{ voltar }}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

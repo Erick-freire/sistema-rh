@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    AjustePonto, Equipamento, Escala, EscalaItem, Feriado, FuncionarioJornada, Horario, HorarioDia,
+    AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia,
     MarcacaoRelogio, SincronizacaoFuncionario,
 )
 
@@ -39,8 +39,8 @@ class MarcacaoRelogioAdmin(admin.ModelAdmin):
 
 @admin.register(AjustePonto)
 class AjustePontoAdmin(admin.ModelAdmin):
-    list_display = ('funcionario', 'data', 'tipo_ajuste', 'usuario', 'criado_em')
-    list_filter = ('tipo_ajuste',)
+    list_display = ('funcionario', 'data', 'tipo_evento', 'horario_ajustado', 'marcacao_original', 'usuario', 'criado_em')
+    list_filter = ('tipo_evento',)
     search_fields = ('funcionario__nome', 'funcionario__matricula')
 
 
@@ -52,21 +52,10 @@ class HorarioDiaInline(admin.TabularInline):
 
 @admin.register(Horario)
 class HorarioAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'nome', 'considerar_feriados')
+    list_display = ('numero', 'nome', 'eh_12x36', 'considerar_feriados')
+    list_filter = ('eh_12x36',)
     search_fields = ('numero', 'nome')
     inlines = [HorarioDiaInline]
-
-
-class EscalaItemInline(admin.TabularInline):
-    model = EscalaItem
-    extra = 0
-
-
-@admin.register(Escala)
-class EscalaAdmin(admin.ModelAdmin):
-    list_display = ('numero', 'descricao', 'tamanho_ciclo', 'data_base')
-    search_fields = ('numero', 'descricao')
-    inlines = [EscalaItemInline]
 
 
 @admin.register(Feriado)
@@ -76,6 +65,6 @@ class FeriadoAdmin(admin.ModelAdmin):
 
 @admin.register(FuncionarioJornada)
 class FuncionarioJornadaAdmin(admin.ModelAdmin):
-    list_display = ('funcionario', 'data_inicio', 'horario', 'escala')
+    list_display = ('funcionario', 'data_inicio', 'horario', 'paridade_ciclo')
     search_fields = ('funcionario__nome', 'funcionario__matricula')
-    list_filter = ('horario', 'escala')
+    list_filter = ('horario', 'paridade_ciclo')

@@ -86,11 +86,8 @@
             <div class="card__title" style="margin-bottom: 8px;">Jornada de trabalho (Ponto)</div>
             {% if jornada_vigente %}
                 <p style="font-size: 0.88rem;">
-                    {% if jornada_vigente.escala %}
-                        Escala: <strong>{{ jornada_vigente.escala }}</strong>
-                    {% else %}
-                        Horário: <strong>{{ jornada_vigente.horario }}</strong>
-                    {% endif %}
+                    Horário: <strong>{{ jornada_vigente.horario }}</strong>
+                    {% if jornada_vigente.paridade_ciclo %}-- time <strong>{{ jornada_vigente.get_paridade_ciclo_display }}</strong>{% endif %}
                     <span style="color: var(--color-text-muted);">(vigente desde {{ jornada_vigente.data_inicio|date:"d/m/Y" }})</span>
                 </p>
             {% else %}
@@ -106,18 +103,19 @@
                         {{ jornada_form.data_inicio }}
                     </div>
                     <div>
-                        <label for="{{ jornada_form.horario.id_for_label }}">Horário fixo</label>
+                        <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
                         {{ jornada_form.horario }}
                     </div>
                     <div>
-                        <label for="{{ jornada_form.escala.id_for_label }}">Ou escala</label>
-                        {{ jornada_form.escala }}
+                        <label for="{{ jornada_form.paridade_ciclo.id_for_label }}">Par/ímpar (só 12x36)</label>
+                        {{ jornada_form.paridade_ciclo }}
                     </div>
                 </div>
                 <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
             </form>
             <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-                Escolha horário fixo OU escala, nunca os dois. Não altera o cálculo de períodos já passados.
+                Par/ímpar só importa pra horário 12x36 -- deixe em branco pra descobrir sozinho pela data de admissão.
+                Não altera o cálculo de períodos já passados.
             </p>
         </div>
     </div>

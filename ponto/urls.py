@@ -21,13 +21,9 @@ urlpatterns = [
     path('horarios/<int:horario_id>/editar/', views.editar_horario_view, name='editar_horario'),
     path('horarios/<int:horario_id>/excluir/', views.excluir_horario_view, name='excluir_horario'),
 
-    path('escalas/', views.listar_escalas_view, name='listar_escalas'),
-    path('escalas/nova/', views.cadastrar_escala_view, name='cadastrar_escala'),
-    path('escalas/<int:escala_id>/editar/', views.editar_escala_view, name='editar_escala'),
-    path('escalas/<int:escala_id>/excluir/', views.excluir_escala_view, name='excluir_escala'),
-
     path('calculo/', views.listar_calculo_view, name='listar_calculo'),
     path('calculo/<int:funcionario_id>/atribuir-jornada/', views.atribuir_jornada_view, name='atribuir_jornada'),
+    path('calculo/<int:funcionario_id>/<str:data>/ajustar/', views.ajustar_marcacao_view, name='ajustar_marcacao'),
 
     path('feriados/', views.listar_feriados_view, name='listar_feriados'),
     path('feriados/novo/', views.cadastrar_feriado_view, name='cadastrar_feriado'),

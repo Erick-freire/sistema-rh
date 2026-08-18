@@ -570,6 +570,17 @@ tr:last-child td { border-bottom: none; }
 }
 .tabela-compacta th { font-size: 0.65rem; }
 
+.celula-ponto { position: relative; }
+.ajuste-ponto-link {
+    display: inline-flex;
+    margin-left: 4px;
+    opacity: 0;
+    color: var(--color-text-muted);
+    vertical-align: middle;
+}
+.ajuste-ponto-link .icon { width: 12px; height: 12px; }
+.celula-ponto:hover .ajuste-ponto-link { opacity: 1; }
+
 .tabela-linha--link { cursor: pointer; }
 .tabela-nome {
     display: flex;

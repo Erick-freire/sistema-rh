@@ -31,7 +31,7 @@
             {% for horario in horarios %}
             <tr>
                 <td>{{ horario.numero }}</td>
-                <td>{{ horario.nome|default:'—' }}</td>
+                <td>{{ horario.nome|default:'—' }} {% if horario.eh_12x36 %}<span class="chip">12x36</span>{% endif %}</td>
                 <td>
                     {% for dia in horario.dias.all %}
                         <span class="badge-status {% if dia.folga %}badge-status--inativo{% else %}badge-status--ativo{% endif %}" title="{{ dia.get_dia_semana_display }}">

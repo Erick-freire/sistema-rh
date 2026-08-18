@@ -353,14 +353,15 @@ def cadastrar_funcionario_view(request):
             funcionario.save()
 
             horario = jornada_form.cleaned_data.get('horario')
-            escala = jornada_form.cleaned_data.get('escala')
-            if horario or escala:
-                FuncionarioJornada.objects.create(
+            if horario:
+                jornada = FuncionarioJornada(
                     funcionario=funcionario,
                     data_inicio=funcionario.data_admissao or timezone.now().date(),
                     horario=horario,
-                    escala=escala,
+                    paridade_ciclo=jornada_form.cleaned_data.get('paridade_ciclo') or None,
                 )
+                jornada.resolver_paridade()
+                jornada.save()
 
             senha_gerada = secrets.token_urlsafe(9)
 

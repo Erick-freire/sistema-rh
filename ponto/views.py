@@ -15,10 +15,10 @@ from funcionarios.models import Funcionario
 from . import services
 from .calculos import calcular_periodo
 from .forms import (
-    DIAS_SEMANA_INICIAIS, EquipamentoForm, EscalaForm, FeriadoForm, FuncionarioJornadaForm,
-    HorarioDiaFormSet, HorarioForm, escala_item_formset_factory,
+    AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, FeriadoForm, FuncionarioJornadaForm,
+    HorarioDiaFormSet, HorarioForm,
 )
-from .models import Equipamento, Escala, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
 from .utils import intervalo_do_dia
 
 
@@ -254,60 +254,51 @@ def excluir_horario_view(request, horario_id):
 
 @login_required
 @papel_required('rh')
-def listar_escalas_view(request):
-    escalas = Escala.objects.prefetch_related('itens__horario')
-    return render(request, 'ponto/listar_escalas.html', {'escalas': escalas})
+def ajustar_marcacao_view(request, funcionario_id, data):
+    """
+    Lançamento manual de uma marcação (batida esquecida ou correção de uma
+    batida errada), a partir de um clique num Entrada/Saída do espelho de
+    Cálculo. Nunca mexe na MarcacaoRelogio original -- só cria um AjustePonto
+    que o motor de cálculo passa a considerar no lugar dela (ou a mais, se
+    for uma batida que faltou por completo).
+    """
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+    data_convertida = date.fromisoformat(data)
 
+    marcacao_original = None
+    marcacao_original_id = request.GET.get('marcacao_original') or request.POST.get('marcacao_original')
+    if marcacao_original_id:
+        marcacao_original = get_object_or_404(MarcacaoRelogio, id=marcacao_original_id, funcionario=funcionario)
 
-@login_required
-@papel_required('rh')
-def cadastrar_escala_view(request):
+    voltar = request.GET.get('voltar') or request.POST.get('voltar')
+    url_voltar = voltar if voltar and url_has_allowed_host_and_scheme(
+        voltar, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ) else f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+
     if request.method == 'POST':
-        form = EscalaForm(request.POST)
+        form = AjustarMarcacaoForm(request.POST)
         if form.is_valid():
-            escala = form.save()
-            for posicao in range(1, escala.tamanho_ciclo + 1):
-                escala.itens.create(posicao=posicao)
-            messages.success(
-                request,
-                f'Escala "{escala.descricao}" cadastrada. Agora defina o horário (ou folga) de cada posição do ciclo.',
-            )
-            return redirect('ponto:editar_escala', escala.id)
+            ajuste = form.save(commit=False)
+            ajuste.funcionario = funcionario
+            ajuste.data = data_convertida
+            ajuste.marcacao_original = marcacao_original
+            ajuste.usuario = request.user
+            ajuste.save()
+            messages.success(request, f'Ajuste de ponto de {funcionario.nome} em {data_convertida.strftime("%d/%m/%Y")} registrado.')
+            return redirect(url_voltar)
     else:
-        form = EscalaForm()
+        inicial = {'tipo_evento': request.GET.get('tipo') or 'entrada'}
+        if marcacao_original:
+            inicial['horario_ajustado'] = timezone.localtime(marcacao_original.momento).time()
+        form = AjustarMarcacaoForm(initial=inicial)
 
-    return render(request, 'ponto/form_escala.html', {'form': form, 'escala': None, 'formset': None})
-
-
-@login_required
-@papel_required('rh')
-def editar_escala_view(request, escala_id):
-    escala = get_object_or_404(Escala, id=escala_id)
-    EscalaItemFormSet = escala_item_formset_factory(escala)
-
-    if request.method == 'POST':
-        form = EscalaForm(request.POST, instance=escala)
-        formset = EscalaItemFormSet(request.POST, instance=escala)
-        if form.is_valid() and formset.is_valid():
-            form.save()
-            formset.save()
-            messages.success(request, f'Escala "{escala.descricao}" atualizada com sucesso.')
-            return redirect('ponto:listar_escalas')
-    else:
-        form = EscalaForm(instance=escala)
-        formset = EscalaItemFormSet(instance=escala)
-
-    return render(request, 'ponto/form_escala.html', {'form': form, 'formset': formset, 'escala': escala})
-
-
-@login_required
-@papel_required('rh')
-def excluir_escala_view(request, escala_id):
-    escala = get_object_or_404(Escala, id=escala_id)
-    descricao = escala.descricao
-    escala.delete()
-    messages.success(request, f'Escala "{descricao}" excluída.')
-    return redirect('ponto:listar_escalas')
+    return render(request, 'ponto/form_ajuste.html', {
+        'form': form,
+        'funcionario': funcionario,
+        'data': data_convertida,
+        'marcacao_original': marcacao_original,
+        'voltar': url_voltar,
+    })
 
 
 @login_required
@@ -352,10 +343,11 @@ def atribuir_jornada_view(request, funcionario_id):
         if form.is_valid():
             jornada = form.save(commit=False)
             jornada.funcionario = funcionario
+            jornada.resolver_paridade()
             jornada.save()
             messages.success(request, f'Jornada de {funcionario.nome} definida a partir de {jornada.data_inicio}.')
         else:
-            messages.error(request, 'Não foi possível salvar: escolha um horário fixo OU uma escala.')
+            messages.error(request, 'Não foi possível salvar: confira o horário e o par/ímpar informados.')
 
     proxima = request.POST.get('proxima')
     if proxima and url_has_allowed_host_and_scheme(proxima, allowed_hosts={request.get_host()}, require_https=request.is_secure()):

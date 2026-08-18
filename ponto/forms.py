@@ -1,7 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory
 
-from .models import Equipamento, Escala, EscalaItem, Feriado, FuncionarioJornada, Horario, HorarioDia
+from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia
 
 
 class EquipamentoForm(forms.ModelForm):
@@ -38,7 +38,7 @@ class EquipamentoForm(forms.ModelForm):
 class HorarioForm(forms.ModelForm):
     class Meta:
         model = Horario
-        fields = ['numero', 'nome', 'considerar_feriados', 'separar_normais_noturnas']
+        fields = ['numero', 'nome', 'eh_12x36', 'considerar_feriados', 'separar_normais_noturnas']
 
 
 _TIME_WIDGET = forms.TimeInput(attrs={'type': 'time'})
@@ -58,63 +58,48 @@ HorarioDiaFormSet = inlineformset_factory(
 DIAS_SEMANA_INICIAIS = [{'dia_semana': dia} for dia in range(1, 8)]
 
 
-class EscalaForm(forms.ModelForm):
-    class Meta:
-        model = Escala
-        fields = ['numero', 'descricao', 'tamanho_ciclo', 'data_base']
-        widgets = {'data_base': forms.DateInput(attrs={'type': 'date'})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance and self.instance.pk:
-            # Mudar o tamanho do ciclo depois de criado deixaria as posições
-            # dos itens já cadastrados inconsistentes -- exclui e recria em vez de editar.
-            self.fields['tamanho_ciclo'].disabled = True
-
-
-def escala_item_formset_factory(escala):
-    return inlineformset_factory(
-        Escala, EscalaItem,
-        fields=['posicao', 'horario'],
-        extra=0, max_num=escala.tamanho_ciclo, can_delete=False,
-        widgets={'posicao': forms.HiddenInput()},
-    )
+def _validar_paridade(horario, paridade_ciclo):
+    if horario and horario.eh_12x36:
+        return None
+    if paridade_ciclo:
+        raise forms.ValidationError('Par/ímpar só se aplica a um horário 12x36.')
+    return None
 
 
 class FuncionarioJornadaForm(forms.ModelForm):
     class Meta:
         model = FuncionarioJornada
-        fields = ['data_inicio', 'horario', 'escala']
+        fields = ['data_inicio', 'horario', 'paridade_ciclo']
         widgets = {'data_inicio': forms.DateInput(attrs={'type': 'date'})}
 
     def clean(self):
         cleaned_data = super().clean()
-        horario = cleaned_data.get('horario')
-        escala = cleaned_data.get('escala')
-
-        if bool(horario) == bool(escala):
-            raise forms.ValidationError('Escolha um horário fixo OU uma escala -- nunca os dois, nem nenhum.')
-
+        _validar_paridade(cleaned_data.get('horario'), cleaned_data.get('paridade_ciclo'))
         return cleaned_data
 
 
 class JornadaOpcionalForm(forms.Form):
     """
-    Igual ao FuncionarioJornadaForm, mas sem exigir horário/escala -- usado no
+    Igual ao FuncionarioJornadaForm, mas sem exigir horário -- usado no
     pré-cadastro do funcionário, onde ainda não se sabe a jornada dele.
     """
-    horario = forms.ModelChoiceField(queryset=Horario.objects.all(), required=False, label='Horário fixo')
-    escala = forms.ModelChoiceField(queryset=Escala.objects.all(), required=False, label='Ou escala')
+    horario = forms.ModelChoiceField(queryset=Horario.objects.all(), required=False, label='Horário')
+    paridade_ciclo = forms.ChoiceField(
+        choices=[('', '(descobrir pela data de admissão)')] + FuncionarioJornada.PARIDADE_CHOICES,
+        required=False, label='Par/ímpar (só 12x36)',
+    )
 
     def clean(self):
         cleaned_data = super().clean()
-        horario = cleaned_data.get('horario')
-        escala = cleaned_data.get('escala')
-
-        if horario and escala:
-            raise forms.ValidationError('Escolha um horário fixo OU uma escala -- nunca os dois.')
-
+        _validar_paridade(cleaned_data.get('horario'), cleaned_data.get('paridade_ciclo'))
         return cleaned_data
+
+
+class AjustarMarcacaoForm(forms.ModelForm):
+    class Meta:
+        model = AjustePonto
+        fields = ['tipo_evento', 'horario_ajustado', 'motivo']
+        widgets = {'horario_ajustado': forms.TimeInput(attrs={'type': 'time'})}
 
 
 class FeriadoForm(forms.ModelForm):
