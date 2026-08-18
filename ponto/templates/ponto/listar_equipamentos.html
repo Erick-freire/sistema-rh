@@ -17,10 +17,31 @@
 
 <div style="display: flex; gap: 12px; margin-bottom: 16px;">
     <a href="{% url 'ponto:cadastrar_equipamento' %}" class="btn btn-novo">{% icon 'plus' %} Novo equipamento</a>
-    <form method="post" action="{% url 'ponto:sincronizar_todos' %}">
-        {% csrf_token %}
-        <button type="submit" class="btn-primario btn-novo">{% icon 'check-square' %} Sincronizar todos</button>
-    </form>
+    <a href="#sincronizar-todos" class="btn-primario btn-novo">{% icon 'check-square' %} Sincronizar todos</a>
+</div>
+
+<div class="modal-overlay" id="sincronizar-todos">
+    <div class="modal">
+        <div class="modal__header">
+            <span class="modal__title">Sincronizar todos os equipamentos</span>
+            <a href="#" class="modal__close" aria-label="Fechar">{% icon 'x' %}</a>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 16px;">
+            <strong>Enviar</strong>: manda pra todos os equipamentos quem está pendente de cadastro (pode demorar mais
+            se tiver muita pendência acumulada).<br>
+            <strong>Receber</strong>: só puxa as marcações novas de todos, sem mexer em cadastro -- geralmente rápido.
+        </p>
+        <div class="modal__footer">
+            <form method="post" action="{% url 'ponto:enviar_todos' %}" data-loading-form data-loading-message="Enviando cadastros pendentes de todos os equipamentos...">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline">{% icon 'check-square' %} Enviar todos</button>
+            </form>
+            <form method="post" action="{% url 'ponto:receber_todos' %}" data-loading-form data-loading-message="Recebendo marcações novas de todos os equipamentos...">
+                {% csrf_token %}
+                <button type="submit" class="btn-primario">{% icon 'download' %} Receber todos</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <div class="table-responsive desktop-only">
@@ -55,24 +76,33 @@
                 </td>
                 <td>{{ equipamento.ultima_comunicacao|default:'—' }}</td>
                 <td>
-                    <form method="post" action="{% url 'ponto:sincronizar_equipamento' equipamento.id %}" style="display:inline">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-outline btn-sm">{% icon 'check-square' %} Sincronizar</button>
-                    </form>
-                    <form method="post" action="{% url 'ponto:testar_conexao_equipamento' equipamento.id %}" style="display:inline">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-outline btn-sm">Testar conexão</button>
-                    </form>
+                    <a href="#sincronizar-{{ equipamento.id }}" class="btn-outline btn-sm">{% icon 'check-square' %} Sincronizar</a>
+                    <div class="modal-overlay" id="sincronizar-{{ equipamento.id }}">
+                        <div class="modal">
+                            <div class="modal__header">
+                                <span class="modal__title">Sincronizar {{ equipamento.nome }}</span>
+                                <a href="#" class="modal__close" aria-label="Fechar">{% icon 'x' %}</a>
+                            </div>
+                            <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 16px;">
+                                <strong>Enviar</strong>: manda cadastro pendente pro equipamento (pode demorar mais se
+                                tiver muita pendência acumulada).<br>
+                                <strong>Receber</strong>: só puxa as marcações novas, sem mexer em cadastro -- geralmente rápido.
+                            </p>
+                            <div class="modal__footer">
+                                <form method="post" action="{% url 'ponto:enviar_equipamento' equipamento.id %}"
+                                      data-loading-form data-loading-message="Enviando cadastros pendentes de {{ equipamento.nome }}...">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-outline">{% icon 'check-square' %} Enviar</button>
+                                </form>
+                                <form method="post" action="{% url 'ponto:receber_equipamento' equipamento.id %}"
+                                      data-loading-form data-loading-message="Recebendo marcações novas de {{ equipamento.nome }}...">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-primario">{% icon 'download' %} Receber</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
                     <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm">Editar</a>
-                    <form method="post" action="{% url 'ponto:alternar_status_equipamento' equipamento.id %}" style="display:inline">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-outline btn-sm">{% if equipamento.ativo %}Desativar{% else %}Ativar{% endif %}</button>
-                    </form>
-                    <form method="post" action="{% url 'ponto:excluir_equipamento' equipamento.id %}" style="display:inline"
-                          onsubmit="return confirm('Excluir \'{{ equipamento.nome }}\'? Só funciona se ele nunca tiver coletado marcações.');">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-outline btn-sm">Excluir</button>
-                    </form>
                 </td>
             </tr>
             {% empty %}

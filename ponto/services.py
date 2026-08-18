@@ -1,11 +1,18 @@
 import hashlib
 
-from django.db import transaction
+from django.db import close_old_connections, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import controlid_client as client
 from .controlid_client import ControlIdAPIError, ControlIdTimeoutError, ControlIdUsuarioNaoEncontradoError
 from .models import Equipamento, MarcacaoRelogio, SincronizacaoFuncionario
+
+# Acima disso, um erro que continua repetindo (ex.: relógio configurado por
+# PIS, mas só temos o CPF de quem é novo) provavelmente não é passageiro --
+# retentar sem limite em toda sincronização só desperdiça tempo tentando de
+# novo dezenas ou centenas de pendências que nunca vão vingar sozinhas.
+LIMITE_TENTATIVAS_AUTOMATICAS = 5
 
 
 def _hash_dados_funcionario(funcionario):
@@ -164,13 +171,24 @@ def processar_pendencias(equipamento=None):
     processadas = 0
     sucesso = 0
 
-    pendencias = SincronizacaoFuncionario.objects.filter(status__in=['pendente', 'erro'])
+    pendencias = SincronizacaoFuncionario.objects.filter(
+        Q(status='pendente') | Q(status='erro', tentativas__lt=LIMITE_TENTATIVAS_AUTOMATICAS)
+    )
     if equipamento is not None:
         pendencias = pendencias.filter(equipamento=equipamento)
 
     ids_pendentes = list(pendencias.values_list('id', flat=True))
 
     for sincronizacao_id in ids_pendentes:
+        # Cada pendência pode envolver uma chamada lenta a um equipamento --
+        # numa execução via management command (sem o ciclo de
+        # request/response do Django cuidando disso sozinho), a conexão com o
+        # banco pode ficar tempo demais ociosa e cair ("MySQL server has gone
+        # away") antes da próxima iteração. `in_atomic_block` evita mexer na
+        # conexão quando já estamos dentro de uma transação (ex.: os testes,
+        # que envolvem cada teste numa transação própria para dar rollback).
+        if not connection.in_atomic_block:
+            close_old_connections()
         with transaction.atomic():
             sincronizacao = (
                 SincronizacaoFuncionario.objects
@@ -186,17 +204,6 @@ def processar_pendencias(equipamento=None):
                 sucesso += 1
 
     return processadas, sucesso
-
-
-def sincronizar_equipamento_completo(equipamento):
-    """
-    Ação por trás do botão único "Sincronizar": envia os cadastros pendentes
-    (Enviar) e puxa as marcações novas (Receber) num clique só -- mesmo
-    conceito do "Enviar e Receber" do Secullum.
-    """
-    processadas, sucesso = processar_pendencias(equipamento=equipamento)
-    marcacoes_novas = coletar_marcacoes(equipamento)
-    return processadas, sucesso, marcacoes_novas
 
 
 def coletar_marcacoes(equipamento):

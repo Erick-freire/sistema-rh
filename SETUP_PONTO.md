@@ -81,9 +81,11 @@ Pela tela de Equipamentos, clicar em **"Sincronizar"** em cada relógio (ou
 histórico completo de marcações de cada equipamento (idempotente, pode
 rodar quantas vezes quiser).
 
-Para automatizar isso em produção, agendar via Task Scheduler do Windows:
+Por enquanto a sincronização é sempre manual, pela tela de Equipamentos.
+Os dois comandos abaixo existem e funcionam (dá pra rodar pelo terminal se
+precisar), mas não há nada agendado automaticamente:
 
 ```
-python manage.py sincronizar_pendencias_control_id
 python manage.py coletar_marcacoes_control_id
+python manage.py sincronizar_pendencias_control_id
 ```
