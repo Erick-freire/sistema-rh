@@ -1,6 +1,8 @@
 from django.shortcuts import redirect
 from django.urls import reverse
 
+from .models import Usuario
+
 
 class SenhaProvisoriaMiddleware:
     def __init__(self, get_response):
@@ -14,7 +16,7 @@ class SenhaProvisoriaMiddleware:
 
                 if usuario.senha_provisoria and request.path not in rotas_permitidas:
                     return redirect('trocar_senha')
-            except request.user.usuario.__class__.DoesNotExist:
+            except Usuario.DoesNotExist:
                 pass
 
         return self.get_response(request)

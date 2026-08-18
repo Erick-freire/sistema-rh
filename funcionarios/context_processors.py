@@ -1,4 +1,4 @@
-from .models import SolicitacaoFerias
+from .models import SolicitacaoFerias, Usuario
 
 
 def usuario_logado(request):
@@ -7,7 +7,7 @@ def usuario_logado(request):
 
     try:
         usuario = request.user.usuario
-    except request.user.usuario.__class__.DoesNotExist:
+    except Usuario.DoesNotExist:
         return {'usuario_atual': None}
 
     contexto = {'usuario_atual': usuario}
