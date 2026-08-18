@@ -600,6 +600,22 @@ class Horario12x36Tests(TestCase):
         self.assertEqual(jornada.paridade_ciclo, 'par')  # troca de time explícita respeitada
 
 
+class ImportarJornadasSecullumHelpersTests(TestCase):
+    """Normalização usada pelo comando pra casar funcionário do RH com o do Secullum (CPF/nome)."""
+
+    def test_so_digitos_remove_pontuacao_do_cpf(self):
+        from ponto.management.commands.importar_jornadas_secullum import _so_digitos
+
+        self.assertEqual(_so_digitos('401.446.661-20'), '40144666120')
+        self.assertEqual(_so_digitos(None), '')
+
+    def test_normaliza_nome_ignora_acento_caixa_e_espaco_duplo(self):
+        from ponto.management.commands.importar_jornadas_secullum import _normaliza_nome
+
+        self.assertEqual(_normaliza_nome('José  da Conceição'), 'JOSE DA CONCEICAO')
+        self.assertEqual(_normaliza_nome(' Maria Antônia '), 'MARIA ANTONIA')
+
+
 class EnfileirarFuncionariosExistentesTests(TestCase):
     """
     Funcionários que já existiam antes do módulo de Ponto ser instalado não
