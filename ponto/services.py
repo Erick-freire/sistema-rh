@@ -1,11 +1,18 @@
 import hashlib
 
-from django.db import transaction
+from django.db import close_old_connections, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import controlid_client as client
 from .controlid_client import ControlIdAPIError, ControlIdTimeoutError, ControlIdUsuarioNaoEncontradoError
 from .models import Equipamento, MarcacaoRelogio, SincronizacaoFuncionario
+
+# Acima disso, um erro que continua repetindo (ex.: relógio configurado por
+# PIS, mas só temos o CPF de quem é novo) provavelmente não é passageiro --
+# retentar sem limite em toda sincronização só desperdiça tempo tentando de
+# novo dezenas ou centenas de pendências que nunca vão vingar sozinhas.
+LIMITE_TENTATIVAS_AUTOMATICAS = 5
 
 
 def _hash_dados_funcionario(funcionario):
@@ -73,18 +80,28 @@ def testar_conexao(equipamento):
 
 
 def _cadastrar_ou_atualizar(equipamento, session, sincronizacao):
+    """
+    Usa o identificador já registrado no equipamento (`id_usuario_dispositivo`)
+    quando ele existe -- alguns cadastros vieram do Secullum usando o PIS em
+    vez do CPF como chave (ex.: equipamento ADM); se atualizássemos sempre
+    pelo CPF do funcionário, um PIS-cadastrado receberia "usuário não
+    encontrado", cairia no add_user, e duplicaria o cadastro dele sem a
+    biometria já capturada. Só usa o CPF quando ainda não sabemos o
+    identificador de verdade (primeiro cadastro).
+    """
     funcionario = sincronizacao.funcionario
-    cpf = funcionario.cpf
+    identificador = sincronizacao.id_usuario_dispositivo or funcionario.cpf
 
     try:
-        client.update_user(equipamento, session, cpf, funcionario.nome)
+        client.update_user(equipamento, session, identificador, funcionario.nome)
     except ControlIdUsuarioNaoEncontradoError:
-        client.add_user(equipamento, session, cpf, funcionario.nome)
+        identificador = funcionario.cpf
+        client.add_user(equipamento, session, identificador, funcionario.nome)
 
-    usuario_no_equipamento = client.buscar_usuario_por_cpf(equipamento, session, cpf)
+    usuario_no_equipamento = client.buscar_usuario_por_cpf(equipamento, session, identificador)
     tem_biometria = bool(usuario_no_equipamento and usuario_no_equipamento.get('templates_count'))
 
-    sincronizacao.id_usuario_dispositivo = cpf
+    sincronizacao.id_usuario_dispositivo = identificador
     sincronizacao.status = 'sincronizado' if tem_biometria else 'aguardando_biometria'
     sincronizacao.hash_dados_sincronizados = _hash_dados_funcionario(funcionario)
 
@@ -95,12 +112,16 @@ def _desativar(equipamento, session, sincronizacao):
     marcações por biometria/cartão) sem tocar no histórico já coletado --
     MarcacaoRelogio tem FK protegida, não é afetada por isto.
 
+    Usa `id_usuario_dispositivo` (pode ser PIS, não só CPF -- ver
+    `_cadastrar_ou_atualizar`) quando já conhecido, senão tenta pelo CPF.
+
     NOTA: equipamentos REP homologados pela Portaria 671 costumam ser
     obrigados a aceitar marcação manual mesmo sem cadastro -- confirmar esse
     detalhe legal antes de depender só disto para "bloquear" o funcionário.
     """
+    identificador = sincronizacao.id_usuario_dispositivo or sincronizacao.funcionario.cpf
     try:
-        client.remove_user(equipamento, session, sincronizacao.funcionario.cpf)
+        client.remove_user(equipamento, session, identificador)
     except ControlIdUsuarioNaoEncontradoError:
         pass  # já não existia no equipamento -- objetivo alcançado de qualquer forma
 
@@ -150,13 +171,24 @@ def processar_pendencias(equipamento=None):
     processadas = 0
     sucesso = 0
 
-    pendencias = SincronizacaoFuncionario.objects.filter(status__in=['pendente', 'erro'])
+    pendencias = SincronizacaoFuncionario.objects.filter(
+        Q(status='pendente') | Q(status='erro', tentativas__lt=LIMITE_TENTATIVAS_AUTOMATICAS)
+    )
     if equipamento is not None:
         pendencias = pendencias.filter(equipamento=equipamento)
 
     ids_pendentes = list(pendencias.values_list('id', flat=True))
 
     for sincronizacao_id in ids_pendentes:
+        # Cada pendência pode envolver uma chamada lenta a um equipamento --
+        # numa execução via management command (sem o ciclo de
+        # request/response do Django cuidando disso sozinho), a conexão com o
+        # banco pode ficar tempo demais ociosa e cair ("MySQL server has gone
+        # away") antes da próxima iteração. `in_atomic_block` evita mexer na
+        # conexão quando já estamos dentro de uma transação (ex.: os testes,
+        # que envolvem cada teste numa transação própria para dar rollback).
+        if not connection.in_atomic_block:
+            close_old_connections()
         with transaction.atomic():
             sincronizacao = (
                 SincronizacaoFuncionario.objects
@@ -172,17 +204,6 @@ def processar_pendencias(equipamento=None):
                 sucesso += 1
 
     return processadas, sucesso
-
-
-def sincronizar_equipamento_completo(equipamento):
-    """
-    Ação por trás do botão único "Sincronizar": envia os cadastros pendentes
-    (Enviar) e puxa as marcações novas (Receber) num clique só -- mesmo
-    conceito do "Enviar e Receber" do Secullum.
-    """
-    processadas, sucesso = processar_pendencias(equipamento=equipamento)
-    marcacoes_novas = coletar_marcacoes(equipamento)
-    return processadas, sucesso, marcacoes_novas
 
 
 def coletar_marcacoes(equipamento):

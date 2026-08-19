@@ -13,6 +13,11 @@
 </head>
 <body>
 
+<div class="overlay-carregando" id="overlay-carregando">
+    <div class="overlay-carregando__spinner"></div>
+    <div class="overlay-carregando__texto" id="overlay-carregando-texto">Processando...</div>
+</div>
+
 {% if usuario_atual %}
 <input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
 <label for="menu-toggle" class="menu-toggle-label" aria-label="Abrir menu">{% icon 'menu' %}</label>

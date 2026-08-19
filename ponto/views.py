@@ -124,49 +124,56 @@ def excluir_equipamento_view(request, equipamento_id):
 
 @login_required
 @papel_required('rh')
-def sincronizar_equipamento_view(request, equipamento_id):
+def enviar_equipamento_view(request, equipamento_id):
     """
-    Botão único "Sincronizar": envia cadastros pendentes e puxa marcações
-    novas num clique só -- sem detalhe por funcionário na tela, só o
-    resultado resumido.
+    "Enviar": só processa os cadastros pendentes desse equipamento (igual ao
+    Enviar do Secullum) -- separado de "Receber" pra quem só quer ver as
+    marcações novas não precisar esperar o envio de cadastro, que pode
+    demorar bem mais quando tem muita pendência acumulada.
     """
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
-    processadas, sucesso, marcacoes_novas = services.sincronizar_equipamento_completo(equipamento)
+    processadas, sucesso = services.processar_pendencias(equipamento=equipamento)
 
-    resumo = f'{marcacoes_novas} marcação(ões) nova(s)'
-    if processadas:
-        resumo += f', {sucesso}/{processadas} cadastro(s) enviado(s)'
-
-    if processadas and sucesso < processadas:
-        messages.error(request, f'"{equipamento.nome}": {resumo}. Cadastros com falha serão tentados de novo automaticamente.')
+    if not processadas:
+        messages.success(request, f'"{equipamento.nome}": nenhum cadastro pendente.')
+    elif sucesso < processadas:
+        messages.error(request, f'"{equipamento.nome}": {sucesso}/{processadas} cadastro(s) enviado(s). O restante será tentado de novo automaticamente.')
     else:
-        messages.success(request, f'"{equipamento.nome}": {resumo}.')
+        messages.success(request, f'"{equipamento.nome}": {sucesso}/{processadas} cadastro(s) enviado(s).')
 
     return redirect('ponto:listar_equipamentos')
 
 
 @login_required
 @papel_required('rh')
-def sincronizar_todos_view(request):
-    total_marcacoes = 0
-    total_processadas = 0
-    total_sucesso = 0
+def receber_equipamento_view(request, equipamento_id):
+    """"Receber": só puxa as marcações novas desse equipamento (igual ao Receber do Secullum)."""
+    equipamento = get_object_or_404(Equipamento, id=equipamento_id)
+    marcacoes_novas = services.coletar_marcacoes(equipamento)
+    messages.success(request, f'"{equipamento.nome}": {marcacoes_novas} marcação(ões) nova(s).')
+    return redirect('ponto:listar_equipamentos')
 
-    for equipamento in Equipamento.objects.filter(ativo=True):
-        processadas, sucesso, marcacoes_novas = services.sincronizar_equipamento_completo(equipamento)
-        total_marcacoes += marcacoes_novas
-        total_processadas += processadas
-        total_sucesso += sucesso
 
-    resumo = f'{total_marcacoes} marcação(ões) nova(s)'
-    if total_processadas:
-        resumo += f', {total_sucesso}/{total_processadas} cadastro(s) enviado(s)'
+@login_required
+@papel_required('rh')
+def enviar_todos_view(request):
+    processadas, sucesso = services.processar_pendencias()
 
-    if total_processadas and total_sucesso < total_processadas:
-        messages.error(request, f'{resumo}. Alguns cadastros ficaram em erro e serão tentados de novo automaticamente.')
+    if not processadas:
+        messages.success(request, 'Nenhum cadastro pendente.')
+    elif sucesso < processadas:
+        messages.error(request, f'{sucesso}/{processadas} cadastro(s) enviado(s). O restante será tentado de novo automaticamente.')
     else:
-        messages.success(request, resumo + '.')
+        messages.success(request, f'{sucesso}/{processadas} cadastro(s) enviado(s).')
 
+    return redirect('ponto:listar_equipamentos')
+
+
+@login_required
+@papel_required('rh')
+def receber_todos_view(request):
+    total_marcacoes = sum(services.coletar_marcacoes(e) for e in Equipamento.objects.filter(ativo=True))
+    messages.success(request, f'{total_marcacoes} marcação(ões) nova(s).')
     return redirect('ponto:listar_equipamentos')
 
 

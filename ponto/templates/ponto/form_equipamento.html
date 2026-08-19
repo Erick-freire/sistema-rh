@@ -72,4 +72,25 @@
         </div>
     </form>
 </div>
+
+{% if equipamento %}
+<div class="card">
+    <div class="card__title" style="margin-bottom: 12px;">Outras ações</div>
+    <div style="display: flex; gap: 12px;">
+        <form method="post" action="{% url 'ponto:testar_conexao_equipamento' equipamento.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline">Testar conexão</button>
+        </form>
+        <form method="post" action="{% url 'ponto:alternar_status_equipamento' equipamento.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline">{% if equipamento.ativo %}Desativar{% else %}Ativar{% endif %}</button>
+        </form>
+        <form method="post" action="{% url 'ponto:excluir_equipamento' equipamento.id %}"
+              onsubmit="return confirm('Excluir \'{{ equipamento.nome }}\'? Só funciona se ele nunca tiver coletado marcações.');">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline">Excluir</button>
+        </form>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

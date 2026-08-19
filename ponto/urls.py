@@ -11,8 +11,10 @@ urlpatterns = [
     path('equipamentos/<int:equipamento_id>/testar-conexao/', views.testar_conexao_equipamento_view, name='testar_conexao_equipamento'),
     path('equipamentos/<int:equipamento_id>/alternar-status/', views.alternar_status_equipamento_view, name='alternar_status_equipamento'),
     path('equipamentos/<int:equipamento_id>/excluir/', views.excluir_equipamento_view, name='excluir_equipamento'),
-    path('equipamentos/sincronizar-todos/', views.sincronizar_todos_view, name='sincronizar_todos'),
-    path('equipamentos/<int:equipamento_id>/sincronizar/', views.sincronizar_equipamento_view, name='sincronizar_equipamento'),
+    path('equipamentos/enviar-todos/', views.enviar_todos_view, name='enviar_todos'),
+    path('equipamentos/receber-todos/', views.receber_todos_view, name='receber_todos'),
+    path('equipamentos/<int:equipamento_id>/enviar/', views.enviar_equipamento_view, name='enviar_equipamento'),
+    path('equipamentos/<int:equipamento_id>/receber/', views.receber_equipamento_view, name='receber_equipamento'),
 
     path('marcacoes/', views.listar_marcacoes_view, name='listar_marcacoes'),
 

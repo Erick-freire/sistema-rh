@@ -25,7 +25,11 @@ from django.utils.dateparse import parse_datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 TIMEOUT_CONEXAO = 5
-TIMEOUT_LEITURA = 30  # get_afd pode devolver bastante texto de uma vez
+# get_afd pode devolver bastante texto de uma vez -- em equipamentos com muita
+# gente cadastrada (ex.: relógio da Farinha, 641 cadastros) já vimos o
+# get_afd levar mais de 100s pra responder, então o antigo limite de 30s
+# dava timeout antes de terminar.
+TIMEOUT_LEITURA = 150
 
 MODE_671 = '671'  # ativa o dialeto CPF (em vez de PIS) exigido pela Portaria 671
 

@@ -153,6 +153,28 @@ class CadastroNoEquipamentoTests(TestCase):
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.status, 'aguardando_biometria')
 
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_erro_que_esgotou_tentativas_para_de_ser_retentado_sozinho(self, mock_login):
+        """
+        Erro de formato (ex.: equipamento cadastrado por PIS, funcionário só
+        tem CPF) nunca vai se resolver sozinho de tentativa em tentativa --
+        sem esse limite, toda sincronização perde tempo tentando de novo
+        pendências que já provaram que não vão vingar.
+        """
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario()
+        sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
+        sincronizacao.status = 'erro'
+        sincronizacao.tentativas = 5
+        sincronizacao.save()
+
+        processadas, sucesso = processar_pendencias()
+
+        self.assertEqual(processadas, 0)
+        mock_login.assert_not_called()
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.tentativas, 5)
+
     @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 0})
     @patch('ponto.services.client.add_user')
     @patch('ponto.services.client.update_user')  # não levanta exceção: CPF já existe no equipamento
@@ -168,6 +190,56 @@ class CadastroNoEquipamentoTests(TestCase):
 
         mock_update.assert_called_once_with(equipamento, 'sessao-fake', funcionario.cpf, funcionario.nome)
         mock_add.assert_not_called()
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.id_usuario_dispositivo, funcionario.cpf)
+
+    @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 2})
+    @patch('ponto.services.client.update_user')
+    @patch('ponto.services.client.add_user')
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_atualiza_pelo_identificador_ja_conhecido_no_equipamento_nao_pelo_cpf(
+        self, mock_login, mock_add, mock_update, mock_buscar,
+    ):
+        """
+        Gente cadastrada no equipamento pelo Secullum antes deste sistema
+        existir pode estar lá pelo PIS, não pelo CPF (comum no relógio ADM).
+        Uma vez que sabemos disso (id_usuario_dispositivo preenchido por uma
+        reconciliação), a atualização tem que usar esse identificador -- usar
+        o CPF aqui devolveria "não encontrado" e duplicaria o cadastro sem a
+        biometria já capturada.
+        """
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario()
+        pis = '12345678901'
+        sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
+        sincronizacao.id_usuario_dispositivo = pis
+        sincronizacao.status = 'sincronizado'
+        sincronizacao.save()
+
+        sincronizar_funcionario_no_equipamento(sincronizacao)
+
+        mock_update.assert_called_once_with(equipamento, 'sessao-fake', pis, funcionario.nome)
+        mock_add.assert_not_called()
+        sincronizacao.refresh_from_db()
+        self.assertEqual(sincronizacao.id_usuario_dispositivo, pis)  # continua o mesmo, não vira o CPF
+
+    @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 0})
+    @patch('ponto.services.client.update_user', side_effect=ControlIdUsuarioNaoEncontradoError('Usuário não encontrado'))
+    @patch('ponto.services.client.add_user')
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_identificador_desatualizado_cai_para_cadastro_novo_pelo_cpf(
+        self, mock_login, mock_add, mock_update, mock_buscar,
+    ):
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario()
+        sincronizacao = SincronizacaoFuncionario.objects.get(funcionario=funcionario, equipamento=equipamento)
+        sincronizacao.id_usuario_dispositivo = '00000000000'  # identificador errado/obsoleto
+        sincronizacao.save()
+
+        sincronizar_funcionario_no_equipamento(sincronizacao)
+
+        mock_update.assert_called_once_with(equipamento, 'sessao-fake', '00000000000', funcionario.nome)
+        mock_add.assert_called_once_with(equipamento, 'sessao-fake', funcionario.cpf, funcionario.nome)
         sincronizacao.refresh_from_db()
         self.assertEqual(sincronizacao.id_usuario_dispositivo, funcionario.cpf)
 
@@ -411,11 +483,12 @@ class CadastroFuncionarioComJornadaTests(TestCase):
         self.assertFalse(Funcionario.objects.filter(cpf='55555555556').exists())
 
 
-class SincronizarBotaoUnicoTests(TestCase):
+class EnviarReceberBotoesTests(TestCase):
     """
-    Botão "Sincronizar" na própria tela de Equipamentos: um clique só faz
-    envio de cadastro pendente + coleta de marcações, sem tela separada e
-    sem detalhe por funcionário (pedido explícito depois de ver o Secullum).
+    Botões separados "Enviar" (cadastro pendente) e "Receber" (marcações) na
+    tela de Equipamentos -- igual ao Enviar/Receber do Secullum, pra quem só
+    quer as marcações não precisar esperar o envio de cadastro (que pode
+    demorar bem mais quando tem muita pendência acumulada).
     """
 
     def setUp(self):
@@ -425,40 +498,67 @@ class SincronizarBotaoUnicoTests(TestCase):
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')
 
-    @patch('ponto.services.client.get_afd', return_value='')
+    def _linha_afd(self, nsr, cpf, momento_iso):
+        return f'{nsr:09d}3{momento_iso}9{cpf}abcd'
+
     @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 0})
     @patch('ponto.services.client.add_user')
     @patch('ponto.services.client.update_user', side_effect=ControlIdUsuarioNaoEncontradoError('Usuário não encontrado'))
     @patch('ponto.services.client.login', return_value='sessao-fake')
-    def test_sincronizar_equipamento_resolve_so_daquele_equipamento(self, mock_login, mock_update, mock_add, mock_buscar, mock_afd):
+    def test_enviar_equipamento_resolve_so_daquele_equipamento(self, mock_login, mock_update, mock_add, mock_buscar):
         eq1 = _criar_equipamento(nome='Equip 1', ip='192.168.1.51')
         eq2 = _criar_equipamento(nome='Equip 2', ip='192.168.1.52')
         _criar_funcionario(cpf='33333333333')  # pendente nos dois equipamentos
 
-        resposta = self.client.post(reverse('ponto:sincronizar_equipamento', args=[eq1.id]))
+        resposta = self.client.post(reverse('ponto:enviar_equipamento', args=[eq1.id]))
 
         self.assertRedirects(resposta, reverse('ponto:listar_equipamentos'))
-        self.assertEqual(
-            SincronizacaoFuncionario.objects.get(equipamento=eq1).status, 'aguardando_biometria'
-        )
-        self.assertEqual(
-            SincronizacaoFuncionario.objects.get(equipamento=eq2).status, 'pendente'
-        )
+        self.assertEqual(SincronizacaoFuncionario.objects.get(equipamento=eq1).status, 'aguardando_biometria')
+        self.assertEqual(SincronizacaoFuncionario.objects.get(equipamento=eq2).status, 'pendente')
 
-    @patch('ponto.services.client.get_afd', return_value='')
     @patch('ponto.services.client.buscar_usuario_por_cpf', return_value={'templates_count': 0})
     @patch('ponto.services.client.add_user')
     @patch('ponto.services.client.update_user', side_effect=ControlIdUsuarioNaoEncontradoError('Usuário não encontrado'))
     @patch('ponto.services.client.login', return_value='sessao-fake')
-    def test_sincronizar_todos_resolve_todos_os_equipamentos(self, mock_login, mock_update, mock_add, mock_buscar, mock_afd):
+    def test_enviar_todos_resolve_todos_os_equipamentos(self, mock_login, mock_update, mock_add, mock_buscar):
         _criar_equipamento(nome='Equip 1', ip='192.168.1.51')
         _criar_equipamento(nome='Equip 2', ip='192.168.1.52')
         _criar_funcionario(cpf='33333333333')
 
-        resposta = self.client.post(reverse('ponto:sincronizar_todos'))
+        resposta = self.client.post(reverse('ponto:enviar_todos'))
 
         self.assertRedirects(resposta, reverse('ponto:listar_equipamentos'))
         self.assertEqual(SincronizacaoFuncionario.objects.filter(status='aguardando_biometria').count(), 2)
+
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_receber_equipamento_coleta_so_daquele_equipamento(self, mock_login):
+        eq1 = _criar_equipamento(nome='Equip 1', ip='192.168.1.51')
+        eq2 = _criar_equipamento(nome='Equip 2', ip='192.168.1.52')
+        funcionario = _criar_funcionario(cpf='33333333333')
+        texto = self._linha_afd(1, '33333333333', '2026-08-16T08:00:00-0300')
+
+        with patch('ponto.services.client.get_afd', return_value=texto):
+            resposta = self.client.post(reverse('ponto:receber_equipamento', args=[eq1.id]))
+
+        self.assertRedirects(resposta, reverse('ponto:listar_equipamentos'))
+        self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=eq1, funcionario=funcionario).count(), 1)
+        self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=eq2).count(), 0)
+        # "Receber" não mexe em cadastro pendente -- continua tudo pendente.
+        self.assertEqual(SincronizacaoFuncionario.objects.get(equipamento=eq1).status, 'pendente')
+
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_receber_todos_coleta_de_todos_os_equipamentos(self, mock_login):
+        eq1 = _criar_equipamento(nome='Equip 1', ip='192.168.1.51')
+        eq2 = _criar_equipamento(nome='Equip 2', ip='192.168.1.52')
+        _criar_funcionario(cpf='33333333333')
+        texto = self._linha_afd(1, '33333333333', '2026-08-16T08:00:00-0300')
+
+        with patch('ponto.services.client.get_afd', return_value=texto):
+            resposta = self.client.post(reverse('ponto:receber_todos'))
+
+        self.assertRedirects(resposta, reverse('ponto:listar_equipamentos'))
+        self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=eq1).count(), 1)
+        self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=eq2).count(), 1)
 
     def test_tela_de_equipamentos_nao_mostra_nome_de_funcionario(self):
         _criar_equipamento()
@@ -614,6 +714,22 @@ class ImportarJornadasSecullumHelpersTests(TestCase):
 
         self.assertEqual(_normaliza_nome('José  da Conceição'), 'JOSE DA CONCEICAO')
         self.assertEqual(_normaliza_nome(' Maria Antônia '), 'MARIA ANTONIA')
+
+
+class ReconciliarFuncionariosEquipamentoHelpersTests(TestCase):
+    """Normalização usada pra casar o cadastro já existente no equipamento com o funcionário do RH."""
+
+    def test_so_digitos_remove_prefixo_estranho_do_secullum(self):
+        from ponto.management.commands.reconciliar_funcionarios_equipamento import _so_digitos
+
+        # Visto de verdade no Secullum: cpf/n_pis com um "d" grudado na frente.
+        self.assertEqual(_so_digitos('d15524110520'), '15524110520')
+        self.assertEqual(_so_digitos(15524110520), '15524110520')
+
+    def test_normaliza_nome(self):
+        from ponto.management.commands.reconciliar_funcionarios_equipamento import _normaliza_nome
+
+        self.assertEqual(_normaliza_nome('João  Vitor'), 'JOAO VITOR')
 
 
 class EnfileirarFuncionariosExistentesTests(TestCase):
