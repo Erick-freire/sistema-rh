@@ -14,6 +14,16 @@ Férias
     {% endfor %}
 {% endif %}
 
+{% if aviso_pendente %}
+<div class="alert alert--aviso">
+    {% if tem_ativa %}
+    Seu gestor foi avisado que suas férias vencem em {{ funcionario.proxima_data_vencimento|date:"d/m/Y" }} (restam {{ funcionario.dias_pendentes_ferias }} dia(s) para tirar). Assim que sua solicitação atual for concluída, você poderá solicitar direto ao RH.
+    {% else %}
+    Seu gestor já foi avisado que suas férias vencem em {{ funcionario.proxima_data_vencimento|date:"d/m/Y" }} — restam {{ funcionario.dias_pendentes_ferias }} dia(s) para tirar. Sua solicitação abaixo vai direto para o RH.
+    {% endif %}
+</div>
+{% endif %}
+
 {% if solicitacao_ativa.status == 'sugestao_gestor' %}
 <div class="card" style="border-left: 3px solid var(--color-accent);">
     <span class="badge-status badge-status--sugestao">Gestor sugeriu alteração</span>

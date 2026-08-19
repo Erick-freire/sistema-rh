@@ -121,6 +121,8 @@ def dashboard_view(request):
         total_obrigatorios = len(tipos_obrigatorios)
 
         solicitacao_ferias = funcionario.solicitacoes_ferias.order_by('-criado_em').first()
+        tem_ativa = funcionario.solicitacoes_ferias.exclude(status__in=['aprovada', 'adiada']).exists()
+        aviso_pendente = funcionario.aviso_ferias_pendente_acao()
 
         return render(request, 'funcionarios/colaborador/dashboard.html', {
             'funcionario': funcionario,
@@ -128,6 +130,9 @@ def dashboard_view(request):
             'total_obrigatorios': total_obrigatorios,
             'total_enviados': total_obrigatorios - len(tipos_pendentes),
             'solicitacao_ferias': solicitacao_ferias,
+            'hoje': timezone.now().date(),
+            'tem_ativa': tem_ativa,
+            'aviso_pendente': aviso_pendente,
         })
 
     return dashboard_rh_view(request)
@@ -301,10 +306,12 @@ def meus_documentos_view(request):
 @papel_required('rh', 'gestor')
 def listar_funcionarios_view(request):
     usuario = request.user.usuario
+    tem_acesso_total = usuario.papel == 'rh' or usuario.acesso_rh
+    escopo = request.GET.get('escopo', 'todos') if tem_acesso_total else 'meu_setor'
     status_filtro = request.GET.get('status', 'ativo')
     busca = request.GET.get('busca', '').strip()
 
-    if usuario.papel == 'rh':
+    if tem_acesso_total and escopo == 'todos':
         base_qs = Funcionario.objects.all()
     else:
         base_qs = Funcionario.objects.filter(setor=usuario.funcionario.setor)
@@ -338,6 +345,8 @@ def listar_funcionarios_view(request):
         'contagem_ativos': contagem_ativos,
         'contagem_pendentes': contagem_pendentes,
         'contagem_inativos': contagem_inativos,
+        'tem_acesso_total': tem_acesso_total,
+        'escopo': escopo,
     })
 
 
@@ -398,7 +407,7 @@ def detalhe_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
+    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para ver este funcionário.')
         return redirect('listar_funcionarios')
 
@@ -430,7 +439,7 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and funcionario.setor != usuario.funcionario.setor:
+    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('listar_funcionarios')
 
@@ -496,23 +505,33 @@ def solicitar_ferias_view(request):
     solicitacoes = funcionario.solicitacoes_ferias.all().order_by('-criado_em')
     solicitacao_ativa = solicitacoes.exclude(status__in=['aprovada', 'adiada']).first()
     tem_ativa = solicitacao_ativa is not None
+    aviso_pendente = funcionario.aviso_ferias_pendente_acao()
 
     if request.method == 'POST' and not tem_ativa:
         form = SolicitarFeriasForm(request.POST)
         if form.is_valid():
             solicitacao = form.save(commit=False)
             solicitacao.funcionario = funcionario
-            solicitacao.save()
-            messages.success(request, 'Solicitação de férias enviada ao seu gestor.')
+            if funcionario.eh_gestor or aviso_pendente:
+                solicitacao.status = 'pendente_rh'
+                if aviso_pendente:
+                    solicitacao.aviso_origem = aviso_pendente
+                solicitacao.save()
+                messages.success(request, 'Solicitação de férias enviada diretamente ao RH.')
+            else:
+                solicitacao.save()
+                messages.success(request, 'Solicitação de férias enviada ao seu gestor.')
             return redirect('solicitar_ferias')
     else:
         form = SolicitarFeriasForm()
 
     return render(request, 'funcionarios/colaborador/ferias.html', {
         'form': form,
+        'funcionario': funcionario,
         'solicitacoes': solicitacoes,
         'solicitacao_ativa': solicitacao_ativa,
         'tem_ativa': tem_ativa,
+        'aviso_pendente': aviso_pendente,
     })
 
 
@@ -529,9 +548,14 @@ def aceitar_sugestao_ferias_view(request, solicitacao_id):
         solicitacao.dias_solicitados = solicitacao.dias_sugeridos
         solicitacao.data_sugerida = None
         solicitacao.dias_sugeridos = None
-        solicitacao.status = 'pendente_gestor'
-        solicitacao.save()
-        messages.success(request, 'Nova data aceita e enviada para análise do gestor.')
+        if solicitacao.funcionario.eh_gestor or solicitacao.aviso_origem_id:
+            solicitacao.status = 'pendente_rh'
+            solicitacao.save()
+            messages.success(request, 'Nova data aceita e enviada diretamente ao RH.')
+        else:
+            solicitacao.status = 'pendente_gestor'
+            solicitacao.save()
+            messages.success(request, 'Nova data aceita e enviada para análise do gestor.')
 
     return redirect('solicitar_ferias')
 
@@ -551,9 +575,14 @@ def propor_outra_data_ferias_view(request, solicitacao_id):
             solicitacao.dias_solicitados = form.cleaned_data['dias_solicitados']
             solicitacao.data_sugerida = None
             solicitacao.dias_sugeridos = None
-            solicitacao.status = 'pendente_gestor'
-            solicitacao.save()
-            messages.success(request, 'Nova data proposta e enviada para análise do gestor.')
+            if solicitacao.funcionario.eh_gestor or solicitacao.aviso_origem_id:
+                solicitacao.status = 'pendente_rh'
+                solicitacao.save()
+                messages.success(request, 'Nova data proposta e enviada diretamente ao RH.')
+            else:
+                solicitacao.status = 'pendente_gestor'
+                solicitacao.save()
+                messages.success(request, 'Nova data proposta e enviada para análise do gestor.')
             return redirect('solicitar_ferias')
     else:
         form = ProporOutraDataForm()
@@ -587,8 +616,8 @@ def adiar_ferias_view(request, solicitacao_id):
 def gestor_listar_ferias_view(request):
     usuario = request.user.usuario
 
-    solicitacoes = SolicitacaoFerias.objects.filter(status='pendente_gestor')
-    if usuario.papel == 'gestor':
+    solicitacoes = SolicitacaoFerias.objects.filter(status='pendente_gestor').exclude(funcionario=usuario.funcionario)
+    if usuario.papel == 'gestor' and not usuario.acesso_rh:
         solicitacoes = solicitacoes.filter(funcionario__setor=usuario.funcionario.setor)
 
     solicitacoes = solicitacoes.order_by('criado_em')
@@ -604,7 +633,11 @@ def gestor_aprovar_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
-    if usuario.papel == 'gestor' and solicitacao.funcionario.setor != usuario.funcionario.setor:
+    if solicitacao.funcionario == usuario.funcionario:
+        messages.error(request, 'Você não pode aprovar sua própria solicitação de férias. Ela é enviada direto ao RH.')
+        return redirect('gestor_listar_ferias')
+
+    if usuario.papel == 'gestor' and not usuario.acesso_rh and solicitacao.funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('gestor_listar_ferias')
 
@@ -623,13 +656,17 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
-    if usuario.papel == 'gestor' and solicitacao.funcionario.setor != usuario.funcionario.setor:
+    if solicitacao.funcionario == usuario.funcionario:
+        messages.error(request, 'Você não pode sugerir alteração na sua própria solicitação de férias. Ela é enviada direto ao RH.')
+        return redirect('gestor_listar_ferias')
+
+    if usuario.papel == 'gestor' and not usuario.acesso_rh and solicitacao.funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('gestor_listar_ferias')
 
     if request.method == 'POST':
         form = SugerirAlteracaoForm(request.POST)
-        if form.is_valid():
+        if form.is_valid() and solicitacao.status == 'pendente_gestor':
             solicitacao.data_sugerida = form.cleaned_data['data_sugerida']
             solicitacao.dias_sugeridos = form.cleaned_data['dias_sugeridos']
             solicitacao.observacao_gestor = form.cleaned_data['observacao_gestor']
@@ -647,15 +684,40 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
     })
 
 
-# ---------- Férias — RH ----------
+# ---------- Férias — Concluir (RH) e Avisos (gestor) ----------
 
 @login_required
-@papel_required('rh')
-def rh_listar_ferias_view(request):
-    solicitacoes = SolicitacaoFerias.objects.filter(status='pendente_rh').order_by('criado_em')
+@papel_required('gestor', 'rh')
+def concluir_ferias_view(request):
+    usuario = request.user.usuario
 
-    return render(request, 'funcionarios/rh/rh_listar_ferias.html', {
+    avisos = AvisoFerias.objects.all()
+    if usuario.papel == 'gestor':
+        avisos = avisos.filter(funcionario__setor__gestor=usuario.funcionario)
+    avisos = avisos.order_by('visualizado', '-criado_em')
+
+    pode_concluir = usuario.papel == 'rh' or usuario.acesso_rh
+    solicitacoes = (
+        SolicitacaoFerias.objects.filter(status='pendente_rh').order_by('criado_em')
+        if pode_concluir else SolicitacaoFerias.objects.none()
+    )
+
+    confirmadas_qs = SolicitacaoFerias.objects.filter(
+        status='aprovada', aviso_origem__isnull=False
+    ).select_related('funcionario')
+    if usuario.papel == 'gestor':
+        confirmadas_qs = confirmadas_qs.filter(funcionario__setor__gestor=usuario.funcionario)
+    hoje = timezone.now().date()
+    ferias_confirmadas = sorted(
+        (s for s in confirmadas_qs if s.data_fim >= hoje),
+        key=lambda s: s.data_solicitada
+    )
+
+    return render(request, 'funcionarios/rh/concluir_ferias.html', {
+        'avisos': avisos,
         'solicitacoes': solicitacoes,
+        'pode_concluir': pode_concluir,
+        'ferias_confirmadas': ferias_confirmadas,
     })
 
 
@@ -670,7 +732,7 @@ def rh_concluir_ferias_view(request, solicitacao_id):
         solicitacao.save()
         messages.success(request, 'Férias aprovadas e concluídas.')
 
-    return redirect('rh_listar_ferias')
+    return redirect('concluir_ferias')
 
 
 # ---------- Vencimento de Férias e Avisos ----------
@@ -705,6 +767,10 @@ def rh_vencimento_ferias_view(request):
 def criar_aviso_ferias_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
+    if funcionario.avisos_ferias.filter(solicitacoes_geradas__isnull=True).exists():
+        messages.error(request, 'Já existe um aviso em aberto para este funcionário.')
+        return redirect('rh_vencimento_ferias')
+
     if request.method == 'POST':
         form = AvisoFeriasForm(request.POST)
         if form.is_valid():
@@ -727,33 +793,17 @@ def criar_aviso_ferias_view(request, funcionario_id):
 
 @login_required
 @papel_required('gestor', 'rh')
-def gestor_avisos_ferias_view(request):
-    usuario = request.user.usuario
-
-    avisos = AvisoFerias.objects.all()
-    if usuario.papel == 'gestor':
-        avisos = avisos.filter(funcionario__setor=usuario.funcionario.setor)
-
-    avisos = avisos.order_by('visualizado', '-criado_em')
-
-    return render(request, 'funcionarios/rh/avisos_ferias.html', {
-        'avisos': avisos,
-    })
-
-
-@login_required
-@papel_required('gestor', 'rh')
 def marcar_aviso_visualizado_view(request, aviso_id):
     usuario = request.user.usuario
     aviso = get_object_or_404(AvisoFerias, id=aviso_id)
 
-    if usuario.papel == 'gestor' and aviso.funcionario.setor != usuario.funcionario.setor:
+    if usuario.papel == 'gestor' and aviso.funcionario.setor.gestor != usuario.funcionario:
         messages.error(request, 'Você não tem permissão para essa ação.')
-        return redirect('gestor_avisos_ferias')
+        return redirect('concluir_ferias')
 
     if not aviso.visualizado:
         aviso.visualizado = True
         aviso.visualizado_em = timezone.now()
         aviso.save()
 
-    return redirect('gestor_avisos_ferias')
+    return redirect('concluir_ferias')

@@ -1,0 +1,215 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Concluir Férias
+{% endblock %}
+
+{% block conteudo %}
+<h1>Concluir Férias</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+{% if pode_concluir %}
+<h2>Aguardando conclusão</h2>
+<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Férias aprovadas pelo gestor, aguardando conclusão do RH.</p>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Setor</th>
+                <th>Data</th>
+                <th>Dias</th>
+                <th>Aprovado por</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in solicitacoes %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+                        {{ s.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ s.funcionario.setor }}</td>
+                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
+                <td>{{ s.dias_solicitados }}</td>
+                <td>{{ s.analisado_por_gestor }}</td>
+                <td>
+                    <form method="post" action="{% url 'rh_concluir_ferias' s.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-primario btn-sm">Concluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhuma solicitação aguardando conclusão.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for s in solicitacoes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ s.funcionario.setor }} · mat. {{ s.funcionario.matricula }}</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 20px; font-size: 0.88rem;">
+            <div><span class="linha-dado__rotulo">Início</span><br><strong>{{ s.data_solicitada|date:"d/m/Y" }}</strong></div>
+            <div><span class="linha-dado__rotulo">Dias</span><br><strong>{{ s.dias_solicitados }}</strong></div>
+        </div>
+        <div style="font-size: 0.85rem; color: var(--color-text-muted);">
+            Aprovado por <strong>{{ s.analisado_por_gestor }}</strong> em {{ s.atualizado_em|date:"d/m/Y" }}
+        </div>
+        <form method="post" action="{% url 'rh_concluir_ferias' s.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primario btn-bloco">Concluir</button>
+        </form>
+    </div>
+    {% empty %}
+    <p>Nenhuma solicitação aguardando conclusão.</p>
+    {% endfor %}
+</div>
+{% endif %}
+
+<h2>Avisos de férias</h2>
+<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Comunicados do RH sobre férias próximas do vencimento do seu setor.</p>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Data prevista</th>
+                <th>Mensagem</th>
+                <th>Status</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for aviso in avisos %}
+            <tr>
+                <td>{{ aviso.funcionario.nome }}</td>
+                <td>{{ aviso.data_prevista|date:"d/m/Y" }}</td>
+                <td>{{ aviso.mensagem|default:"—" }}</td>
+                <td>
+                    {% if aviso.foi_atendido %}
+                    <span class="badge-status badge-status--aprovada">Solicitado</span>
+                    {% elif aviso.visualizado %}
+                    <span class="badge-status badge-status--ativo">Visualizado</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">Novo</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not aviso.visualizado %}
+                    <form method="post" action="{% url 'marcar_aviso_visualizado' aviso.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Marcar como visto</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">Nenhum aviso.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for aviso in avisos %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="item-card__titulo">{{ aviso.funcionario.nome }}</div>
+            {% if aviso.visualizado %}
+            <span class="badge-status badge-status--ativo">Visualizado</span>
+            {% else %}
+            <span class="badge-status badge-status--pendente">Novo</span>
+            {% endif %}
+        </div>
+        <div class="item-card__subtitulo">Previsto para {{ aviso.data_prevista|date:"d/m/Y" }}</div>
+        {% if aviso.mensagem %}<div style="font-size: 0.88rem;">{{ aviso.mensagem }}</div>{% endif %}
+        {% if not aviso.visualizado %}
+        <form method="post" action="{% url 'marcar_aviso_visualizado' aviso.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-bloco">Marcar como visto</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p>Nenhum aviso.</p>
+    {% endfor %}
+</div>
+
+<h2>Férias confirmadas</h2>
+<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Solicitações originadas de um aviso, já concluídas pelo RH, com data ainda futura ou em andamento.</p>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Setor</th>
+                <th>Início</th>
+                <th>Fim</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in ferias_confirmadas %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+                        {{ s.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ s.funcionario.setor }}</td>
+                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
+                <td>{{ s.data_fim|date:"d/m/Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4">Nenhuma férias confirmada no momento.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for s in ferias_confirmadas %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ s.funcionario.setor }}</div>
+            </div>
+        </div>
+        <div style="font-size: 0.88rem;">
+            Entra de férias de <strong>{{ s.data_solicitada|date:"d/m/Y" }}</strong> até <strong>{{ s.data_fim|date:"d/m/Y" }}</strong>
+        </div>
+    </div>
+    {% empty %}
+    <p>Nenhuma férias confirmada no momento.</p>
+    {% endfor %}
+</div>
+{% endblock %}

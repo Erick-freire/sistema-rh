@@ -11,6 +11,16 @@ Início
     {{ funcionario.cargo }} · {{ funcionario.setor }} · matrícula {{ funcionario.matricula }}
 </p>
 
+{% if aviso_pendente %}
+<div class="alert alert--aviso">
+    {% if tem_ativa %}
+    Seu gestor foi avisado que suas férias vencem em {{ funcionario.proxima_data_vencimento|date:"d/m/Y" }} (restam {{ funcionario.dias_pendentes_ferias }} dia(s) para tirar). Assim que sua solicitação atual for concluída, você poderá solicitar direto ao RH.
+    {% else %}
+    Seu gestor já foi avisado que suas férias vencem em {{ funcionario.proxima_data_vencimento|date:"d/m/Y" }} — restam {{ funcionario.dias_pendentes_ferias }} dia(s) para tirar. <a href="{% url 'solicitar_ferias' %}"><strong>Solicite agora</strong></a>, sua solicitação vai direto para o RH.
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="duas-colunas">
     <div class="card">
         <div class="card__header">
@@ -54,9 +64,15 @@ Início
                 {{ solicitacao_ferias.get_status_display }}
             </span>
         </p>
+        {% if solicitacao_ferias.status == 'aprovada' and solicitacao_ferias.data_fim >= hoje %}
+        <p style="margin: 12px 0 16px; font-size: 0.92rem;">
+            Suas férias estão marcadas de <strong>{{ solicitacao_ferias.data_solicitada|date:"d/m/Y" }}</strong> até <strong>{{ solicitacao_ferias.data_fim|date:"d/m/Y" }}</strong>.
+        </p>
+        {% else %}
         <p style="margin: 12px 0 16px; font-size: 0.92rem;">
             Pedido de <strong>{{ solicitacao_ferias.dias_solicitados }} dias</strong> a partir de {{ solicitacao_ferias.data_solicitada|date:"d/m/Y" }}, enviado em {{ solicitacao_ferias.criado_em|date:"d/m" }}.
         </p>
+        {% endif %}
         <a href="{% url 'solicitar_ferias' %}" class="btn btn-outline">Ver solicitação</a>
         {% else %}
         <p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 16px;">Você ainda não tem nenhuma solicitação de férias.</p>

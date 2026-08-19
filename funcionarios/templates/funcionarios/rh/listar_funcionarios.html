@@ -13,6 +13,7 @@ Funcionários
 <div class="acoes-linha">
     <form method="get" class="form-busca">
         <input type="hidden" name="status" value="{{ status_filtro }}">
+        <input type="hidden" name="escopo" value="{{ escopo }}">
         <div class="form-busca__campo">
             {% icon 'search' %}
             <input type="text" name="busca" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
@@ -21,10 +22,17 @@ Funcionários
     </form>
 </div>
 
+{% if tem_acesso_total %}
 <div class="filtros-status">
-    <a href="?status=ativo" class="chip{% if status_filtro == 'ativo' %} chip--ativo{% endif %}">Ativos {{ contagem_ativos }}</a>
-    <a href="?status=pendente" class="chip{% if status_filtro == 'pendente' %} chip--ativo{% endif %}">Pendentes {{ contagem_pendentes }}</a>
-    <a href="?status=inativo" class="chip{% if status_filtro == 'inativo' %} chip--ativo{% endif %}">Inativos {{ contagem_inativos }}</a>
+    <a href="?escopo=meu_setor&status={{ status_filtro }}&busca={{ busca }}" class="chip{% if escopo == 'meu_setor' %} chip--ativo{% endif %}">Meu setor</a>
+    <a href="?escopo=todos&status={{ status_filtro }}&busca={{ busca }}" class="chip{% if escopo == 'todos' %} chip--ativo{% endif %}">Todos os funcionários</a>
+</div>
+{% endif %}
+
+<div class="filtros-status">
+    <a href="?escopo={{ escopo }}&status=ativo&busca={{ busca }}" class="chip{% if status_filtro == 'ativo' %} chip--ativo{% endif %}">Ativos {{ contagem_ativos }}</a>
+    <a href="?escopo={{ escopo }}&status=pendente&busca={{ busca }}" class="chip{% if status_filtro == 'pendente' %} chip--ativo{% endif %}">Pendentes {{ contagem_pendentes }}</a>
+    <a href="?escopo={{ escopo }}&status=inativo&busca={{ busca }}" class="chip{% if status_filtro == 'inativo' %} chip--ativo{% endif %}">Inativos {{ contagem_inativos }}</a>
 </div>
 
 <div class="table-responsive desktop-only">
@@ -86,11 +94,11 @@ Funcionários
 
 <div class="paginacao">
     {% if pagina.number != 1 %}
-        <a href="?status={{ status_filtro }}&busca={{ busca }}&page=1" class="pagina-link">« Primeira</a>
+        <a href="?escopo={{ escopo }}&status={{ status_filtro }}&busca={{ busca }}&page=1" class="pagina-link">« Primeira</a>
     {% endif %}
 
     {% if pagina.has_previous %}
-        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.previous_page_number }}" class="pagina-link">‹ Anterior</a>
+        <a href="?escopo={{ escopo }}&status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.previous_page_number }}" class="pagina-link">‹ Anterior</a>
     {% endif %}
 
     {% for numero in intervalo_paginas %}
@@ -99,12 +107,12 @@ Funcionários
         {% elif numero == pagina.number %}
             <span class="pagina-atual">{{ numero }}</span>
         {% else %}
-            <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ numero }}" class="pagina-link">{{ numero }}</a>
+            <a href="?escopo={{ escopo }}&status={{ status_filtro }}&busca={{ busca }}&page={{ numero }}" class="pagina-link">{{ numero }}</a>
         {% endif %}
     {% endfor %}
 
     {% if pagina.has_next %}
-        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.next_page_number }}" class="pagina-link">Próxima ›</a>
+        <a href="?escopo={{ escopo }}&status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.next_page_number }}" class="pagina-link">Próxima ›</a>
     {% endif %}
 </div>
 {% endblock %}

@@ -24,10 +24,9 @@ urlpatterns = [
     path('gestor/ferias/<int:solicitacao_id>/aprovar/', views.gestor_aprovar_ferias_view, name='gestor_aprovar_ferias'),
     path('gestor/ferias/<int:solicitacao_id>/sugerir/', views.gestor_sugerir_ferias_view, name='gestor_sugerir_ferias'),
 
-    path('rh/ferias/', views.rh_listar_ferias_view, name='rh_listar_ferias'),
+    path('rh/ferias/', views.concluir_ferias_view, name='concluir_ferias'),
     path('rh/ferias/<int:solicitacao_id>/concluir/', views.rh_concluir_ferias_view, name='rh_concluir_ferias'),
     path('rh/ferias/vencimento/', views.rh_vencimento_ferias_view, name='rh_vencimento_ferias'),
     path('rh/ferias/<int:funcionario_id>/avisar/', views.criar_aviso_ferias_view, name='criar_aviso_ferias'),
-    path('gestor/ferias/avisos/', views.gestor_avisos_ferias_view, name='gestor_avisos_ferias'),
-    path('gestor/ferias/avisos/<int:aviso_id>/visualizar/', views.marcar_aviso_visualizado_view, name='marcar_aviso_visualizado'),
+    path('rh/ferias/avisos/<int:aviso_id>/visualizar/', views.marcar_aviso_visualizado_view, name='marcar_aviso_visualizado'),
 ]

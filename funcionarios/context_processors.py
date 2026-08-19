@@ -1,4 +1,4 @@
-from .models import SolicitacaoFerias, Usuario
+from .models import AvisoFerias, SolicitacaoFerias, Usuario
 
 
 def usuario_logado(request):
@@ -17,12 +17,21 @@ def usuario_logado(request):
             status='pendente_gestor',
             funcionario__setor=usuario.funcionario.setor,
         ).count()
-    if usuario.papel == 'rh' or usuario.acesso_rh:
-        contexto['badge_ferias_rh'] = SolicitacaoFerias.objects.filter(
-            status='pendente_rh'
-        ).count()
+
+    if usuario.papel in ('gestor', 'rh') or usuario.acesso_rh:
+        badge_concluir_ferias = 0
+        if usuario.papel == 'rh' or usuario.acesso_rh:
+            badge_concluir_ferias += SolicitacaoFerias.objects.filter(status='pendente_rh').count()
+
+        avisos_pendentes = AvisoFerias.objects.filter(visualizado=False)
+        if usuario.papel == 'gestor':
+            avisos_pendentes = avisos_pendentes.filter(funcionario__setor__gestor=usuario.funcionario)
+        badge_concluir_ferias += avisos_pendentes.count()
+
+        contexto['badge_ferias_rh'] = badge_concluir_ferias
 
     if usuario.papel == 'colaborador':
         contexto['documentos_pendentes'] = not usuario.funcionario.cadastro_completo()
+        contexto['aviso_ferias_pendente'] = usuario.funcionario.aviso_ferias_pendente_acao() is not None
 
     return contexto

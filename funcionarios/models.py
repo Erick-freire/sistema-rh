@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -60,6 +61,13 @@ class Funcionario(models.Model):
     )
     cargo = models.CharField(max_length=100)
     data_admissao = models.DateField(null=True, blank=True)
+    data_base_ferias = models.DateField(
+        null=True,
+        blank=True,
+        help_text='Preencha apenas se o ciclo de férias não seguir a data de admissão '
+                   '(ex.: reinício de contagem após afastamento prolongado). '
+                   'Quando vazio, o ciclo é calculado a partir da data de admissão.'
+    )
     setor = models.ForeignKey(
         Setor,
         on_delete=models.PROTECT,
@@ -89,6 +97,18 @@ class Funcionario(models.Model):
 
     def __str__(self):
         return f'{self.nome} ({self.matricula})'
+
+    @property
+    def eh_gestor(self):
+        return self.setores_gerenciados.exists()
+
+    def aviso_ferias_pendente_acao(self):
+        return (
+            self.avisos_ferias
+            .filter(visualizado=True, solicitacoes_geradas__isnull=True)
+            .order_by('criado_em')
+            .first()
+        )
 
     @property
     def iniciais(self):
@@ -136,23 +156,24 @@ class Funcionario(models.Model):
         if self.data_admissao is None:
             return None
 
+        ancora = self.data_base_ferias or self.data_admissao
         hoje = timezone.now().date()
         solicitacoes = list(
             self.solicitacoes_ferias.filter(status='aprovada')
             .order_by('data_solicitada')
-            .values_list('data_solicitada', 'dias_solicitados')
+            .values_list('data_solicitada', 'dias_solicitados', 'dias_abono')
         )
         indice = 0
         n = 0
 
         while True:
-            aquisitivo_inicio = self.data_admissao if n == 0 else self._somar_anos(self.data_admissao, n)
-            aquisitivo_fim = self._somar_anos(self.data_admissao, n + 1)
+            aquisitivo_inicio = ancora if n == 0 else self._somar_anos(ancora, n)
+            aquisitivo_fim = self._somar_anos(ancora, n + 1) - timedelta(days=1)
             concessivo_fim = self._somar_anos(aquisitivo_fim, 1)
 
             dias_gozados = 0
             while indice < len(solicitacoes) and solicitacoes[indice][0] <= concessivo_fim:
-                dias_gozados += solicitacoes[indice][1]
+                dias_gozados += solicitacoes[indice][1] + solicitacoes[indice][2]
                 indice += 1
                 if dias_gozados >= 30:
                     break
@@ -301,6 +322,10 @@ class SolicitacaoFerias(models.Model):
     )
     data_solicitada = models.DateField()
     dias_solicitados = models.PositiveIntegerField(default=30)
+    dias_abono = models.PositiveIntegerField(
+        default=0,
+        help_text='Dias convertidos em abono pecuniário nesta solicitação.'
+    )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente_gestor')
 
@@ -316,12 +341,21 @@ class SolicitacaoFerias(models.Model):
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='ferias_concluidas_rh'
     )
+    aviso_origem = models.ForeignKey(
+        'AvisoFerias', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='solicitacoes_geradas',
+        help_text='Aviso de vencimento (se algum) que originou esta solicitação.'
+    )
 
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f'{self.funcionario.nome} - {self.data_solicitada} ({self.get_status_display()})'
+
+    @property
+    def data_fim(self):
+        return self.data_solicitada + timedelta(days=self.dias_solicitados - 1)
 
 class AvisoFerias(models.Model):
     funcionario = models.ForeignKey(
@@ -336,3 +370,7 @@ class AvisoFerias(models.Model):
 
     def __str__(self):
         return f'{self.funcionario.nome} - {self.data_prevista}'
+
+    @property
+    def foi_atendido(self):
+        return self.solicitacoes_geradas.exists()
