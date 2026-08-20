@@ -75,6 +75,10 @@
                 <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
             </div>
             <div class="linha-dado">
+                <span class="linha-dado__rotulo">PIS</span>
+                <span class="linha-dado__valor">{{ funcionario.pis|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
                 <span class="linha-dado__rotulo">Setor</span>
                 <span class="linha-dado__valor">{{ funcionario.setor }}</span>
             </div>
@@ -125,36 +129,34 @@
             {% if jornada_vigente %}
                 <p style="font-size: 0.88rem;">
                     Horário: <strong>{{ jornada_vigente.horario }}</strong>
-                    {% if jornada_vigente.paridade_ciclo %}-- time <strong>{{ jornada_vigente.get_paridade_ciclo_display }}</strong>{% endif %}
                     <span style="color: var(--color-text-muted);">(vigente desde {{ jornada_vigente.data_inicio|date:"d/m/Y" }})</span>
                 </p>
             {% else %}
                 <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhuma jornada cadastrada ainda.</p>
             {% endif %}
 
-            <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="proxima" value="{% url 'detalhe_funcionario' funcionario.id %}">
-                <div class="form-grid">
-                    <div>
-                        <label for="{{ jornada_form.data_inicio.id_for_label }}">A partir de</label>
-                        {{ jornada_form.data_inicio }}
+            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-alterar-jornada" data-texto-alternativo="Cancelar">Alterar horário</button>
+
+            <div id="form-alterar-jornada" style="display: none; margin-top: 14px;">
+                <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}" data-jornada-form>
+                    {% csrf_token %}
+                    <input type="hidden" name="proxima" value="{% url 'detalhe_funcionario' funcionario.id %}">
+                    <div class="form-grid">
+                        <div>
+                            <label for="{{ jornada_form.data_inicio.id_for_label }}" data-jornada-label-data>A partir de</label>
+                            {{ jornada_form.data_inicio }}
+                        </div>
+                        <div>
+                            <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
+                            {{ jornada_form.horario }}
+                        </div>
                     </div>
-                    <div>
-                        <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
-                        {{ jornada_form.horario }}
-                    </div>
-                    <div>
-                        <label for="{{ jornada_form.paridade_ciclo.id_for_label }}">Par/ímpar (só 12x36)</label>
-                        {{ jornada_form.paridade_ciclo }}
-                    </div>
-                </div>
-                <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
-            </form>
-            <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-                Par/ímpar só importa pra horário 12x36 -- deixe em branco pra descobrir sozinho pela data de admissão.
-                Não altera o cálculo de períodos já passados.
-            </p>
+                    <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
+                </form>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;" data-jornada-ajuda>
+                    Data a partir da qual este horário passa a valer. Não altera o cálculo de períodos já passados.
+                </p>
+            </div>
         </div>
     </div>
 

@@ -7,19 +7,18 @@ Regras (confirmadas com o usuário):
 - Fora do 12x36: hora extra +50% em dias úteis (segunda a sábado), +100% aos
   domingos e feriados.
 - No 12x36: hora extra sempre +50%, independente do dia. Quem trabalha em
-  qual dia é decidido pelo `paridade_ciclo` do funcionário (par/ímpar do
-  mês), não pelo dia da semana -- ver `FuncionarioJornada.paridade_por_data`.
+  qual dia é decidido pela diferença de dias desde `data_inicio` da jornada
+  (que é sempre um dia de trabalho), não pelo dia da semana nem pelo dia do
+  mês -- ver `FuncionarioJornada.trabalha_no_dia_12x36`.
 - Compensação: dentro do período calculado, hora extra compensa falta/atraso
   primeiro pelas horas de 50%; só depois de esgotar essas é que consome as
   de 100%. Só o saldo depois de compensar vira "extra a pagar" ou "falta a
   descontar".
 
-LIMITAÇÃO CONHECIDA: o cálculo processa cada dia isoladamente (marcações
-daquele dia calendário). Turno que atravessa a meia-noite (entrada num dia,
-saída no dia seguinte) ainda não é tratado -- os 12x36 confirmados até agora
-na Sotrigo são diurnos (ex.: horário 1001, 06:00-18:00), então não bateu essa
-necessidade ainda. Precisa de ajuste antes de usar para um turno noturno que
-vire o dia.
+Turno que atravessa a meia-noite (ex.: 12x36 noturno 18:00-06:00, horário
+1003): a batida inteira fica no dia em que o turno COMEÇOU, nunca dividida
+entre os dois dias -- é assim que o Secullum já trata (conferido direto no
+sistema deles). Ver `_janela_do_dia`.
 """
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -66,34 +65,78 @@ def _diferenca_horario(entrada, saida):
     return fim - inicio
 
 
-def _dia_de_trabalho_12x36(paridade_ciclo, data):
-    dia_impar = data.day % 2 == 1
-    return dia_impar if paridade_ciclo == 'impar' else not dia_impar
-
-
 def _horario_do_dia(jornada, data):
     """Sempre retorna um HorarioDia (ou None se folga) -- é lá que ficam os campos de entrada/saída."""
     horario = jornada.horario
     em_12x36 = horario.eh_12x36
 
-    if em_12x36 and not _dia_de_trabalho_12x36(jornada.paridade_ciclo, data):
+    if em_12x36 and not jornada.trabalha_no_dia_12x36(data):
         return None, em_12x36
 
     dia_semana = data.isoweekday()
     return horario.dias.filter(dia_semana=dia_semana).first(), em_12x36
 
 
+def _primeira_entrada(horario_dia):
+    for entrada in (horario_dia.entrada1, horario_dia.entrada2, horario_dia.entrada3):
+        if entrada:
+            return entrada
+    return None
+
+
+def _ultima_saida(horario_dia):
+    for saida in (horario_dia.saida3, horario_dia.saida2, horario_dia.saida1):
+        if saida:
+            return saida
+    return None
+
+
+def _atravessa_meia_noite(horario_dia):
+    """Turno que termina "antes" de começar (no relógio) -- ex.: 18:00-06:00 -- vira o dia."""
+    if horario_dia is None:
+        return False
+    primeira, ultima = _primeira_entrada(horario_dia), _ultima_saida(horario_dia)
+    if not primeira or not ultima:
+        return False
+    return ultima < primeira
+
+
+def _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem):
+    """
+    (início, fim) aware usada pra buscar as marcações do dia `data`.
+    Normalmente é meia-noite a meia-noite local (`intervalo_do_dia`). Mas se
+    o turno de HOJE atravessa a meia-noite, a janela vai da hora da primeira
+    entrada até a mesma hora do dia seguinte -- assim a madrugada inteira
+    (que no relógio já é "amanhã") fica contada no dia em que o turno
+    começou, igual o Secullum. E se foi o turno de ONTEM que atravessou a
+    meia-noite, a janela de hoje só começa depois que aquele turno termina,
+    pra não contar a mesma madrugada nos dois dias.
+    """
+    if _atravessa_meia_noite(horario_dia_hoje):
+        inicio = timezone.make_aware(datetime.combine(data, _primeira_entrada(horario_dia_hoje)))
+        fim = inicio + timedelta(days=1)
+    else:
+        inicio, fim = intervalo_do_dia(data)
+
+    if _atravessa_meia_noite(horario_dia_ontem):
+        ontem = data - timedelta(days=1)
+        inicio_turno_ontem = timezone.make_aware(datetime.combine(ontem, _primeira_entrada(horario_dia_ontem)))
+        inicio = max(inicio, inicio_turno_ontem + timedelta(days=1))
+
+    return inicio, fim
+
+
 MAX_PARES_EXIBIDOS = 5  # mesmo limite do espelho do Secullum (Ent.1..Ent.5/Saí.1..Saí.5)
 
 
-def _eventos_do_dia(funcionario, data):
+def _eventos_do_dia(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
     """
     Marcações reais do dia + ajustes manuais, mesclados em ordem cronológica.
     Um ajuste com `marcacao_original` substitui a marcação real que corrige
     (a MarcacaoRelogio em si nunca é alterada/apagada, só sai da conta);
     sem `marcacao_original` é uma batida que faltou e vira um evento a mais.
     """
-    inicio, fim = intervalo_do_dia(data)
+    inicio, fim = _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem)
     reais = list(
         MarcacaoRelogio.objects
         .filter(funcionario=funcionario, momento__gte=inicio, momento__lt=fim)
@@ -110,8 +153,8 @@ def _eventos_do_dia(funcionario, data):
     return eventos
 
 
-def _marcacoes_pareadas(funcionario, data):
-    eventos = _eventos_do_dia(funcionario, data)
+def _marcacoes_pareadas(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
+    eventos = _eventos_do_dia(funcionario, data, horario_dia_hoje, horario_dia_ontem)
 
     segundos_trabalhados = 0
     pares = []
@@ -134,9 +177,18 @@ def _taxa_extra_do_dia(data, em_12x36):
     return 50
 
 
+def _horario_dia_de(funcionario, data):
+    jornada = FuncionarioJornada.vigente_em(funcionario, data)
+    if jornada is None:
+        return None
+    horario_dia, _ = _horario_do_dia(jornada, data)
+    return horario_dia
+
+
 def calcular_periodo(funcionario, data_inicio, data_fim):
     dias = []
     dia_atual = data_inicio
+    horario_dia_anterior = _horario_dia_de(funcionario, data_inicio - timedelta(days=1))
 
     while dia_atual <= data_fim:
         jornada = FuncionarioJornada.vigente_em(funcionario, dia_atual)
@@ -148,12 +200,16 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
                 'marcacao_impar': False, 'taxa_extra': None, 'folga': False,
             })
+            horario_dia_anterior = None
             dia_atual += timedelta(days=1)
             continue
 
         horario_dia, em_12x36 = _horario_do_dia(jornada, dia_atual)
         segundos_esperados = _segundos_esperados(horario_dia)
-        marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(funcionario, dia_atual)
+        marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(
+            funcionario, dia_atual, horario_dia, horario_dia_anterior
+        )
+        horario_dia_anterior = horario_dia
         saldo_segundos = segundos_trabalhados - segundos_esperados
         taxa_extra = _taxa_extra_do_dia(dia_atual, em_12x36)
 

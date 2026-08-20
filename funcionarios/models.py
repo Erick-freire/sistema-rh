@@ -83,6 +83,13 @@ class Funcionario(models.Model):
         unique=True,
         help_text='Usado como login do colaborador.'
     )
+    pis = models.CharField(
+        max_length=11,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text='Usado pra bater ponto em relógios que identificam por PIS em vez de CPF (ex.: relógio ADM).',
+    )
     telefone = models.CharField(max_length=20, blank=True)
     endereco = models.CharField(max_length=255, blank=True)
     email = models.EmailField(

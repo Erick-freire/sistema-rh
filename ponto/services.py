@@ -233,15 +233,22 @@ def coletar_marcacoes(equipamento):
 
     from funcionarios.models import Funcionario
 
-    # O AFD não traz matrícula, só o CPF/PIS de 11 dígitos (com zeros à
-    # esquerda preservados) -- é exatamente o formato de Funcionario.cpf.
-    cpfs = {r['identificador'] for r in registros}
-    funcionarios_por_cpf = {f.cpf: f for f in Funcionario.objects.filter(cpf__in=cpfs)}
+    # O AFD não traz matrícula, só o CPF ou PIS de 11 dígitos (com zeros à
+    # esquerda preservados) -- alguns equipamentos (ex.: ADM) identificam por
+    # PIS em vez de CPF, então casa pelos dois campos.
+    identificadores = {r['identificador'] for r in registros}
+    funcionarios_por_cpf = {f.cpf: f for f in Funcionario.objects.filter(cpf__in=identificadores)}
+    funcionarios_por_pis = {
+        f.pis: f for f in Funcionario.objects.filter(pis__in=identificadores).exclude(pis__isnull=True)
+    }
+
+    def _funcionario_do_identificador(identificador):
+        return funcionarios_por_cpf.get(identificador) or funcionarios_por_pis.get(identificador)
 
     marcacoes = [
         MarcacaoRelogio(
             equipamento=equipamento,
-            funcionario=funcionarios_por_cpf.get(registro['identificador']),
+            funcionario=_funcionario_do_identificador(registro['identificador']),
             id_evento_dispositivo=str(registro['nsr']),
             momento=registro['momento'],
             tipo_evento='desconhecido',

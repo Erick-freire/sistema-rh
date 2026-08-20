@@ -412,7 +412,7 @@ class EquipamentoViewsTests(TestCase):
 
 
 class CadastroFuncionarioComJornadaTests(TestCase):
-    """Campo de horário (e par/ímpar, se for 12x36) na tela de pré-cadastro (funcionarios/novo/)."""
+    """Campo de horário na tela de pré-cadastro (funcionarios/novo/)."""
 
     def setUp(self):
         self.setor = Setor.objects.create(nome='RH')
@@ -425,7 +425,7 @@ class CadastroFuncionarioComJornadaTests(TestCase):
 
     def _dados_basicos(self, cpf):
         return dict(
-            nome='Novo Funcionario', cpf=cpf, cargo='Analista', setor=self.setor.id,
+            nome='Novo Funcionario', cpf=cpf, pis='12345678901', cargo='Analista', setor=self.setor.id,
             data_admissao='2026-08-17',  # dia ímpar
         )
 
@@ -441,7 +441,7 @@ class CadastroFuncionarioComJornadaTests(TestCase):
         self.assertEqual(jornada.horario, horario)
         self.assertEqual(jornada.data_inicio, date(2026, 8, 17))
 
-    def test_cadastro_com_horario_12x36_deriva_paridade_da_admissao(self):
+    def test_cadastro_com_horario_12x36_usa_admissao_como_dia_de_trabalho(self):
         horario = _criar_horario_12x36(5002)
         dados = self._dados_basicos('44444444445')
         dados['horario'] = horario.id
@@ -450,19 +450,8 @@ class CadastroFuncionarioComJornadaTests(TestCase):
 
         funcionario = Funcionario.objects.get(cpf='44444444445')
         jornada = FuncionarioJornada.objects.get(funcionario=funcionario)
-        self.assertEqual(jornada.paridade_ciclo, 'impar')  # admissão dia 17
-
-    def test_cadastro_com_horario_12x36_e_paridade_explicita_respeita_escolha(self):
-        horario = _criar_horario_12x36(5005)
-        dados = self._dados_basicos('88888888888')
-        dados['horario'] = horario.id
-        dados['paridade_ciclo'] = 'par'  # admissão seria ímpar, mas RH escolheu o outro time
-
-        self.client.post(reverse('cadastrar_funcionario'), dados)
-
-        funcionario = Funcionario.objects.get(cpf='88888888888')
-        jornada = FuncionarioJornada.objects.get(funcionario=funcionario)
-        self.assertEqual(jornada.paridade_ciclo, 'par')
+        self.assertEqual(jornada.data_inicio, date(2026, 8, 17))
+        self.assertTrue(jornada.trabalha_no_dia_12x36(date(2026, 8, 17)))
 
     def test_cadastro_sem_horario_nao_cria_jornada(self):
         dados = self._dados_basicos('44444444444')
@@ -471,16 +460,6 @@ class CadastroFuncionarioComJornadaTests(TestCase):
 
         funcionario = Funcionario.objects.get(cpf='44444444444')
         self.assertFalse(FuncionarioJornada.objects.filter(funcionario=funcionario).exists())
-
-    def test_cadastro_com_paridade_em_horario_nao_12x36_e_rejeitado_e_nao_cria_funcionario(self):
-        horario = _criar_horario_util(5003)
-        dados = self._dados_basicos('55555555556')
-        dados['horario'] = horario.id
-        dados['paridade_ciclo'] = 'par'  # não faz sentido fora de 12x36
-
-        self.client.post(reverse('cadastrar_funcionario'), dados)
-
-        self.assertFalse(Funcionario.objects.filter(cpf='55555555556').exists())
 
 
 class EnviarReceberBotoesTests(TestCase):
@@ -656,7 +635,8 @@ class HorarioViewsTests(TestCase):
 class Horario12x36Tests(TestCase):
     """
     12x36 direto no Horario (sem Escala separada): quem trabalha em qual dia
-    é decidido pelo par/ímpar do funcionário, não por uma data-base própria.
+    é decidido pela diferença de dias desde `data_inicio` da jornada (que é
+    sempre um dia de trabalho), não pelo dia da semana nem pelo dia do mês.
     """
 
     def setUp(self):
@@ -675,29 +655,40 @@ class Horario12x36Tests(TestCase):
         horario = Horario.objects.get(numero=3001)
         self.assertTrue(horario.eh_12x36)
 
-    def test_paridade_por_data_deriva_do_dia_do_mes(self):
-        self.assertEqual(FuncionarioJornada.paridade_por_data(date(2026, 8, 19)), 'impar')
-        self.assertEqual(FuncionarioJornada.paridade_por_data(date(2026, 8, 20)), 'par')
-
-    def test_resolver_paridade_usa_admissao_quando_nao_informada(self):
+    def test_trabalha_no_dia_12x36_alterna_a_partir_da_data_inicio(self):
         horario = _criar_horario_12x36(3002)
-        funcionario = _criar_funcionario(cpf='66666666666', data_admissao=date(2026, 8, 19))
-        jornada = FuncionarioJornada(funcionario=funcionario, horario=horario, data_inicio=date(2026, 8, 1))
+        funcionario = _criar_funcionario(cpf='66666666666')
+        jornada = FuncionarioJornada(funcionario=funcionario, horario=horario, data_inicio=date(2026, 8, 19))
 
-        jornada.resolver_paridade()
+        self.assertTrue(jornada.trabalha_no_dia_12x36(date(2026, 8, 19)))
+        self.assertFalse(jornada.trabalha_no_dia_12x36(date(2026, 8, 20)))
+        self.assertTrue(jornada.trabalha_no_dia_12x36(date(2026, 8, 21)))
 
-        self.assertEqual(jornada.paridade_ciclo, 'impar')
-
-    def test_resolver_paridade_nao_sobrescreve_escolha_explicita(self):
+    def test_trabalha_no_dia_12x36_nao_quebra_em_mes_de_31_dias(self):
+        """
+        Bug real do esquema anterior (par/ímpar pelo dia do mês): dia 31 e o
+        dia 1 do mês seguinte são os dois ímpares, quebrando a alternância
+        bem ali. Usando diferença de dias desde `data_inicio`, isso nunca
+        acontece -- é sempre um dia sim, um dia não, não importa o mês.
+        """
         horario = _criar_horario_12x36(3003)
-        funcionario = _criar_funcionario(cpf='77777777777', data_admissao=date(2026, 8, 19))  # seria ímpar
-        jornada = FuncionarioJornada(
-            funcionario=funcionario, horario=horario, data_inicio=date(2026, 8, 1), paridade_ciclo='par',
-        )
+        funcionario = _criar_funcionario(cpf='77777777777')
+        jornada = FuncionarioJornada(funcionario=funcionario, horario=horario, data_inicio=date(2026, 7, 1))
 
-        jornada.resolver_paridade()
+        self.assertTrue(jornada.trabalha_no_dia_12x36(date(2026, 7, 31)))
+        self.assertFalse(jornada.trabalha_no_dia_12x36(date(2026, 8, 1)))
+        self.assertTrue(jornada.trabalha_no_dia_12x36(date(2026, 8, 2)))
 
-        self.assertEqual(jornada.paridade_ciclo, 'par')  # troca de time explícita respeitada
+    def test_pode_trocar_dia_de_folga_atribuindo_nova_jornada(self):
+        horario = _criar_horario_12x36(3004)
+        funcionario = _criar_funcionario(cpf='88888888889')
+        FuncionarioJornada.objects.create(funcionario=funcionario, horario=horario, data_inicio=date(2026, 8, 1))
+        # 02/08 seria folga pela primeira jornada -- RH decide inverter o time a partir dali.
+        FuncionarioJornada.objects.create(funcionario=funcionario, horario=horario, data_inicio=date(2026, 8, 2))
+
+        jornada_vigente = FuncionarioJornada.vigente_em(funcionario, date(2026, 8, 2))
+
+        self.assertTrue(jornada_vigente.trabalha_no_dia_12x36(date(2026, 8, 2)))
 
 
 class ImportarJornadasSecullumHelpersTests(TestCase):
@@ -730,6 +721,58 @@ class ReconciliarFuncionariosEquipamentoHelpersTests(TestCase):
         from ponto.management.commands.reconciliar_funcionarios_equipamento import _normaliza_nome
 
         self.assertEqual(_normaliza_nome('João  Vitor'), 'JOAO VITOR')
+
+
+class VincularMarcacoesSemFuncionarioTests(TestCase):
+    """
+    Marcações coletadas antes de sabermos o PIS de alguém ficam com
+    funcionario=None pra sempre, a não ser que sejam revinculadas depois --
+    a coleta em si é só incremental, não reprocessa o que já foi salvo.
+    """
+
+    def _marcacao_sem_funcionario(self, equipamento, identificador, nsr='1'):
+        return MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=None, id_evento_dispositivo=nsr,
+            momento='2026-08-01T08:00:00Z', dados_brutos={'identificador': identificador},
+        )
+
+    def test_vincula_por_cpf_ou_pis(self):
+        equipamento = _criar_equipamento()
+        funcionario_cpf = _criar_funcionario(cpf='11111111111', matricula='1001')
+        funcionario_pis = _criar_funcionario(cpf='22222222222', pis='33333333333', matricula='1002')
+        m1 = self._marcacao_sem_funcionario(equipamento, '11111111111', nsr='1')
+        m2 = self._marcacao_sem_funcionario(equipamento, '33333333333', nsr='2')
+        m3 = self._marcacao_sem_funcionario(equipamento, '99999999999', nsr='3')  # ninguém conhecido
+
+        call_command('vincular_marcacoes_sem_funcionario')
+
+        m1.refresh_from_db(); m2.refresh_from_db(); m3.refresh_from_db()
+        self.assertEqual(m1.funcionario, funcionario_cpf)
+        self.assertEqual(m2.funcionario, funcionario_pis)
+        self.assertIsNone(m3.funcionario)
+
+    def test_dry_run_nao_grava(self):
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario(cpf='11111111111')
+        marcacao = self._marcacao_sem_funcionario(equipamento, '11111111111')
+
+        call_command('vincular_marcacoes_sem_funcionario', '--dry-run')
+
+        marcacao.refresh_from_db()
+        self.assertIsNone(marcacao.funcionario)
+
+    def test_filtro_por_equipamento(self):
+        eq1 = _criar_equipamento(nome='Equip 1', ip='192.168.1.61')
+        eq2 = _criar_equipamento(nome='Equip 2', ip='192.168.1.62')
+        funcionario = _criar_funcionario(cpf='11111111111')
+        m1 = self._marcacao_sem_funcionario(eq1, '11111111111', nsr='1')
+        m2 = self._marcacao_sem_funcionario(eq2, '11111111111', nsr='2')
+
+        call_command('vincular_marcacoes_sem_funcionario', '--equipamento', 'Equip 1')
+
+        m1.refresh_from_db(); m2.refresh_from_db()
+        self.assertEqual(m1.funcionario, funcionario)
+        self.assertIsNone(m2.funcionario)
 
 
 class EnfileirarFuncionariosExistentesTests(TestCase):
@@ -769,9 +812,9 @@ def _criar_horario_12x36(numero, entrada1='06:00', saida1='18:00'):
     """
     Turno de 12h diurno em todos os dias da semana (mesmo padrão do horário
     1001 real importado do Secullum) -- quem trabalha em qual dia é decidido
-    pelo par/ímpar do funcionário (`FuncionarioJornada.paridade_ciclo`), não
-    por aqui. Turno virando a noite (entrada num dia, saída no outro) não é
-    coberto ainda -- o motor de cálculo processa por dia calendário; ver
+    pela `data_inicio` da jornada do funcionário (`trabalha_no_dia_12x36`),
+    não por aqui. Turno virando a noite (entrada num dia, saída no outro) não
+    é coberto ainda -- o motor de cálculo processa por dia calendário; ver
     `calculos.py`.
     """
     horario = Horario.objects.create(numero=numero, nome=f'12x36 {numero}', eh_12x36=True)
@@ -856,11 +899,9 @@ class CalculosTests(TestCase):
         self.assertEqual(resultado['totais']['extra_50_segundos'], 0)
 
     def test_12x36_sempre_50_por_cento_mesmo_no_domingo(self):
-        domingo = date(2026, 8, 2)  # domingo, dia par do mês -- time par trabalha
+        domingo = date(2026, 8, 2)  # domingo, dia de trabalho do ciclo dele
         horario = _criar_horario_12x36(4005)
-        FuncionarioJornada.objects.create(
-            funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario, paridade_ciclo='par',
-        )
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=domingo, horario=horario)
         _bater_ponto(self.funcionario, self.equipamento, domingo, '06:00', '19:00')  # 1h extra (13h trabalhadas)
 
         resultado = calcular_periodo(self.funcionario, domingo, domingo)
@@ -868,14 +909,14 @@ class CalculosTests(TestCase):
         self.assertEqual(resultado['totais']['extra_50_segundos'], 3600)
         self.assertEqual(resultado['totais']['extra_100_segundos'], 0)
 
-    def test_12x36_folga_no_dia_do_time_oposto(self):
-        segunda_impar = date(2026, 8, 3)  # dia ímpar -- time par (o dele) folga
+    def test_12x36_folga_no_dia_seguinte_ao_inicio_do_ciclo(self):
         horario = _criar_horario_12x36(4008)
         FuncionarioJornada.objects.create(
-            funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario, paridade_ciclo='par',
+            funcionario=self.funcionario, data_inicio=date(2026, 8, 2), horario=horario,
         )
+        dia_de_folga = date(2026, 8, 3)  # 1 dia depois do início do ciclo -- folga
 
-        resultado = calcular_periodo(self.funcionario, segunda_impar, segunda_impar)
+        resultado = calcular_periodo(self.funcionario, dia_de_folga, dia_de_folga)
 
         self.assertTrue(resultado['dias'][0]['folga'])
         self.assertEqual(resultado['dias'][0]['segundos_esperados'], 0)

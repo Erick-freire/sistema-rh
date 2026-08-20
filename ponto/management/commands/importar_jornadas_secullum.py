@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from datetime import timedelta
 
 import pymssql
 from django.conf import settings
@@ -110,7 +111,7 @@ class Command(BaseCommand):
 
             secullum = candidatos[0]
             horario_num = secullum['horario_num']
-            paridade_ciclo = None
+            data_inicio_ciclo = None  # só preenchido quando vem de uma escala (data-base real do ciclo)
 
             if secullum['escala_id']:
                 escala = escalas.get(secullum['escala_id'])
@@ -126,28 +127,29 @@ class Command(BaseCommand):
 
                 item_trabalho = trabalho[0]
                 horario_num = item_trabalho['horario_num']
-                paridade_data_base = 'par' if escala['data_base'].day % 2 == 0 else 'impar'
-                paridade_ciclo = paridade_data_base if item_trabalho['ciclo'] == 1 else (
-                    'impar' if paridade_data_base == 'par' else 'par'
-                )
+                # data_base da escala é sempre a posição 1 do ciclo -- se quem
+                # trabalha é a posição 2, o dia de trabalho começa 1 dia depois.
+                data_base = escala['data_base'].date()
+                data_inicio_ciclo = data_base if item_trabalho['ciclo'] == 1 else data_base + timedelta(days=1)
 
             if horario_num not in numeros_confiaveis:
                 horario_nao_confiavel.append((funcionario, horario_num))
                 continue
 
-            data_inicio = funcionario.data_admissao or (secullum['admissao'].date() if secullum['admissao'] else None)
-            prontos.append((funcionario, horario_num, paridade_ciclo, data_inicio))
+            data_inicio = data_inicio_ciclo or funcionario.data_admissao or (
+                secullum['admissao'].date() if secullum['admissao'] else None
+            )
+            prontos.append((funcionario, horario_num, data_inicio))
 
         try:
             with transaction.atomic():
                 criados = 0
                 if not dry_run:
-                    for funcionario, horario_num, paridade_ciclo, data_inicio in prontos:
+                    for funcionario, horario_num, data_inicio in prontos:
                         horario = Horario.objects.get(numero=horario_num)
                         FuncionarioJornada.objects.create(
                             funcionario=funcionario,
                             horario=horario,
-                            paridade_ciclo=paridade_ciclo,
                             data_inicio=data_inicio or timezone.now().date(),
                         )
                         criados += 1
