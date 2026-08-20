@@ -1,5 +1,6 @@
 import secrets
 
+from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -15,7 +16,7 @@ from .decorators import papel_required
 from .models import Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
-    SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm
+    DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm
 )
 
 # Só pra mostrar/atribuir a jornada de ponto na ficha do funcionário -- a
@@ -430,7 +431,29 @@ def detalhe_funcionario_view(request, funcionario_id):
         'total_enviados_obrigatorios': total_enviados_obrigatorios,
         'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
         'jornada_form': FuncionarioJornadaForm(),
+        'dados_form': DadosCadastraisForm(instance=funcionario),
     })
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def editar_dados_funcionario_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if request.method == 'POST':
+        form = DadosCadastraisForm(request.POST, instance=funcionario)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Dados atualizados com sucesso.')
+        else:
+            messages.error(request, 'Não foi possível atualizar os dados. Verifique os campos.')
+
+    return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
 
 @login_required
@@ -451,7 +474,7 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
         messages.error(request, 'Este funcionário não tem CPF cadastrado. Preencha o CPF antes de gerar o acesso.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
-    senha_gerada = secrets.token_urlsafe(9)
+    senha_gerada = settings.SENHA_PADRAO_ACESSO
 
     user = User.objects.create_user(
         username=funcionario.cpf,
@@ -703,7 +726,7 @@ def concluir_ferias_view(request):
     )
 
     confirmadas_qs = SolicitacaoFerias.objects.filter(
-        status='aprovada', aviso_origem__isnull=False
+        status='aprovada'
     ).select_related('funcionario')
     if usuario.papel == 'gestor':
         confirmadas_qs = confirmadas_qs.filter(funcionario__setor__gestor=usuario.funcionario)

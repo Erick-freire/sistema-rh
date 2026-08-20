@@ -28,6 +28,17 @@ class EnviarDocumentoForm(forms.ModelForm):
         model = Documento
         fields = ['tipo_documento', 'arquivo']
 
+class DadosCadastraisForm(forms.ModelForm):
+    data_admissao = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        input_formats=['%Y-%m-%d'],
+    )
+
+    class Meta:
+        model = Funcionario
+        fields = ['matricula', 'setor', 'data_admissao']
+
 class FuncionarioForm(forms.ModelForm):
     class Meta:
         model = Funcionario

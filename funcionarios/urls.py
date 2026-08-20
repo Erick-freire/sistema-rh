@@ -13,6 +13,7 @@ urlpatterns = [
     path('funcionarios/<int:funcionario_id>/gerar-acesso/', views.gerar_acesso_funcionario_view, name='gerar_acesso_funcionario'),
     path('funcionarios/novo/', views.cadastrar_funcionario_view, name='cadastrar_funcionario'),
     path('funcionarios/<int:funcionario_id>/alternar-acesso-rh/', views.alternar_acesso_rh_view, name='alternar_acesso_rh'),
+    path('funcionarios/<int:funcionario_id>/editar-dados/', views.editar_dados_funcionario_view, name='editar_dados_funcionario'),
     path('funcionarios/<int:funcionario_id>/', views.detalhe_funcionario_view, name='detalhe_funcionario'),
     path('trocar-senha/', views.trocar_senha_view, name='trocar_senha'),
     path('ferias/', views.solicitar_ferias_view, name='solicitar_ferias'),

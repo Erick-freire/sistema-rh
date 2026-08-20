@@ -160,12 +160,13 @@ Concluir Férias
 </div>
 
 <h2>Férias confirmadas</h2>
-<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Solicitações originadas de um aviso, já concluídas pelo RH, com data ainda futura ou em andamento.</p>
+<p style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 20px;">Solicitações aprovadas, sejam originadas de um aviso ou solicitadas diretamente pelo funcionário, com data ainda futura ou em andamento.</p>
 
 <div class="table-responsive desktop-only">
     <table>
         <thead>
             <tr>
+                <th>Nº</th>
                 <th>Funcionário</th>
                 <th>Setor</th>
                 <th>Início</th>
@@ -175,6 +176,7 @@ Concluir Férias
         <tbody>
             {% for s in ferias_confirmadas %}
             <tr>
+                <td>#{{ s.id }}</td>
                 <td>
                     <span class="tabela-nome">
                         <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
@@ -187,7 +189,7 @@ Concluir Férias
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4">Nenhuma férias confirmada no momento.</td>
+                <td colspan="5">Nenhuma férias confirmada no momento.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -197,12 +199,15 @@ Concluir Férias
 <div class="lista-cards mobile-only">
     {% for s in ferias_confirmadas %}
     <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
-            <div class="item-card__corpo">
-                <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
-                <div class="item-card__subtitulo">{{ s.funcionario.setor }}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="avatar avatar--sm">{{ s.funcionario.iniciais }}</span>
+                <div class="item-card__corpo">
+                    <div class="item-card__titulo">{{ s.funcionario.nome }}</div>
+                    <div class="item-card__subtitulo">{{ s.funcionario.setor }}</div>
+                </div>
             </div>
+            <span class="item-card__subtitulo">#{{ s.id }}</span>
         </div>
         <div style="font-size: 0.88rem;">
             Entra de férias de <strong>{{ s.data_solicitada|date:"d/m/Y" }}</strong> até <strong>{{ s.data_fim|date:"d/m/Y" }}</strong>

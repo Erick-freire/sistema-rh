@@ -9,7 +9,7 @@ SECRET_KEY = 'django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.88']
+ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.79']
 
 # Segurança de cookies e transporte — só entram em vigor quando DEBUG=False
 # (em produção, defina DEBUG=False no .env para ativar HTTPS/cookies seguros)
@@ -150,3 +150,10 @@ SECULLUM_INSTANCE = config('SECULLUM_INSTANCE', default='')
 SECULLUM_DATABASE = config('SECULLUM_DATABASE', default='')
 SECULLUM_USER = config('SECULLUM_USER', default='')
 SECULLUM_PASSWORD = config('SECULLUM_PASSWORD', default='')
+
+
+# Senha padrão usada ao gerar acesso em massa/individual para funcionários já
+# contratados sem login (ex.: importados do Secullum) — troca obrigatória no
+# primeiro login continua ativa via senha_provisoria=True.
+
+SENHA_PADRAO_ACESSO = config('SENHA_PADRAO_ACESSO', default='Sotrigo@123')

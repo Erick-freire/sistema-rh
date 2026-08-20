@@ -22,13 +22,50 @@
     <div>
         <div class="card">
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+                {% if funcionario.foto %}
+                <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}" style="width: 48px; height: 48px; border-radius: 999px; object-fit: cover;">
+                {% else %}
                 <span class="avatar avatar--lg">{{ funcionario.iniciais }}</span>
+                {% endif %}
                 <div>
                     <div class="card__title">{{ funcionario.nome }}</div>
                     <div style="color: var(--color-text-muted); font-size: 0.88rem;">{{ funcionario.cargo }}</div>
                 </div>
             </div>
 
+            {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+            <form method="post" action="{% url 'editar_dados_funcionario' funcionario.id %}">
+                {% csrf_token %}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Matrícula</span>
+                    {{ dados_form.matricula }}
+                </div>
+                {{ dados_form.matricula.errors }}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">CPF</span>
+                    <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
+                </div>
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Setor</span>
+                    {{ dados_form.setor }}
+                </div>
+                {{ dados_form.setor.errors }}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Admissão</span>
+                    {{ dados_form.data_admissao }}
+                </div>
+                {{ dados_form.data_admissao.errors }}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Telefone</span>
+                    <span class="linha-dado__valor">{{ funcionario.telefone|default:"—" }}</span>
+                </div>
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Endereço</span>
+                    <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
+                </div>
+                <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar</button>
+            </form>
+            {% else %}
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Matrícula</span>
                 <span class="linha-dado__valor">{{ funcionario.matricula }}</span>
@@ -53,6 +90,7 @@
                 <span class="linha-dado__rotulo">Endereço</span>
                 <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
             </div>
+            {% endif %}
         </div>
 
         <div class="card">
