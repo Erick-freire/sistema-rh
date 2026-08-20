@@ -58,41 +58,46 @@ HorarioDiaFormSet = inlineformset_factory(
 DIAS_SEMANA_INICIAIS = [{'dia_semana': dia} for dia in range(1, 8)]
 
 
-def _validar_paridade(horario, paridade_ciclo):
-    if horario and horario.eh_12x36:
-        return None
-    if paridade_ciclo:
-        raise forms.ValidationError('Par/ímpar só se aplica a um horário 12x36.')
-    return None
+class HorarioSelect(forms.Select):
+    """
+    Marca no HTML (`data-doze36`) quais opções são horário 12x36, pra tela
+    trocar o rótulo/ajuda da data pra algo específico de ciclo (ver
+    static/js/ui.js) sem precisar duplicar horário ou expor par/ímpar.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._ids_12x36 = set(Horario.objects.filter(eh_12x36=True).values_list('id', flat=True))
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        valor_bruto = getattr(value, 'value', value)  # Django >=4.1 embrulha em ModelChoiceIteratorValue
+        try:
+            horario_id = int(valor_bruto)
+        except (TypeError, ValueError):
+            horario_id = None
+        if horario_id in self._ids_12x36:
+            option['attrs']['data-doze36'] = '1'
+        return option
 
 
 class FuncionarioJornadaForm(forms.ModelForm):
     class Meta:
         model = FuncionarioJornada
-        fields = ['data_inicio', 'horario', 'paridade_ciclo']
-        widgets = {'data_inicio': forms.DateInput(attrs={'type': 'date'})}
-
-    def clean(self):
-        cleaned_data = super().clean()
-        _validar_paridade(cleaned_data.get('horario'), cleaned_data.get('paridade_ciclo'))
-        return cleaned_data
+        fields = ['data_inicio', 'horario']
+        widgets = {
+            'data_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'horario': HorarioSelect,
+        }
 
 
 class JornadaOpcionalForm(forms.Form):
     """
-    Igual ao FuncionarioJornadaForm, mas sem exigir horário -- usado no
-    pré-cadastro do funcionário, onde ainda não se sabe a jornada dele.
+    Igual ao FuncionarioJornadaForm, mas sem exigir horário nem data de início
+    -- usado no pré-cadastro do funcionário, onde ainda não se sabe a jornada
+    dele (a data de admissão do próprio pré-cadastro é usada como data_inicio
+    quando um horário é escolhido).
     """
-    horario = forms.ModelChoiceField(queryset=Horario.objects.all(), required=False, label='Horário')
-    paridade_ciclo = forms.ChoiceField(
-        choices=[('', '(descobrir pela data de admissão)')] + FuncionarioJornada.PARIDADE_CHOICES,
-        required=False, label='Par/ímpar (só 12x36)',
-    )
-
-    def clean(self):
-        cleaned_data = super().clean()
-        _validar_paridade(cleaned_data.get('horario'), cleaned_data.get('paridade_ciclo'))
-        return cleaned_data
+    horario = forms.ModelChoiceField(queryset=Horario.objects.all(), required=False, label='Horário', widget=HorarioSelect)
 
 
 class AjustarMarcacaoForm(forms.ModelForm):

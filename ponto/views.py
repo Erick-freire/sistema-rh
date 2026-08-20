@@ -350,11 +350,10 @@ def atribuir_jornada_view(request, funcionario_id):
         if form.is_valid():
             jornada = form.save(commit=False)
             jornada.funcionario = funcionario
-            jornada.resolver_paridade()
             jornada.save()
             messages.success(request, f'Jornada de {funcionario.nome} definida a partir de {jornada.data_inicio}.')
         else:
-            messages.error(request, 'Não foi possível salvar: confira o horário e o par/ímpar informados.')
+            messages.error(request, 'Não foi possível salvar: confira o horário e a data informados.')
 
     proxima = request.POST.get('proxima')
     if proxima and url_has_allowed_host_and_scheme(proxima, allowed_hosts={request.get_host()}, require_https=request.is_secure()):

@@ -51,36 +51,30 @@
     {% if jornada_vigente %}
         <p>
             Horário: <strong>{{ jornada_vigente.horario }}</strong>
-            {% if jornada_vigente.paridade_ciclo %}-- time <strong>{{ jornada_vigente.get_paridade_ciclo_display }}</strong>{% endif %}
             (vigente desde {{ jornada_vigente.data_inicio|date:'d/m/Y' }})
         </p>
     {% else %}
         <p style="color: var(--color-error);">{% icon 'alert-triangle' %} Nenhuma jornada cadastrada para este funcionário -- o cálculo abaixo não considera nenhum dia como esperado.</p>
     {% endif %}
 
-    <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}" class="form-grid">
+    <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}" class="form-grid" data-jornada-form>
         {% csrf_token %}
         <input type="hidden" name="data_inicio" value="{{ data_inicio }}">
         <input type="hidden" name="data_fim" value="{{ data_fim }}">
         <div>
-            <label for="{{ jornada_form.data_inicio.id_for_label }}">Nova jornada a partir de</label>
+            <label for="{{ jornada_form.data_inicio.id_for_label }}" data-jornada-label-data>Nova jornada a partir de</label>
             {{ jornada_form.data_inicio }}
         </div>
         <div>
             <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
             {{ jornada_form.horario }}
         </div>
-        <div>
-            <label for="{{ jornada_form.paridade_ciclo.id_for_label }}">Par/ímpar (só 12x36)</label>
-            {{ jornada_form.paridade_ciclo }}
-        </div>
         <div style="align-self: end;">
             <button type="submit" class="btn-outline">Definir jornada</button>
         </div>
     </form>
-    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-        Par/ímpar só importa pra horário 12x36 -- deixe em branco pra descobrir sozinho pela data de admissão, ou
-        escolha pra trocar o time dele. Isso não altera o cálculo de períodos anteriores à data escolhida.
+    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;" data-jornada-ajuda>
+        Data a partir da qual este horário passa a valer.
     </p>
 </div>
 
@@ -142,11 +136,11 @@
                     <td>{{ dia.data|date:'d/m' }} - {{ dia.data|date:'D' }}</td>
                     {% for entrada, saida in dia.pares %}
                         <td class="celula-ponto">
-                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
+                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.folga %}Folga{% else %}—{% endif %}
                             <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.id %}&marcacao_original={{ entrada.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                         <td class="celula-ponto">
-                            {% if saida %}{{ saida.momento|time:'H:i' }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
+                            {% if saida %}{{ saida.momento|time:'H:i' }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.folga %}Folga{% else %}—{% endif %}
                             <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.id %}&marcacao_original={{ saida.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                     {% endfor %}

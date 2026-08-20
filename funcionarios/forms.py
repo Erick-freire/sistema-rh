@@ -40,10 +40,14 @@ class FuncionarioForm(forms.ModelForm):
 class PreCadastroFuncionarioForm(forms.ModelForm):
     class Meta:
         model = Funcionario
-        fields = ['nome', 'cpf', 'cargo', 'setor', 'data_admissao']
+        fields = ['nome', 'cpf', 'pis', 'cargo', 'setor', 'data_admissao']
         widgets = {
             'data_admissao': forms.DateInput(attrs={'type': 'date'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['pis'].required = True
 
     def clean_cpf(self):
         cpf = ''.join(filter(str.isdigit, self.cleaned_data['cpf']))
@@ -52,6 +56,14 @@ class PreCadastroFuncionarioForm(forms.ModelForm):
         if Funcionario.objects.filter(cpf=cpf).exists():
             raise forms.ValidationError('Já existe um funcionário cadastrado com este CPF.')
         return cpf
+
+    def clean_pis(self):
+        pis = ''.join(filter(str.isdigit, self.cleaned_data.get('pis') or ''))
+        if len(pis) != 11:
+            raise forms.ValidationError('PIS deve ter 11 dígitos.')
+        if Funcionario.objects.filter(pis=pis).exists():
+            raise forms.ValidationError('Já existe um funcionário cadastrado com este PIS.')
+        return pis
 
 class SolicitarFeriasForm(forms.ModelForm):
     data_solicitada = forms.DateField(

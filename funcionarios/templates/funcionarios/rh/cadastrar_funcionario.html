@@ -35,6 +35,11 @@ Novo funcionário
                 {{ form.cpf.errors }}
             </div>
             <div>
+                <label for="{{ form.pis.id_for_label }}">PIS</label>
+                {{ form.pis }}
+                {{ form.pis.errors }}
+            </div>
+            <div>
                 <label for="{{ form.cargo.id_for_label }}">Cargo</label>
                 {{ form.cargo }}
                 {{ form.cargo.errors }}
@@ -54,16 +59,11 @@ Novo funcionário
                 {{ jornada_form.horario }}
                 {{ jornada_form.horario.errors }}
             </div>
-            <div>
-                <label for="{{ jornada_form.paridade_ciclo.id_for_label }}">Par/ímpar (só 12x36)</label>
-                {{ jornada_form.paridade_ciclo }}
-                {{ jornada_form.paridade_ciclo.errors }}
-            </div>
         </div>
         {{ jornada_form.non_field_errors }}
         <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-            Horário é opcional aqui -- pode deixar em branco e definir depois na ficha do funcionário. Se o horário
-            escolhido for 12x36, par/ímpar também pode ficar em branco: descobrimos sozinhos pela data de admissão.
+            Horário é opcional aqui -- pode deixar em branco e definir depois na ficha do funcionário. Se for 12x36,
+            a data de admissão vira o dia de início do ciclo (contamos como dia de trabalho).
         </p>
 
         <div style="display: flex; gap: 12px; margin-top: 20px;">

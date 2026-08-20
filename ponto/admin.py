@@ -65,6 +65,6 @@ class FeriadoAdmin(admin.ModelAdmin):
 
 @admin.register(FuncionarioJornada)
 class FuncionarioJornadaAdmin(admin.ModelAdmin):
-    list_display = ('funcionario', 'data_inicio', 'horario', 'paridade_ciclo')
+    list_display = ('funcionario', 'data_inicio', 'horario')
     search_fields = ('funcionario__nome', 'funcionario__matricula')
-    list_filter = ('horario', 'paridade_ciclo')
+    list_filter = ('horario',)

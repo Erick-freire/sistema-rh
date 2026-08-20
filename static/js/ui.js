@@ -27,6 +27,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    document.querySelectorAll('[data-toggle-alvo]').forEach(function (botao) {
+        var textoOriginal = botao.textContent;
+        botao.addEventListener('click', function () {
+            var alvo = document.getElementById(botao.dataset.toggleAlvo);
+            if (!alvo) return;
+            var vaiAbrir = alvo.style.display === 'none';
+            alvo.style.display = vaiAbrir ? '' : 'none';
+            botao.textContent = vaiAbrir ? (botao.dataset.textoAlternativo || textoOriginal) : textoOriginal;
+        });
+    });
+
     // Formulários que podem demorar bastante (ex.: Sincronizar do Ponto, que
     // depende de equipamentos às vezes lentos) -- mostra uma tela de
     // carregando em vez de deixar a página parecendo travada até o redirect
@@ -47,5 +58,32 @@ document.addEventListener('DOMContentLoaded', function () {
     // de um redirect, garante que o overlay não fique preso aberto.
     window.addEventListener('pageshow', function () {
         if (overlay) overlay.classList.remove('is-open');
+    });
+
+    // Formulário de "Definir jornada": quando o horário escolhido é 12x36, a
+    // data vira "dia de trabalho de referência do ciclo" em vez de "a partir
+    // de" -- evita expor qualquer coisa de par/ímpar/cálculo pro usuário.
+    document.querySelectorAll('[data-jornada-form]').forEach(function (form) {
+        var select = form.querySelector('select[name="horario"]');
+        var label = form.querySelector('[data-jornada-label-data]');
+        var ajuda = form.parentElement.querySelector('[data-jornada-ajuda]');
+        if (!select || !label) return;
+
+        var textoOriginalLabel = label.textContent;
+        var textoOriginalAjuda = ajuda ? ajuda.textContent : '';
+
+        function atualizar() {
+            var opcao = select.options[select.selectedIndex];
+            var eh12x36 = !!(opcao && opcao.dataset.doze36 === '1');
+            label.textContent = eh12x36 ? 'Dia de trabalho para referência do ciclo' : textoOriginalLabel;
+            if (ajuda) {
+                ajuda.textContent = eh12x36
+                    ? 'Selecione um dia em que este funcionário trabalha. O sistema calculará automaticamente os próximos dias de trabalho e folga.'
+                    : textoOriginalAjuda;
+            }
+        }
+
+        select.addEventListener('change', atualizar);
+        atualizar();
     });
 });

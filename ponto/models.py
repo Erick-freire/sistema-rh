@@ -283,23 +283,20 @@ class FuncionarioJornada(models.Model):
     com `data_inicio` a partir de quando passa a valer, preservando o cálculo
     de períodos passados intacto.
 
-    `paridade_ciclo` só faz sentido quando `horario.eh_12x36` -- em vez de uma
-    Escala separada com data-base própria (como era importado do Secullum, e
-    que na prática virava uma escala nova pra cada grupo de pessoas), o time
-    par/ímpar já resolve os casos reais da empresa e é direto de entender.
+    Quando `horario.eh_12x36`, `data_inicio` também serve como a data-base do
+    ciclo: é sempre um dia de trabalho, e o ciclo alterna a cada dia a partir
+    dela (ver `trabalha_no_dia_12x36`). Isso substituiu uma primeira versão
+    baseada em "dia par/ímpar do mês", que quebrava na virada de mês em meses
+    de 31 dias (dia 31 e dia 1 do mês seguinte caem os dois em ímpar) -- usar
+    diferença de dias em vez do número do dia no calendário nunca tem esse
+    problema. Pra mudar o dia de folga de alguém, basta atribuir uma nova
+    jornada com `data_inicio` na data que deve passar a ser dia de trabalho.
     """
-    PARIDADE_CHOICES = [
-        ('par', 'Par'),
-        ('impar', 'Ímpar'),
-    ]
-
     funcionario = models.ForeignKey(Funcionario, on_delete=models.CASCADE, related_name='jornadas')
-    data_inicio = models.DateField(help_text='A partir desta data este horário passa a valer para o cálculo.')
-    horario = models.ForeignKey(Horario, on_delete=models.PROTECT, related_name='+')
-    paridade_ciclo = models.CharField(
-        max_length=5, choices=PARIDADE_CHOICES, null=True, blank=True,
-        help_text='Só se aplica a horário 12x36: em qual dia (par ou ímpar do mês) o funcionário trabalha.',
+    data_inicio = models.DateField(
+        help_text='A partir desta data este horário passa a valer. Se for 12x36, é sempre um dia de trabalho.',
     )
+    horario = models.ForeignKey(Horario, on_delete=models.PROTECT, related_name='+')
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -309,31 +306,13 @@ class FuncionarioJornada(models.Model):
         ]
 
     def __str__(self):
-        sufixo = f' ({self.get_paridade_ciclo_display()})' if self.paridade_ciclo else ''
-        return f'{self.funcionario.nome} -> {self.horario}{sufixo} (desde {self.data_inicio})'
+        return f'{self.funcionario.nome} -> {self.horario} (desde {self.data_inicio})'
 
     @classmethod
     def vigente_em(cls, funcionario, data):
         """A jornada com data_inicio mais recente que ainda seja <= data, ou None se nenhuma."""
         return cls.objects.filter(funcionario=funcionario, data_inicio__lte=data).order_by('-data_inicio').first()
 
-    @staticmethod
-    def paridade_por_data(data):
-        """
-        Regra padrão pra descobrir sozinho o time par/ímpar de um 12x36:
-        dia ímpar do mês = time ímpar (trabalha nos dias ímpares), dia par =
-        time par -- bate com a nomenclatura "...ÍMPAR"/"...PAR" já usada na
-        empresa. Sempre pode ser sobrescrito manualmente na jornada.
-        """
-        return 'impar' if data.day % 2 == 1 else 'par'
-
-    def resolver_paridade(self):
-        """
-        Se o horário é 12x36 e ninguém escolheu par/ímpar explicitamente,
-        deriva da data de admissão do funcionário (ou da própria data_inicio
-        da jornada, se ele não tiver admissão cadastrada). Precisa de
-        `self.funcionario` e `self.horario` já atribuídos antes de chamar.
-        """
-        if self.horario.eh_12x36 and not self.paridade_ciclo:
-            base = self.funcionario.data_admissao or self.data_inicio
-            self.paridade_ciclo = self.paridade_por_data(base)
+    def trabalha_no_dia_12x36(self, data):
+        """Só chamar quando `horario.eh_12x36` -- `data_inicio` é sempre um dia de trabalho, o ciclo alterna dia sim, dia não a partir dele."""
+        return (data - self.data_inicio).days % 2 == 0
