@@ -14,15 +14,23 @@ class Setor(models.Model):
         blank=True,
         related_name='setores_gerenciados'
     )
+    usa_contrato_qualidade = models.BooleanField(
+        default=False,
+        help_text='Se marcado, o contrato de experiência gerado para funcionários deste setor '
+                   'inclui a cláusula extra sobre participação em análise sensorial/degustação.'
+    )
 
     def __str__(self):
         return self.nome
     
 class Funcionario(models.Model):
     STATUS_CHOICES = [
+        ('pendente_documentos', 'Pendente de documentos'),
+        ('aguardando_contrato', 'Aguardando contrato'),
+        ('aguardando_assinatura', 'Aguardando assinatura'),
+        ('em_validacao', 'Em validação'),
         ('ativo', 'Ativo'),
         ('inativo', 'Inativo'),
-        ('pendente', 'pendente'),
     ]
     
     SEXO_CHOICES = [
@@ -60,6 +68,13 @@ class Funcionario(models.Model):
         help_text='Marque se o funcionário possui filho(a) menor de 18 anos.'
     )
     cargo = models.CharField(max_length=100)
+    salario = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Usado para preencher o contrato de experiência gerado em PDF.'
+    )
     data_admissao = models.DateField(null=True, blank=True)
     data_base_ferias = models.DateField(
         null=True,
@@ -74,7 +89,7 @@ class Funcionario(models.Model):
         related_name='funcionarios'
     )
     status = models.CharField(
-        max_length=10,
+        max_length=25,
         choices=STATUS_CHOICES,
         default='ativo'
     )
@@ -134,24 +149,38 @@ class Funcionario(models.Model):
     def dados_pessoais_completos(self):
         return all(getattr(self, campo) for campo in self.CAMPOS_PESSOAIS_OBRIGATORIOS)
 
+    def dados_contrato_completos(self):
+        return bool(self.cargo and self.salario is not None and self.endereco)
+
     def tipos_documentos_obrigatorios(self):
         return [
             tipo for tipo in TipoDocumento.objects.filter(obrigatorio=True)
             if tipo.aplica_a(self)
         ]
 
-    def cadastro_completo(self):
-        if not self.dados_pessoais_completos():
-            return False
+    def tipos_documentos_iniciais(self):
+        return [
+            tipo for tipo in TipoDocumento.objects.filter(obrigatorio=True, eh_contrato=False)
+            if tipo.aplica_a(self)
+        ]
 
-        tipos_obrigatorios = self.tipos_documentos_obrigatorios()
-        tipos_enviados = self.documentos.values_list('tipo_documento_id', flat=True)
+    def documentos_iniciais_completos(self):
+        tipos_enviados = set(
+            self.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
+        )
+        return all(tipo.id in tipos_enviados for tipo in self.tipos_documentos_iniciais())
 
-        for tipo in tipos_obrigatorios:
-            if tipo.id not in tipos_enviados:
-                return False
+    def todos_documentos_enviados(self):
+        tipos_enviados = set(
+            self.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
+        )
+        return all(tipo.id in tipos_enviados for tipo in self.tipos_documentos_obrigatorios())
 
-        return True
+    def documentos_todos_aprovados(self):
+        tipos_aprovados = set(
+            self.documentos.filter(status='aprovado').values_list('tipo_documento_id', flat=True)
+        )
+        return all(tipo.id in tipos_aprovados for tipo in self.tipos_documentos_obrigatorios())
 
     def _somar_anos(self, data, anos):
         try:
@@ -256,6 +285,11 @@ class TipoDocumento(models.Model):
 
     nome = models.CharField(max_length=100)
     obrigatorio = models.BooleanField(default=False)
+    eh_contrato = models.BooleanField(
+        default=False,
+        help_text='Marque para o tipo "Contrato de Trabalho": ele é gerado pelo RH em vez de '
+                   'enviado pelo colaborador, e fica de fora da checagem inicial de documentos.'
+    )
     condicao = models.CharField(
         max_length=20,
         choices=CONDICAO_CHOICES,
@@ -279,6 +313,12 @@ class TipoDocumento(models.Model):
 
 
 class Documento(models.Model):
+    STATUS_CHOICES = [
+        ('pendente', 'Pendente de análise'),
+        ('aprovado', 'Aprovado'),
+        ('rejeitado', 'Rejeitado'),
+    ]
+
     funcionario = models.ForeignKey(
         Funcionario,
         on_delete=models.CASCADE,
@@ -295,6 +335,16 @@ class Documento(models.Model):
         on_delete=models.SET_NULL,
         null=True
     )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pendente')
+    motivo_rejeicao = models.TextField(blank=True)
+    analisado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='documentos_analisados'
+    )
+    analisado_em = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f'{self.tipo_documento} - {self.funcionario}'
@@ -303,16 +353,29 @@ class Documento(models.Model):
     def nome_arquivo(self):
         return os.path.basename(self.arquivo.name)
 
-def cadastro_completo(self):
-        tipos_obrigatorios = TipoDocumento.objects.filter(obrigatorio=True)
-        tipos_enviados = self.documentos.values_list('tipo_documento_id', flat=True)
+    @classmethod
+    def substituir_ou_criar(cls, funcionario, tipo_documento, arquivo, enviado_por):
+        documento = cls.objects.filter(funcionario=funcionario, tipo_documento=tipo_documento).first()
+        if documento is None:
+            return cls.objects.create(
+                funcionario=funcionario,
+                tipo_documento=tipo_documento,
+                arquivo=arquivo,
+                enviado_por=enviado_por,
+            )
 
-        for tipo in tipos_obrigatorios:
-            if tipo.id not in tipos_enviados:
-                return False
+        documento.arquivo.delete(save=False)
+        documento.arquivo = arquivo
+        documento.enviado_por = enviado_por
+        documento.data_upload = timezone.now()
+        documento.status = 'pendente'
+        documento.motivo_rejeicao = ''
+        documento.analisado_por = None
+        documento.analisado_em = None
+        documento.save()
+        return documento
 
-        return True
-    
+
 class SolicitacaoFerias(models.Model):
     STATUS_CHOICES = [
         ('pendente_gestor', 'Aguardando Gestor'),

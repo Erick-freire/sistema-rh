@@ -1,0 +1,770 @@
+<!--
+Template autocontido (não estende base.html) porque xhtml2pdf não suporta o CSS do
+design system do restante do sistema (flexbox/grid/variáveis). Um único arquivo cobre
+os dois textos de contrato (Geral/Qualidade); a única diferença real entre eles é o
+item "i)" extra na Cláusula Terceira, controlado por `eh_qualidade`.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page { size: A4; margin: 2.2cm 2cm; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.45; color: #000; text-align: justify; }
+    h1 { font-size: 13pt; text-align: center; margin-bottom: 20px; }
+    h2 { font-size: 11pt; text-align: center; margin-top: 16px; margin-bottom: 6px; text-decoration: underline; }
+    p { margin: 6px 0; }
+    .item { margin: 4px 0 4px 22px; text-indent: -22px; }
+    table.assinaturas, table.testemunhas { width: 100%; margin-top: 40px; }
+    table.assinaturas td, table.testemunhas td { text-align: center; vertical-align: top; }
+    .linha-assinatura { border-top: 1px solid #000; padding-top: 4px; margin-top: 50px; }
+</style>
+</head>
+<body>
+
+<h1>CONTRATO DE TRABALHO</h1>
+
+<p>
+    Pelo presente instrumento, as partes SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA.,
+    pessoa jurídica de direito privado, inscrita no CNPJ de n. 04.577.125/0001-30, com
+    endereço na Rua R. 5, Qd. 11-B, Módulos 01 a 16, Distrito Agroindustrial de Anápolis
+    (DAIA), Anápolis, Goiás, CEP: 75.132-160, que por força do presente contrato passa a
+    ser simplesmente denominado EMPREGADOR, e o(a) Sr(a) {{ funcionario.nome }},
+    portador(a) do CPF sob o número {{ cpf_formatado }}, Residente e domiciliado(a)
+    {{ funcionario.endereco }}, doravante denominado(a) EMPREGADO(A), acordam obedecer às
+    cláusulas que disporão sobre deveres, obrigações e direitos das partes.
+</p>
+
+<h2>DO OBJETO</h2>
+<p>
+    Cláusula Primeira: O(A) EMPREGADO(A) obriga-se a prestar serviços de natureza
+    pessoal, não eventual, onerosa e subordinada, integrando o quadro funcional do
+    EMPREGADOR, para exercer o cargo de {{ funcionario.cargo }}, desempenhando as
+    atividades inerentes à função, conforme descritas na ORDEM DE SERVIÇO, que passa a
+    integrar o presente contrato para todos os fins legais.
+</p>
+<p>
+    §1º. O(A) EMPREGADO(A) prestará serviços nos locais determinados pelo EMPREGADOR,
+    inclusive em outros estabelecimentos, filiais, unidades ou postos de trabalho,
+    conforme necessidade operacional, sem que tal condição configure alteração
+    contratual lesiva, desde que observados os limites legais.
+</p>
+<p>
+    §2º. O EMPREGADOR reserva-se o direito de promover a alteração de cargo, função ou
+    setor do(a) EMPREGADO(A), de forma transitória ou definitiva, desde que as novas
+    atribuições sejam compatíveis com sua condição pessoal, qualificação profissional e
+    capacidade laboral, não implicando redução salarial, prejuízo funcional ou afronta ao
+    disposto no art. 468 da CLT, não se caracterizando, portanto, alteração contratual
+    lesiva.
+</p>
+
+<h2>DAS OBRIGAÇÕES DO(A) EMPREGADO(A)</h2>
+<p>
+    Cláusula Terceira: O(A) EMPREGADO(A) declara, ao firmar o presente contrato, estar
+    plenamente ciente e de acordo com as obrigações inerentes ao vínculo empregatício,
+    comprometendo-se a cumpri-las com boa-fé, lealdade, diligência e observância das
+    normas internas do EMPREGADOR, especialmente no que se refere a:
+</p>
+<p class="item">a) Executar as atividades com zelo, eficiência e qualidade, observando os padrões operacionais, orientações técnicas e procedimentos internos estabelecidos pelo EMPREGADOR;</p>
+<p class="item">b) Atuar ativamente no controle e na garantia da qualidade dos produtos em todas as etapas de sua responsabilidade, reportando imediatamente à chefia direta qualquer inconformidade, desvio padrão ou risco à integridade e segurança alimentar dos produtos da empresa;</p>
+<p class="item">c) Manter conduta ética, urbana e respeitosa, agindo com decoro, discrição e profissionalismo no ambiente de trabalho, inclusive no trato com clientes, colegas, superiores hierárquicos, fornecedores e terceiros;</p>
+<p class="item">d) Zelar pela organização, limpeza e conservação do local de trabalho, contribuindo para a adequada prestação dos serviços e para a boa imagem do EMPREGADOR perante o público;</p>
+<p class="item">e) Abster-se do uso de telefone celular ou dispositivos eletrônicos pessoais durante a jornada de trabalho, salvo em situações excepcionais, previamente autorizadas ou em casos de emergência devidamente justificados;</p>
+<p class="item">f) Tratar todos os colegas de trabalho com respeito, cordialidade e urbanidade, sendo vedadas condutas abusivas, ofensivas, intimidatórias ou incompatíveis com a convivência profissional saudável;</p>
+<p class="item">g) Abster-se, em qualquer circunstância, de praticar ou proferir atos, comentários ou manifestações de cunho racista, discriminatório, difamatório, ofensivo, de ódio ou semelhantes, sujeitando-se o(a) EMPREGADO(A) às sanções disciplinares cabíveis e demais responsabilizações legais;</p>
+<p class="item">h) Zelar pela correta utilização, conservação e guarda do uniforme e demais materiais fornecidos gratuitamente pelo EMPREGADOR, ciente de que a perda, dano ou avaria decorrentes de uso inadequado, negligência ou culpa poderão ensejar a reposição ou indenização correspondente, nos limites permitidos pela legislação trabalhista{% if eh_qualidade %};{% else %}.{% endif %}</p>
+{% if eh_qualidade %}
+<p class="item">i) Participar ativamente da análise sensorial e degustação de produtos acabados ou em fase de desenvolvimento, avaliando seus atributos de qualidade (como sabor, textura e odor) de acordo com os critérios estabelecidos pela empresa.</p>
+{% endif %}
+<p>
+    Parágrafo Único – O(A) EMPREGADO(A) declara ter ciência integral e inequívoca das
+    disposições constantes da ORDEM DE SERVIÇO, que integra o presente contrato para
+    todos os fins legais, comprometendo-se a cumpri-las fielmente.
+</p>
+
+<h2>DAS OBRIGAÇÕES DO EMPREGADOR</h2>
+<p>
+    Cláusula Quarta: O EMPREGADOR compromete-se a cumprir as obrigações legais e
+    contratuais inerentes à relação de emprego, observando os princípios da boa-fé,
+    legalidade e proteção à saúde e segurança do trabalho, especialmente no que se refere
+    a:
+</p>
+<p class="item">a) Disponibilizar ambiente de trabalho adequado, seguro e compatível com as atividades contratadas, conforme as condições informadas no momento da contratação, observadas as normas de saúde, higiene e segurança do trabalho;</p>
+<p class="item">b) Fornecer ao(à) EMPREGADO(A) os equipamentos, ferramentas e materiais necessários à adequada execução das atividades profissionais, responsabilizando-se pela manutenção e substituição, quando aplicável;</p>
+<p class="item">c) Efetuar o pagamento da remuneração devida até o 5º (quinto) dia útil do mês subsequente ao trabalhado, bem como fornecer o respectivo demonstrativo de pagamento, nos termos da lei;</p>
+<p class="item">d) Respeitar os intervalos legais para repouso e alimentação, bem como conceder férias anuais e demais períodos de descanso previstos em lei, assegurando condições adequadas para a recomposição da saúde física e mental do(a) EMPREGADO(A).</p>
+
+<h2>DO SALÁRIO</h2>
+<p>
+    Cláusula Quinta: O(A) EMPREGADO(A) perceberá, a título de salário mensal, o valor de
+    {{ salario_formatado }} ({{ salario_extenso }}) pelo cargo de {{ funcionario.cargo }},
+    conforme ajustado entre as partes, observada a legislação vigente e as normas
+    coletivas aplicáveis.
+</p>
+<p>
+    §1º. O EMPREGADOR compromete-se a efetuar o pagamento da remuneração até o 5º
+    (quinto) dia útil do mês subsequente ao trabalhado, fornecendo ao(à) EMPREGADO(A) o
+    respectivo demonstrativo de pagamento, discriminando salários, adicionais, descontos
+    legais e demais parcelas incidentes.
+</p>
+<p>
+    §2º. O pagamento será realizado por meio de depósito ou transferência bancária na
+    conta de titularidade do(a) EMPREGADO(A) por este(a) indicada, podendo ser alterada
+    mediante comunicação formal.
+</p>
+<p>
+    §3º. O(A) EMPREGADO(A) autoriza, nos termos do art. 462 da CLT, o desconto de valores
+    correspondentes a prejuízos comprovadamente causados ao EMPREGADOR, desde que
+    decorrentes de conduta dolosa ou de culpa grave, assegurado o direito ao contraditório
+    e à ampla defesa.
+</p>
+
+<h2>DA CONFIDENCIALIDADE, SIGILO E PROTEÇÃO DE DADOS</h2>
+<p>
+    Cláusula Sexta: O(A) EMPREGADO(A) obriga-se a manter absoluto sigilo e
+    confidencialidade sobre todas e quaisquer informações, dados, documentos, registros,
+    estratégias comerciais, informações financeiras, operacionais, administrativas,
+    cadastrais, tecnológicas ou institucionais, bem como dados de clientes, fornecedores,
+    colaboradores ou terceiros, a que tiver acesso em razão do presente contrato de
+    trabalho, independentemente do meio, suporte ou formato em que tais informações se
+    encontrem.
+</p>
+<p>
+    §1º. Para os fins desta cláusula, consideram-se informações confidenciais todas
+    aquelas não disponíveis ao público em geral, ainda que não expressamente
+    identificadas como sigilosas, cujo acesso, uso, divulgação ou compartilhamento
+    indevido possa causar prejuízo econômico, reputacional, operacional ou jurídico ao
+    EMPREGADOR.
+</p>
+<p>
+    §2º. É expressamente vedado ao(à) EMPREGADO(A), sem autorização prévia, expressa e
+    por escrito do EMPREGADOR, divulgar, revelar, reproduzir, copiar, compartilhar,
+    armazenar, editar, transmitir ou utilizar, total ou parcialmente, as informações
+    confidenciais para finalidade diversa da estrita execução das atividades
+    profissionais.
+</p>
+<p>
+    §3º. A obrigação de confidencialidade ora assumida permanecerá vigente durante toda a
+    relação de emprego e após o seu encerramento, por prazo indeterminado, enquanto as
+    informações mantiverem caráter confidencial ou estratégico.
+</p>
+<p>
+    §4º. O descumprimento das disposições previstas nesta cláusula constitui falta grave,
+    sujeitando o(a) EMPREGADO(A) às penalidades disciplinares cabíveis, inclusive
+    rescisão do contrato de trabalho por justa causa, nos termos do art. 482 da CLT, sem
+    prejuízo da responsabilização civil, administrativa e criminal por eventuais danos
+    causados.
+</p>
+<p>
+    §5º. O(A) EMPREGADO(A) declara estar ciente e de acordo com as disposições da Lei
+    Geral de Proteção de Dados Pessoais – LGPD (Lei nº 13.709/2018), comprometendo-se a
+    tratar quaisquer dados pessoais a que tiver acesso exclusivamente conforme as
+    instruções do EMPREGADOR, observando os princípios da finalidade, necessidade,
+    adequação, segurança e confidencialidade.
+</p>
+<p>
+    §6º. O(A) EMPREGADO(A) obriga-se, ainda, a comunicar imediatamente ao EMPREGADOR
+    qualquer incidente de segurança, acesso não autorizado, perda, vazamento ou uso
+    indevido de informações ou dados pessoais de que tenha conhecimento, colaborando com
+    as medidas de contenção e mitigação de danos.
+</p>
+
+<h2>DA PROPRIEDADE INTELECTUAL</h2>
+<p>
+    Cláusula Sétima: Todo e qualquer conteúdo, material, criação, desenvolvimento, obra
+    intelectual, ideia, projeto, material gráfico, visual, audiovisual, textual,
+    informacional, tecnológico, operacional ou estratégico, concebido, desenvolvido ou
+    produzido pelo(a) EMPREGADO(A) no exercício de suas funções ou em razão delas, ainda
+    que fora da jornada de trabalho ou das dependências do EMPREGADOR, pertencerá
+    exclusivamente ao EMPREGADOR, para todos os fins de direito.
+</p>
+<p>
+    §1º. A titularidade patrimonial dos direitos autorais e demais direitos de
+    propriedade intelectual incidentes sobre as criações referidas nesta cláusula será
+    integralmente do EMPREGADOR, nos termos da legislação aplicável, independentemente de
+    registro, facultado ao EMPREGADOR promover os registros que entender necessários.
+</p>
+<p>
+    §2º. O(A) EMPREGADO(A) reconhece que a cessão dos direitos patrimoniais prevista
+    nesta cláusula não importa em violação aos direitos morais do autor, nos limites da
+    lei, comprometendo-se a não se opor ao uso, adaptação, modificação, reprodução ou
+    exploração econômica das obras pelo EMPREGADOR.
+</p>
+<p>
+    §3º. É vedado ao(à) EMPREGADO(A) utilizar, reproduzir, divulgar, ceder, licenciar ou
+    explorar, total ou parcialmente, as criações e materiais mencionados nesta cláusula
+    para fins próprios ou de terceiros, sem autorização prévia, expressa e por escrito do
+    EMPREGADOR.
+</p>
+<p>
+    §4º. A cessão dos direitos patrimoniais ora ajustada é realizada a título gratuito,
+    considerando-se a contraprestação salarial pactuada no presente contrato, não sendo
+    devida qualquer remuneração adicional ao(à) EMPREGADO(A).
+</p>
+<p>
+    §5º. As disposições desta cláusula permanecerão válidas e eficazes mesmo após o
+    encerramento do vínculo empregatício, pelo prazo de proteção legal dos respectivos
+    direitos de propriedade intelectual.
+</p>
+
+<h2>DA AUTORIZAÇÃO DE USO DE IMAGEM</h2>
+<p>
+    Cláusula Oitava: O(A) EMPREGADO(A), de forma livre, expressa, específica e informada,
+    nos termos da legislação aplicável, autoriza o EMPREGADOR a captar, fixar,
+    reproduzir, utilizar e divulgar sua imagem, voz e nome, obtidos no exercício das
+    atividades profissionais ou em razão delas, exclusivamente para fins institucionais,
+    publicitários, promocionais e de divulgação dos serviços e da marca do EMPREGADOR.
+</p>
+<p>
+    §1º. A presente autorização compreende a utilização da imagem em materiais impressos
+    e digitais, mídias eletrônicas, redes sociais, sítios eletrônicos, campanhas
+    institucionais, peças de marketing e demais meios de comunicação, no território
+    nacional e no exterior, pelo prazo de proteção legal.
+</p>
+<p>
+    §2º. A autorização ora concedida é realizada a título gratuito, considerando-se a
+    contraprestação salarial pactuada no presente contrato, não gerando ao(à) EMPREGADO(A)
+    qualquer direito a indenização, remuneração adicional ou compensação de qualquer
+    natureza.
+</p>
+<p>
+    §3º. O uso da imagem, voz e nome do(a) EMPREGADO(A) observará, em qualquer hipótese,
+    os princípios da dignidade da pessoa humana, da boa-fé, da finalidade e da
+    proporcionalidade, sendo expressamente vedada a utilização em contextos que possam
+    causar constrangimento, exposição vexatória ou prejuízo à honra, à imagem ou à
+    reputação do(a) EMPREGADO(A).
+</p>
+<p>
+    §4º. O(A) EMPREGADO(A) reconhece que a presente autorização constitui base legal de
+    consentimento, nos termos da Lei Geral de Proteção de Dados Pessoais – LGPD (Lei nº
+    13.709/2018), podendo ser revogada mediante solicitação expressa, hipótese em que o
+    EMPREGADOR cessará novas divulgações, ressalvada a manutenção de materiais já
+    produzidos e divulgados até a data da revogação.
+</p>
+<p>
+    §5º. A autorização prevista nesta cláusula subsistirá após o término do contrato de
+    trabalho, enquanto o material permanecer em circulação institucional, sem que tal
+    fato gere qualquer direito adicional ao(à) EMPREGADO(A).
+</p>
+
+<h2>DO USO DE REDES SOCIAIS, MARKETING DIGITAL E IMAGEM INSTITUCIONAL</h2>
+<p>
+    Cláusula Nona: O(A) EMPREGADO(A) declara estar ciente de que o EMPREGADOR mantém
+    presença institucional ativa em redes sociais, plataformas digitais e demais meios de
+    marketing, comprometendo-se a adotar conduta ética, profissional, responsável e
+    compatível com os valores e a imagem institucional da empresa, sempre que houver
+    relação direta ou indireta entre suas manifestações em ambientes digitais e o vínculo
+    empregatício.
+</p>
+<p>§1º. É expressamente vedado ao(à) EMPREGADO(A), sem autorização prévia, expressa e por escrito do EMPREGADOR:</p>
+<p class="item">a) Publicar, divulgar, compartilhar, reproduzir ou permitir a divulgação de imagens, vídeos, áudios ou quaisquer conteúdos internos da empresa;</p>
+<p class="item">b) Expor, mencionar ou identificar clientes, fornecedores, colaboradores, processos internos, rotinas operacionais, sistemas, valores, estratégias comerciais ou informações confidenciais;</p>
+<p class="item">c) Utilizar uniformes, crachás, instalações, equipamentos, marcas, logotipos, símbolos ou identidade visual do EMPREGADOR para fins pessoais, promocionais próprios ou de terceiros;</p>
+<p class="item">d) Associar, direta ou indiretamente, sua imagem pessoal à imagem institucional do EMPREGADOR para fins comerciais, promocionais ou publicitários não autorizados;</p>
+<p class="item">e) Realizar publicações, comentários, manifestações ou interações que possam comprometer, denegrir ou afetar negativamente a reputação, a credibilidade ou a imagem institucional do EMPREGADOR.</p>
+<p>
+    §2º. O uso da imagem, voz ou nome do(a) EMPREGADO(A) em campanhas institucionais,
+    publicitárias ou de marketing digital somente ocorrerá mediante autorização
+    específica, nos termos da cláusula própria de uso de imagem, observados os princípios
+    da finalidade, necessidade, adequação, segurança e transparência, previstos na Lei
+    Geral de Proteção de Dados Pessoais – LGPD (Lei nº 13.709/2018).
+</p>
+<p>
+    §3º. É vedada a captação, gravação ou divulgação de vídeos, áudios, fotografias,
+    stories, reels, transmissões ao vivo ou quaisquer conteúdos audiovisuais nas
+    dependências da empresa ou durante a jornada de trabalho, salvo mediante autorização
+    expressa da diretoria ou do setor responsável.
+</p>
+<p>
+    §4º. O descumprimento das disposições previstas nesta cláusula configura falta grave,
+    sujeitando o(a) EMPREGADO(A) às medidas disciplinares cabíveis, inclusive rescisão do
+    contrato de trabalho por justa causa, nos termos do art. 482 da CLT, sem prejuízo da
+    responsabilização civil por eventuais danos materiais, morais ou à imagem
+    institucional do EMPREGADOR.
+</p>
+<p>
+    §5º. As obrigações estabelecidas nesta cláusula subsistirão após o término do
+    contrato de trabalho, pelo prazo necessário à preservação da imagem, reputação,
+    confidencialidade e interesses comerciais do EMPREGADOR, enquanto os efeitos das
+    publicações ou divulgações permanecerem relevantes.
+</p>
+
+<h2>DO VALE TRANSPORTE</h2>
+<p>
+    Cláusula Décima: O(A) EMPREGADO(A), mediante declaração escrita de necessidade, fará
+    jus ao recebimento de vale-transporte para o deslocamento residência–trabalho–
+    residência, podendo ser concedidos até 02 (dois) vales-transporte por dia
+    efetivamente trabalhado, conforme a efetiva necessidade informada.
+</p>
+<p>
+    §1º. O vale-transporte possui natureza indenizatória, não integrando o salário do(a)
+    EMPREGADO(A) para quaisquer efeitos legais ou previdenciários, nos termos da
+    legislação aplicável.
+</p>
+<p>
+    §2º. A prestação de informação falsa, o uso indevido do vale-transporte para
+    finalidade diversa do deslocamento ao trabalho, bem como a comercialização, cessão ou
+    transferência do benefício, constituem falta grave, sujeitando o(a) EMPREGADO(A) às
+    medidas disciplinares cabíveis, inclusive à rescisão do contrato de trabalho por justa
+    causa, nos termos do art. 482 da CLT.
+</p>
+<p>§3º. O vale-transporte será concedido por meio de cartão eletrônico ou outro meio legalmente admitido.</p>
+<p>
+    §4°. Para definição do valor da recarga mensal, o EMPREGADOR realizará o
+    aproveitamento dos créditos remanescentes existentes no cartão do(a) EMPREGADO(A),
+    efetuando apenas a complementação necessária para garantir os deslocamentos do mês
+    subsequente, conforme o percurso informado pelo(a) EMPREGADO(A).
+</p>
+<p>
+    §4º. A participação do(a) EMPREGADO(A) no custeio do vale-transporte observará o
+    disposto na Lei nº 7.418/1985 e no Decreto nº 95.247/1987, sendo descontado
+    mensalmente o menor valor entre:
+</p>
+<p class="item">a) o valor efetivamente creditado a título de vale-transporte no respectivo mês; ou</p>
+<p class="item">b) 6% (seis por cento) do salário básico do(a) EMPREGADO(A).</p>
+<p>
+    §5º. O(A) EMPREGADO(A) compromete-se a comunicar imediatamente ao EMPREGADOR qualquer
+    alteração de endereço, percurso, meio de transporte utilizado ou qualquer outra
+    circunstância que possa impactar a necessidade de concessão do benefício, autorizando
+    os ajustes necessários nas recargas e nos descontos correspondentes.
+</p>
+
+<h2>DA DURAÇÃO DO CONTRATO E DA RESCISÃO</h2>
+<p>
+    Cláusula Décima Primeira: O presente contrato de trabalho é celebrado por prazo
+    determinado, na modalidade de contrato de experiência, com duração inicial de 30
+    (trinta) dias, contados a partir da data de início das atividades, podendo ser
+    prorrogado uma única vez, por igual ou maior período, limitado ao prazo máximo de 90
+    (noventa) dias, nos termos dos arts. 443, §2º, "c", e 445, parágrafo único, da CLT.
+</p>
+<p>
+    §1º. Caso o(a) EMPREGADO(A) permaneça em serviço após o término do prazo ajustado,
+    sem manifestação expressa em sentido contrário, o contrato passará automaticamente a
+    vigorar por prazo indeterminado, regendo-se, a partir de então, pelas disposições
+    legais aplicáveis.
+</p>
+<p>
+    §2º. O contrato de trabalho poderá ser rescindido a qualquer tempo, por iniciativa de
+    qualquer das partes, com ou sem justa causa, observadas as disposições legais
+    pertinentes à modalidade contratual vigente à época da rescisão.
+</p>
+<p>
+    §3º. Constituem motivo para rescisão do contrato de trabalho por justa causa, por
+    iniciativa do EMPREGADOR, dentre outros previstos em lei, os atos de improbidade,
+    incontinência de conduta, mau procedimento, indisciplina, insubordinação, desídia no
+    desempenho das funções, embriaguez em serviço, nos termos do art. 482 da CLT.
+</p>
+<p>
+    §4º. A violação de segredo da empresa, bem como a divulgação ou utilização indevida de
+    informações confidenciais do EMPREGADOR, por ato ou omissão do(a) EMPREGADO(A),
+    configura falta grave e enseja rescisão contratual imediata por justa causa, sem
+    prejuízo das demais responsabilizações cabíveis.
+</p>
+<p>
+    §5º. Igualmente caracterizam falta grave as ofensas físicas ou morais, atos lesivos à
+    honra ou à boa fama praticados contra o EMPREGADOR, seus representantes legais,
+    superiores hierárquicos ou colegas de trabalho, ressalvadas as hipóteses de legítima
+    defesa própria ou de terceiros, nos termos da legislação aplicável.
+</p>
+
+<h2>DAS FALTAS ABONADAS</h2>
+<p>
+    Cláusula Décima Segunda: O(A) EMPREGADO(A) terá direito ao abono de faltas nas
+    situações especificadas abaixo, em estrita conformidade com a Convenção Coletiva de
+    Trabalho (CCT) vigente.
+</p>
+<p>
+    §1º. Assegura-se o direito à ausência remunerada de 1 (um) dia por semestre para
+    acompanhar em consulta ou procedimento médico filho menor ou dependente previdenciário
+    de até 6 (seis) anos de idade. O abono fica condicionado à apresentação de comprovante
+    médico no prazo de até 48 (quarenta e oito) horas após a ausência.
+</p>
+<p>
+    §2º. O EMPREGADOR abonará a falta do(a) EMPREGADO(A) motivada por prestação de exame
+    vestibular, desde que a prova coincida com o horário de trabalho. O benefício exige
+    aviso prévio de, no mínimo, 48 (quarenta e oito) horas e posterior comprovação formal
+    da participação em até 48 (quarenta e oito) horas após a realização do exame.
+</p>
+<p>
+    §3º. As faltas ao trabalho por motivo de incapacidade laborativa somente serão
+    abonadas mediante apresentação de atestado médico ou odontológico idôneo, emitido por
+    profissional legalmente habilitado, observadas as disposições legais e as normas
+    internas do EMPREGADOR.
+</p>
+<p>
+    §4º. O atestado ou declaração de comparecimento destina-se exclusivamente a comprovar
+    que o(a) EMPREGADO(A) esteve presente em consulta, exame ou procedimento de saúde,
+    constituindo justificativa para a ausência exclusivamente para fins disciplinares, de
+    modo a afastar a aplicação de penalidades decorrentes do período de comparecimento.
+    Referido documento, por si só, não implica o abono da jornada ou das horas não
+    trabalhadas, nem gera direito à remuneração do período de ausência, salvo quando
+    houver expressa recomendação médica de afastamento das atividades laborais pelo
+    período correspondente.
+</p>
+<p>
+    §5º. Sempre que possível, o(a) EMPREGADO(A) deverá comunicar previamente ao
+    EMPREGADOR acerca da necessidade de afastamento ou atendimento médico. Os atestados
+    médicos e odontológicos deverão ser apresentados ao setor responsável no prazo máximo
+    de 48 (quarenta e oito) horas, contadas da sua emissão ou do retorno ao trabalho,
+    ressalvada a impossibilidade devidamente justificada.
+</p>
+<p>
+    §6º. O EMPREGADOR poderá adotar procedimento interno para conferência da
+    autenticidade dos atestados médicos apresentados, inclusive mediante contato com o
+    profissional ou estabelecimento emissor, observadas a legislação vigente, o sigilo
+    profissional e a Lei Geral de Proteção de Dados (Lei nº 13.709/2018).
+</p>
+
+<h2>DO PROGRAMA DEGUSTA</h2>
+<p>
+    Cláusula Décima Terceira: O EMPREGADOR mantém o PROGRAMA DEGUSTA, programa interno e
+    exclusivo de análise sensorial voltado aos seus colaboradores, cujo objetivo é
+    convidar o(a) EMPREGADO(A) a participar de encontros periódicos de degustação de
+    novos produtos, troca de experiências e avaliações sensoriais, contribuindo
+    ativamente para o desenvolvimento e lançamento de novos produtos da marca.
+</p>
+<p>
+    §1º. A participação no PROGRAMA DEGUSTA é voluntária e depende de inscrição expressa
+    do(a) EMPREGADO(A), sendo obrigatória a anuência prévia do supervisor imediato, que
+    deverá ser comunicado para liberação do(a) colaborador(a) nas datas programadas de
+    degustação e, quando aplicável, no Treinamento Sensorial de que trata o §2º desta
+    cláusula.
+</p>
+<p>
+    §2º. A participação no Treinamento Sensorial, com duração máxima de 4 (quatro) horas,
+    é obrigatória para todos os inscritos no Programa, sendo necessária a liberação
+    formal do supervisor imediato na data programada.
+</p>
+<p>
+    §3°. O programa terá duração de 1 (um) ano, ficando o(a) EMPREGADO(A) inscrito(a)
+    ciente de que não poderá se desligar antes do encerramento da turma, salvo por motivo
+    justificado e aceito pelo EMPREGADOR. Após o encerramento da turma, os participantes
+    poderão se candidatar novamente, caso desejem.
+</p>
+<p>
+    §4°. O(A) EMPREGADO(A) participante que estiver presente em todas as degustações do
+    mês fará jus ao recebimento de kit de produtos SOTRIGO, a ser retirado em até 2 (dois)
+    dias úteis após sua disponibilização. A não retirada dentro do prazo implicará perda
+    do direito ao kit do mês referente. O(A) participante afastado(a) de suas funções
+    perderá o direito ao kit até o retorno, e o(a) que estiver de férias durante o período
+    de entrega poderá efetuar a retirada ao retornar.
+</p>
+<p>
+    §5º. A ausência injustificada em sessão de degustação implicará a perda do incentivo
+    do mês correspondente. Atestados médicos deverão ser apresentados no próprio dia em
+    que forem assinados. Cada sessão de avaliação terá duração máxima de 15 (quinze)
+    minutos.
+</p>
+<p>
+    §6º. O(A) EMPREGADO(A) participante obriga-se a manter absoluto sigilo sobre as
+    degustações realizadas, resultados obtidos e informações compartilhadas no âmbito do
+    Programa, sendo vedado o compartilhamento de qualquer dado com outros colaboradores,
+    ainda que também participantes, ou com terceiros. O descumprimento desta obrigação
+    sujeitará o(a) EMPREGADO(A) às sanções disciplinares cabíveis, nos termos deste
+    contrato e da legislação trabalhista vigente.
+</p>
+<p>
+    §7º. Durante as sessões de degustação, o(a) EMPREGADO(A) deverá se abster de fumar,
+    consumir café, mascar chiclete, bala, pirulito ou escovar os dentes no intervalo
+    mínimo de 1 (uma) hora antecedente à avaliação, a fim de preservar a integridade da
+    análise sensorial. É obrigatório o porte de garrafa ou copo de água para as
+    degustações.
+</p>
+<p>
+    §8º. O(A) EMPREGADO(A) compromete-se a avaliar os produtos de forma imparcial e
+    isenta, sem favoritismo em relação à marca SOTRIGO. Respostas que não guardem relação
+    com as perguntas formuladas nas sessões de degustação poderão ser desconsideradas e,
+    a critério do EMPREGADOR, configurar motivo para exclusão do Programa, observados os
+    princípios da seriedade e do respeito.
+</p>
+<p>
+    §9º. A participação no Programa Degusta não gera qualquer direito a remuneração
+    adicional, hora extra ou alteração das condições contratuais, sendo os kits de
+    produtos oferecidos a título de incentivo, sem natureza salarial.
+</p>
+
+<h2>DA POLÍTICA DE SUBSTITUIÇÃO TEMPORÁRIA</h2>
+<p>
+    Cláusula Décima Quarta: O presente contrato de trabalho fica sujeito à Política de
+    Substituição Temporária adotada pelo EMPREGADOR, nos termos do art. 138 da
+    Consolidação das Leis do Trabalho (CLT).
+</p>
+<p>
+    §1º. Durante o período de gozo de férias do EMPREGADO(A), o EMPREGADOR poderá
+    contratar substituto temporário, pelo prazo determinado correspondente ao período de
+    afastamento, nos termos do art. 443, § 2º, alínea "b", da CLT, sem que tal
+    circunstância gere qualquer direito adicional ao(à) EMPREGADO(A) substituído(a).
+</p>
+<p>
+    §2º. O contrato do substituto temporário terá natureza de prazo determinado,
+    vinculado exclusivamente ao período de afastamento do titular, extinguindo-se
+    automaticamente com o retorno do(a) EMPREGADO(A) às suas atividades, não se
+    convertendo em contrato por prazo indeterminado.
+</p>
+<p>
+    §3º. O retorno do(a) EMPREGADO(A) ao término do período de férias é garantido, sendo
+    assegurado o retorno ao mesmo cargo, função e remuneração que exercia anteriormente ao
+    afastamento, nos termos da legislação vigente.
+</p>
+<p>
+    §4º. A substituição temporária aqui prevista não importa em alteração do contrato de
+    trabalho do(a) EMPREGADO(A) substituído(a), tampouco configura dispensa ou
+    interrupção do vínculo empregatício, permanecendo íntegros todos os direitos
+    decorrentes do contrato de trabalho durante o período de afastamento.
+</p>
+
+<h2>DO VALE-ALIMENTAÇÃO POR ASSIDUIDADE</h2>
+<p>
+    Cláusula Décima Quinta: O EMPREGADOR concederá aos empregados que mantiverem
+    assiduidade integral no respectivo mês de competência vale-alimentação no valor de
+    R$ 450,00 (quatrocentos e cinquenta reais).
+</p>
+<p>§1º. Para fins desta cláusula, considera-se preenchido o requisito para percepção do benefício quando o empregado, no mês de apuração:</p>
+<p class="item">a) não possuir faltas injustificadas, ressalvadas as ausências legalmente justificadas, as previstas em Convenção Coletiva de Trabalho e aquelas expressamente abonadas pelo EMPREGADOR; e</p>
+<p class="item">b) não tiver sido submetido à aplicação de penalidade disciplinar, tais como advertência, verbal ou escrita, ou suspensão disciplinar.</p>
+<p>
+    §2º. O valor do vale-alimentação será reajustado anualmente, no mês de janeiro, pela
+    variação acumulada do Índice Nacional de Preços ao Consumidor Amplo – IPCA, tomando-se
+    por base o acumulado dos 12 (doze) meses imediatamente anteriores.
+</p>
+<p>
+    §3º. O empregado que, durante o mês de competência, incorrer em falta injustificada
+    ou sofrer aplicação de penalidade disciplinar, inclusive advertência verbal,
+    advertência escrita ou suspensão disciplinar, perderá o direito ao vale-alimentação
+    referente ao respectivo mês, sem que tal medida constitua penalidade disciplinar
+    adicional, redução salarial ou alteração contratual lesiva, por se tratar de benefício
+    condicionado ao cumprimento dos requisitos estabelecidos nesta cláusula.
+</p>
+
+<h2>DO REGIME HÍBRIDO DE TRABALHO</h2>
+<p>
+    Cláusula Décima Quinta: O(A) EMPREGADO(A) poderá desempenhar suas atividades em
+    regime híbrido, alternando a prestação de serviços nas dependências do EMPREGADOR, nas
+    instalações de clientes, em trabalho externo ou em teletrabalho, conforme as
+    necessidades operacionais da empresa e mediante orientação da gestão imediata.
+</p>
+<p>
+    §1º. Independentemente do local da prestação dos serviços, o(a) EMPREGADO(A)
+    permanecerá sujeito ao controle de jornada, observado o horário contratual e as
+    normas internas do EMPREGADOR.
+</p>
+<p>
+    §2º. O controle da jornada poderá ser realizado por quaisquer meios idôneos admitidos
+    pela legislação trabalhista, inclusive, mas não se limitando, a registro eletrônico de
+    ponto, aplicativos corporativos, sistemas informatizados, registros de login e logout,
+    acessos a plataformas e softwares utilizados na execução das atividades, registros de
+    check-in e check-out em clientes, geolocalização quando vinculada aos sistemas
+    corporativos, ordens de serviço, relatórios de atividades ou outros meios tecnológicos
+    que permitam aferir a efetiva jornada de trabalho.
+</p>
+<p>
+    §3º. O(A) EMPREGADO(A) compromete-se a realizar corretamente os registros exigidos
+    pelo EMPREGADOR, responsabilizando-se pela veracidade das informações prestadas,
+    comunicando imediatamente qualquer inconsistência ou impossibilidade técnica de
+    realização dos registros.
+</p>
+<p>
+    §4°. A adoção do regime híbrido não altera a jornada contratada, nem implica
+    enquadramento automático na exceção prevista no art. 62 da CLT, permanecendo
+    aplicáveis as normas relativas ao controle de jornada, horas extraordinárias,
+    intervalos e descansos, quando cabíveis.
+</p>
+
+<h2>DO ADIANTAMENTO DO 13° SALÁRIO E DAS FÉRIAS</h2>
+<p>
+    Cláusula Décima Sexta: Observada a Convenção Coletiva de Trabalho aplicável, o
+    EMPREGADOR poderá antecipar ao(à) EMPREGADO(A), por ocasião do pagamento das férias,
+    até 50% (cinquenta por cento) da gratificação natalina (13º salário), nos termos da
+    legislação e da norma coletiva vigente.
+</p>
+<p>
+    §1º. A antecipação prevista no caput dependerá de requerimento formal do(a)
+    EMPREGADO(A), a ser apresentado no prazo de até 05 (cinco) dias contados do
+    recebimento do aviso de férias, observadas as disposições da Convenção Coletiva de
+    Trabalho.
+</p>
+<p>
+    §2º. Sem prejuízo da hipótese prevista no §1º, o EMPREGADOR poderá, a seu exclusivo
+    critério e mediante requerimento do(a) EMPREGADO(A) que possua mais de 01 (um) ano de
+    contrato de trabalho, antecipar até 50% (cinquenta por cento) da gratificação
+    natalina (13º salário) em período diverso daquele previsto na Convenção Coletiva de
+    Trabalho, observadas a legislação vigente, as normas internas da empresa e a
+    disponibilidade operacional.
+</p>
+
+<h2>DA JORNADA DE TRABALHO</h2>
+<p>
+    Cláusula Décima Sétima: O(A) EMPREGADO(A) cumprirá a jornada de trabalho estabelecida
+    pelo EMPREGADOR, conforme a necessidade do serviço, observados os limites previstos
+    na legislação e na Convenção Coletiva de Trabalho aplicável, podendo ser adotadas
+    jornadas em escala 6x1, 12x36 ou outras modalidades legalmente permitidas, respeitado
+    o limite de 44 (quarenta e quatro) horas semanais, quando aplicável.
+</p>
+<p>
+    §1º. A distribuição da jornada diária, os horários de entrada, saída, intervalos,
+    escalas, turnos de trabalho e eventuais alterações serão definidos pelo EMPREGADOR, de
+    acordo com as necessidades operacionais, observadas a legislação trabalhista e a
+    Convenção Coletiva de Trabalho.
+</p>
+<p>
+    §2º. O(A) EMPREGADO(A) declara possuir disponibilidade para laborar em qualquer turno
+    de trabalho, diurno ou noturno, bem como em escalas e horários compatíveis com a
+    função exercida, observados os limites legais e convencionais.
+</p>
+<p>
+    §3º. Durante a jornada de trabalho, será concedido ao(à) EMPREGADO(A), além do
+    intervalo intrajornada previsto, um intervalo adicional de 20 (vinte) minutos,
+    conforme a organização operacional do EMPREGADOR. Referido intervalo possui natureza
+    de pausa concedida por liberalidade do empregador e será usufruído nos horários
+    previamente estabelecidos pela empresa, não implicando alteração da jornada
+    contratual nem gerando direito adquirido à sua manutenção caso haja modificação das
+    necessidades operacionais.
+</p>
+<p>
+    §4º. A tolerância prevista no art. 58, §1º, da CLT não constitui direito adquirido
+    nem autorização para atrasos habituais, permanecendo o(a) EMPREGADO(A) sujeito(a) às
+    medidas disciplinares cabíveis em caso de descumprimento reiterado do horário de
+    trabalho.
+</p>
+
+<h2>DOS DESCONTOS POR PREJUÍZOS</h2>
+<p>
+    Cláusula Décima Oitava: O(A) EMPREGADO(A) autoriza a realização dos descontos em
+    folha de pagamento nas hipóteses legalmente admitidas, inclusive daqueles decorrentes
+    de danos, perdas, extravios ou prejuízos causados ao patrimônio, bens, equipamentos,
+    ferramentas, veículos, documentos, mercadorias ou quaisquer outros bens confiados à
+    sua guarda ou utilização, quando comprovada a ocorrência de dolo ou culpa, na forma
+    do art. 462, §1º, da Consolidação das Leis do Trabalho.
+</p>
+<p>
+    §1º. A apuração da responsabilidade será precedida de procedimento interno que
+    assegure ao(à) EMPREGADO(A) o direito ao contraditório e à ampla defesa, podendo
+    apresentar esclarecimentos e documentos que entender pertinentes.
+</p>
+<p>
+    §2º. Os descontos somente serão realizados após a conclusão da apuração interna,
+    quando demonstrada a responsabilidade do(a) EMPREGADO(A), observados os limites e
+    requisitos previstos na legislação trabalhista.
+</p>
+<p>
+    §3°. O disposto nesta cláusula não afasta a adoção das medidas disciplinares
+    cabíveis, quando caracterizada infração às obrigações contratuais, às normas internas
+    da empresa ou à legislação aplicável.
+</p>
+
+<h2>DO CANAL DE DENÚNCIAS</h2>
+<p>
+    Cláusula Décima Nona: O(A) EMPREGADO(A) declara ter recebido ciência das políticas
+    internas do EMPREGADOR, especialmente do Código de Conduta, do Canal de Denúncias, da
+    Política Anticorrupção, da Política de Prevenção e Combate ao Assédio e às demais
+    normas internas, comprometendo-se a observá-las durante toda a vigência do contrato de
+    trabalho.
+</p>
+<p>
+    §1º. O EMPREGADOR disponibiliza Canal de Denúncias para o recebimento de relatos de
+    irregularidades, violações às normas internas, atos ilícitos, condutas antiéticas,
+    assédio moral ou sexual, discriminação e quaisquer outras situações que demandem
+    apuração.
+</p>
+<p>
+    §2º. As comunicações poderão ser realizadas por meio do setor de Recursos Humanos,
+    através do telefone/WhatsApp (62) 99665-8988, sem prejuízo de outros canais que venham
+    a ser disponibilizados pelo EMPREGADOR.
+</p>
+<p>
+    §3°. O EMPREGADOR compromete-se a apurar as denúncias recebidas com observância dos
+    princípios da boa-fé, da confidencialidade, da imparcialidade e da não retaliação ao
+    denunciante de boa-fé, resguardados os direitos das partes envolvidas.
+</p>
+<p>
+    §4°. O(A) EMPREGADO(A) compromete-se a utilizar o Canal de Denúncias de forma
+    responsável e de boa-fé, sendo vedada a apresentação de denúncias sabidamente falsas
+    ou realizadas com intuito de prejudicar terceiros, sem prejuízo das medidas
+    disciplinares e legais cabíveis.
+</p>
+
+<h2>DOS APARELHOS CELULARES E DAS COMUNICAÇÕES ELETRÔNICAS</h2>
+<p>
+    Cláusula Vigésima: O aparelho celular disponibilizado pelo EMPREGADOR constitui
+    ferramenta de trabalho destinada exclusivamente à execução das atividades laborais
+    durante a jornada de trabalho.
+</p>
+<p>
+    §1º. Salvo autorização expressa do EMPREGADOR, o(a) EMPREGADO(A) não poderá retirar
+    o aparelho celular das dependências da empresa ou do posto de trabalho ao término da
+    jornada, devendo devolvê-lo ao local previamente designado.
+</p>
+<p>
+    §2º. As comunicações realizadas por meio de telefone celular, aplicativos de
+    mensagens, e-mail ou quaisquer outros meios eletrônicos possuem caráter meramente
+    operacional e organizacional, não implicando, por si sós, convocação para o trabalho,
+    permanência à disposição do EMPREGADOR, regime de sobreaviso ou prontidão.
+</p>
+<p>
+    §3º. O envio, recebimento ou visualização de mensagens fora da jornada de trabalho,
+    durante intervalos, repousos semanais, feriados, férias ou demais períodos de descanso
+    não gera obrigação de leitura, resposta ou execução de atividades pelo(a)
+    EMPREGADO(A), nem configura, por si só, tempo à disposição do EMPREGADOR ou direito ao
+    recebimento de horas extraordinárias.
+</p>
+<p>§4º. Qualquer prestação de serviços fora da jornada normal somente poderá ocorrer mediante prévia autorização por escrito do EMPREGADOR.</p>
+<p>
+    §5º. O descumprimento das disposições desta cláusula, especialmente a retirada não
+    autorizada do aparelho celular ou sua utilização em desacordo com as normas internas
+    da empresa, sujeitará o(a) EMPREGADO(A) às medidas disciplinares cabíveis.
+</p>
+
+<h2>DAS DISPOSIÇÕES FINAIS</h2>
+<p>
+    Cláusula Vigésima Primeira: O presente contrato de trabalho reger-se-á pelas
+    disposições da legislação trabalhista vigente, em especial pela Consolidação das Leis
+    do Trabalho – CLT, aplicando-se, de forma supletiva, as demais normas legais
+    pertinentes.
+</p>
+<p>
+    §1º. Para dirimir eventuais controvérsias oriundas do presente contrato, fica
+    reconhecida a competência da Justiça do Trabalho, nos termos da Constituição Federal,
+    sendo o foro determinado conforme as regras legais de competência territorial
+    aplicáveis, não prevalecendo cláusula de eleição de foro em sentido diverso.
+</p>
+<p>
+    §2º. As partes declaram que o presente instrumento reflete fielmente a sua livre
+    manifestação de vontade, encontrando-se livre de erro, dolo, coação ou qualquer outro
+    vício de consentimento, obrigando-se ao seu fiel cumprimento.
+</p>
+<p>
+    §3°. O descumprimento das obrigações legais, contratuais ou das normas internas
+    poderá sujeitar o(a) EMPREGADO(A) às medidas disciplinares cabíveis, tais como
+    advertência verbal, advertência escrita, suspensão disciplinar e, nos casos previstos
+    em lei, rescisão por justa causa.
+</p>
+
+<p>Este documento é firmado em (02) duas vias de igual teor e forma, onde assinam o(a) EMPREGADO(A) e o EMPREGADOR.</p>
+
+<p style="margin-top: 24px;">Anápolis, {{ data_extenso }}.</p>
+
+<table class="assinaturas">
+    <tr>
+        <td width="46%"><div class="linha-assinatura">EMPREGADOR</div></td>
+        <td width="8%"></td>
+        <td width="46%"><div class="linha-assinatura">EMPREGADO(A)<br>{{ funcionario.nome }}</div></td>
+    </tr>
+</table>
+
+<table class="testemunhas">
+    <tr>
+        <td width="46%">
+            TESTEMUNHA 01<br><br>
+            NOME: ________________________________<br><br>
+            CPF: ________________________________
+        </td>
+        <td width="8%"></td>
+        <td width="46%">
+            TESTEMUNHA 02<br><br>
+            NOME: ________________________________<br><br>
+            CPF: ________________________________
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>

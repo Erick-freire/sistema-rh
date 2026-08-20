@@ -24,15 +24,13 @@ Início
 <div class="duas-colunas">
     <div class="card">
         <div class="card__header">
-            <span class="card__title">
-                {% if tipos_pendentes %}Seu cadastro está pendente{% else %}Seu cadastro está completo{% endif %}
-            </span>
-            <span class="badge-status {% if tipos_pendentes %}badge-status--pendente{% else %}badge-status--ativo{% endif %}">{{ total_enviados }} de {{ total_obrigatorios }}</span>
+            <span class="card__title">Etapa do seu cadastro</span>
+            <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
         </div>
 
-        {% if tipos_pendentes %}
+        {% if funcionario.status == 'pendente_documentos' %}
         <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
-            Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }} obrigatório{{ tipos_pendentes|length|pluralize }}. Quando todos chegarem, seu cadastro passa para ativo automaticamente.
+            Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }} obrigatório{{ tipos_pendentes|length|pluralize }}. Quando todos chegarem, o RH gera seu contrato.
         </p>
         <div class="progress" style="margin-bottom: 16px;">
             <div class="progress__bar progress__bar--accent" style="width: {% widthratio total_enviados total_obrigatorios 100 %}%;"></div>
@@ -45,8 +43,22 @@ Início
             </div>
             {% endfor %}
         </div>
+        {% elif funcionario.status == 'aguardando_contrato' %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem;">Seus documentos foram recebidos. Aguardando o RH gerar seu contrato.</p>
+        {% elif funcionario.status == 'aguardando_assinatura' %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 12px;">Seu contrato está disponível. Baixe, assine e anexe o contrato assinado.</p>
+        <a href="{% url 'meus_documentos' %}" class="btn btn-sm">Ver em Meus Documentos</a>
+        {% elif funcionario.status == 'em_validacao' %}
+        {% if documentos_rejeitados %}
+        <p style="color: var(--color-error); font-size: 0.88rem; margin-bottom: 12px;">
+            {{ documentos_rejeitados|length }} documento{{ documentos_rejeitados|length|pluralize }} rejeitado{{ documentos_rejeitados|length|pluralize }}. Reenvie em Meus Documentos.
+        </p>
         {% else %}
-        <p style="color: var(--color-text-muted); font-size: 0.88rem;">Todos os documentos obrigatórios foram enviados.</p>
+        <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 12px;">Seus documentos estão em validação pelo RH.</p>
+        {% endif %}
+        <a href="{% url 'meus_documentos' %}" class="btn btn-sm">Ver em Meus Documentos</a>
+        {% else %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem;">Seu cadastro está completo.</p>
         {% endif %}
     </div>
 

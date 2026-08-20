@@ -1,11 +1,14 @@
 import tempfile
 
 import openpyxl
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 
 from .forms import PreCadastroFuncionarioForm
-from .models import Funcionario, Setor
+from .models import Documento, Funcionario, Setor, TipoDocumento, Usuario
 
 
 def _dados_cadastro(**kwargs):
@@ -49,7 +52,7 @@ class PreCadastroFuncionarioFormTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         funcionario = form.save(commit=False)
         funcionario.setor = self.setor
-        funcionario.status = 'pendente'
+        funcionario.status = 'pendente_documentos'
         funcionario.save()
 
         self.assertEqual(funcionario.pis, '12345678901')
@@ -139,3 +142,99 @@ class ImportarPisPlanilhaTests(TestCase):
         call_command('importar_pis_planilha', planilha)
 
         self.assertFalse(Funcionario.objects.filter(pis='12345678901').exists())
+
+
+class OnboardingDocumentosTests(TestCase):
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.tipo_doc = TipoDocumento.objects.create(nome='RG', obrigatorio=True)
+
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=self.setor,
+            status='pendente_documentos', endereco='Rua Teste, 1', salario='2000.00',
+        )
+        self.user_colaborador = User.objects.create_user(username='12345678901', password='senha123')
+        Usuario.objects.create(user=self.user_colaborador, funcionario=self.funcionario, papel='colaborador')
+
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=self.setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+
+    def _arquivo(self, nome='arquivo.pdf'):
+        return SimpleUploadedFile(nome, b'conteudo', content_type='application/pdf')
+
+    def test_envio_do_ultimo_documento_inicial_avanca_status(self):
+        self.client.force_login(self.user_colaborador)
+
+        response = self.client.post(reverse('enviar_documento'), {
+            'tipo_documento': self.tipo_doc.id,
+            'arquivo': self._arquivo(),
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.status, 'aguardando_contrato')
+
+    def test_gerar_contrato_leva_a_aguardando_assinatura(self):
+        self.funcionario.status = 'aguardando_contrato'
+        self.funcionario.save()
+        self.client.force_login(self.user_rh)
+
+        response = self.client.post(reverse('gerar_contrato', args=[self.funcionario.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.status, 'aguardando_assinatura')
+        self.assertTrue(
+            Documento.objects.filter(funcionario=self.funcionario, tipo_documento__eh_contrato=True).exists()
+        )
+
+    def test_reenvio_de_documento_rejeitado_substitui_registro(self):
+        documento = Documento.objects.create(
+            funcionario=self.funcionario, tipo_documento=self.tipo_doc,
+            arquivo=self._arquivo(), status='rejeitado', motivo_rejeicao='Ilegível',
+        )
+        self.funcionario.status = 'em_validacao'
+        self.funcionario.save()
+        self.client.force_login(self.user_colaborador)
+
+        response = self.client.post(reverse('enviar_documento'), {
+            'tipo_documento': self.tipo_doc.id,
+            'arquivo': self._arquivo('novo.pdf'),
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Documento.objects.filter(funcionario=self.funcionario, tipo_documento=self.tipo_doc).count(), 1
+        )
+        documento.refresh_from_db()
+        self.assertEqual(documento.status, 'pendente')
+        self.assertEqual(documento.motivo_rejeicao, '')
+
+    def test_validar_funcionario_bloqueado_com_documento_pendente(self):
+        Documento.objects.create(
+            funcionario=self.funcionario, tipo_documento=self.tipo_doc, arquivo=self._arquivo(), status='pendente',
+        )
+        self.funcionario.status = 'em_validacao'
+        self.funcionario.save()
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('validar_funcionario', args=[self.funcionario.id]))
+
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.status, 'em_validacao')
+
+    def test_validar_funcionario_ativa_quando_tudo_aprovado(self):
+        Documento.objects.create(
+            funcionario=self.funcionario, tipo_documento=self.tipo_doc, arquivo=self._arquivo(), status='aprovado',
+        )
+        self.funcionario.status = 'em_validacao'
+        self.funcionario.save()
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('validar_funcionario', args=[self.funcionario.id]))
+
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.status, 'ativo')

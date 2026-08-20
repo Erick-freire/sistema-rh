@@ -505,13 +505,19 @@ button:focus, .btn:focus {
 }
 
 .badge-status--ativo,
-.badge-status--aprovada { background-color: var(--color-success-bg); color: var(--color-success); }
+.badge-status--aprovada,
+.badge-status--aprovado { background-color: var(--color-success-bg); color: var(--color-success); }
 .badge-status--pendente,
 .badge-status--sugestao,
-.badge-status--aguardando { background-color: var(--color-pending-bg); color: var(--color-pending); }
+.badge-status--aguardando,
+.badge-status--pendente_documentos,
+.badge-status--aguardando_contrato,
+.badge-status--aguardando_assinatura,
+.badge-status--em_validacao { background-color: var(--color-pending-bg); color: var(--color-pending); }
 .badge-status--inativo,
 .badge-status--adiada { background-color: var(--color-neutral-bg); color: var(--color-text-muted); }
-.badge-status--erro { background-color: var(--color-error-bg); color: var(--color-error); }
+.badge-status--erro,
+.badge-status--rejeitado { background-color: var(--color-error-bg); color: var(--color-error); }
 
 .nav-badge {
     display: inline-flex;

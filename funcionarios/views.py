@@ -1,3 +1,4 @@
+import io
 import secrets
 
 from django.conf import settings
@@ -11,13 +12,19 @@ from django.core.cache import cache
 from django.db.models import Q, Count
 from django.core.paginator import Paginator
 from django.utils import timezone
+from django.template.loader import render_to_string
+from django.http import HttpResponse, FileResponse
+from django.core.files.base import ContentFile
+from xhtml2pdf import pisa
 
 from .decorators import papel_required
 from .models import Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
-    DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm
+    DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
+    RejeitarDocumentoForm,
 )
+from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso
 
 # Só pra mostrar/atribuir a jornada de ponto na ficha do funcionário -- a
 # atribuição em si continua sendo feita pela view do app `ponto`.
@@ -26,6 +33,8 @@ from ponto.models import FuncionarioJornada
 
 
 LIMITE_DIAS_ALERTA_FERIAS = 60
+
+STATUS_ONBOARDING = ['pendente_documentos', 'aguardando_contrato', 'aguardando_assinatura', 'em_validacao']
 
 LIMITE_TENTATIVAS_LOGIN_USUARIO = 5
 LIMITE_TENTATIVAS_LOGIN_IP = 20
@@ -116,10 +125,13 @@ def dashboard_view(request):
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario
-        tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
-        tipos_enviados_ids = set(funcionario.documentos.values_list('tipo_documento_id', flat=True))
-        tipos_pendentes = [t for t in tipos_obrigatorios if t.id not in tipos_enviados_ids]
-        total_obrigatorios = len(tipos_obrigatorios)
+        tipos_iniciais = funcionario.tipos_documentos_iniciais()
+        tipos_enviados_ids = set(
+            funcionario.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
+        )
+        tipos_pendentes = [t for t in tipos_iniciais if t.id not in tipos_enviados_ids]
+        total_obrigatorios = len(tipos_iniciais)
+        documentos_rejeitados = funcionario.documentos.filter(status='rejeitado')
 
         solicitacao_ferias = funcionario.solicitacoes_ferias.order_by('-criado_em').first()
         tem_ativa = funcionario.solicitacoes_ferias.exclude(status__in=['aprovada', 'adiada']).exists()
@@ -130,6 +142,7 @@ def dashboard_view(request):
             'tipos_pendentes': tipos_pendentes,
             'total_obrigatorios': total_obrigatorios,
             'total_enviados': total_obrigatorios - len(tipos_pendentes),
+            'documentos_rejeitados': documentos_rejeitados,
             'solicitacao_ferias': solicitacao_ferias,
             'hoje': timezone.now().date(),
             'tem_ativa': tem_ativa,
@@ -151,7 +164,7 @@ def dashboard_rh_view(request):
 
     funcionarios_ativos = funcionarios_do_escopo.filter(status='ativo')
     total_funcionarios = funcionarios_ativos.count()
-    cadastros_pendentes = funcionarios_do_escopo.filter(status='pendente').count()
+    cadastros_pendentes = funcionarios_do_escopo.filter(status__in=STATUS_ONBOARDING).count()
     funcionarios_por_setor = funcionarios_ativos.values('setor__nome').annotate(total=Count('id')).order_by('-total')
     documentos_recentes = Documento.objects.filter(
         funcionario__in=funcionarios_do_escopo
@@ -198,19 +211,15 @@ def meu_perfil_view(request):
             for tipo in tipos_documentos_filho:
                 arquivo = request.FILES.get(f'documento_filho_{tipo.id}')
                 if arquivo:
-                    Documento.objects.create(
+                    Documento.substituir_ou_criar(
                         funcionario=funcionario,
                         tipo_documento=tipo,
                         arquivo=arquivo,
                         enviado_por=request.user,
                     )
 
-            if funcionario.status == 'pendente' and funcionario.cadastro_completo():
-                funcionario.status = 'ativo'
-                funcionario.save()
-                messages.success(request, 'Perfil atualizado. Seu cadastro foi concluído com sucesso!')
-            else:
-                messages.success(request, 'Perfil atualizado com sucesso.')
+            avancar_status_por_documentos(funcionario)
+            messages.success(request, 'Perfil atualizado com sucesso.')
 
             return redirect('meu_perfil')
     else:
@@ -251,6 +260,15 @@ def atualizar_foto_view(request):
 
 # ---------- Documentos ----------
 
+def avancar_status_por_documentos(funcionario):
+    if funcionario.status == 'pendente_documentos' and funcionario.documentos_iniciais_completos():
+        funcionario.status = 'aguardando_contrato'
+        funcionario.save()
+    elif funcionario.status == 'aguardando_assinatura' and funcionario.todos_documentos_enviados():
+        funcionario.status = 'em_validacao'
+        funcionario.save()
+
+
 @login_required
 def enviar_documento_view(request):
     try:
@@ -259,23 +277,20 @@ def enviar_documento_view(request):
         return render(request, 'funcionarios/sem_perfil.html')
 
     if request.method == 'POST':
-        form = EnviarDocumentoForm(request.POST, request.FILES)
+        form = EnviarDocumentoForm(request.POST, request.FILES, funcionario=funcionario)
         if form.is_valid():
-            documento = form.save(commit=False)
-            documento.funcionario = funcionario
-            documento.enviado_por = request.user
-            documento.save()
-
-            if funcionario.status == 'pendente' and funcionario.cadastro_completo():
-                funcionario.status = 'ativo'
-                funcionario.save()
-                messages.success(request, 'Documento enviado. Seu cadastro foi concluído com sucesso!')
-            else:
-                messages.success(request, 'Documento enviado com sucesso.')
+            Documento.substituir_ou_criar(
+                funcionario=funcionario,
+                tipo_documento=form.cleaned_data['tipo_documento'],
+                arquivo=form.cleaned_data['arquivo'],
+                enviado_por=request.user,
+            )
+            avancar_status_por_documentos(funcionario)
+            messages.success(request, 'Documento enviado com sucesso.')
 
             return redirect('enviar_documento')
     else:
-        form = EnviarDocumentoForm()
+        form = EnviarDocumentoForm(funcionario=funcionario)
 
     return render(request, 'funcionarios/enviar_documento.html', {
         'form': form,
@@ -289,16 +304,42 @@ def meus_documentos_view(request):
     except Usuario.DoesNotExist:
         return render(request, 'funcionarios/sem_perfil.html')
 
-    documentos = funcionario.documentos.all().order_by('-data_upload')
+    documentos = funcionario.documentos.exclude(tipo_documento__eh_contrato=True).order_by('-data_upload')
+    contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
 
-    tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
-    tipos_enviados_ids = set(documentos.values_list('tipo_documento_id', flat=True))
+    tipos_obrigatorios = funcionario.tipos_documentos_iniciais()
+    tipos_enviados_ids = set(
+        funcionario.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
+    )
     tipos_pendentes = [t for t in tipos_obrigatorios if t.id not in tipos_enviados_ids]
 
     return render(request, 'funcionarios/meus_documentos.html', {
         'documentos': documentos,
         'tipos_pendentes': tipos_pendentes,
+        'contrato_documento': contrato_documento,
+        'funcionario': funcionario,
     })
+
+
+@login_required
+def ver_documento_view(request, documento_id):
+    documento = get_object_or_404(Documento, id=documento_id)
+
+    try:
+        usuario = request.user.usuario
+    except Usuario.DoesNotExist:
+        messages.error(request, 'Você não tem permissão para acessar este documento.')
+        return redirect('dashboard')
+
+    eh_dono = usuario.funcionario_id == documento.funcionario_id
+    eh_rh = usuario.papel == 'rh' or usuario.acesso_rh
+    eh_gestor_do_setor = usuario.papel == 'gestor' and documento.funcionario.setor_id == usuario.funcionario.setor_id
+
+    if not (eh_dono or eh_rh or eh_gestor_do_setor):
+        messages.error(request, 'Você não tem permissão para acessar este documento.')
+        return redirect('dashboard')
+
+    return FileResponse(documento.arquivo.open('rb'), filename=documento.nome_arquivo)
 
 
 # ---------- Funcionários (RH / Gestor) ----------
@@ -318,10 +359,13 @@ def listar_funcionarios_view(request):
         base_qs = Funcionario.objects.filter(setor=usuario.funcionario.setor)
 
     contagem_ativos = base_qs.filter(status='ativo').count()
-    contagem_pendentes = base_qs.filter(status='pendente').count()
+    contagem_pendentes = base_qs.filter(status__in=STATUS_ONBOARDING).count()
     contagem_inativos = base_qs.filter(status='inativo').count()
 
-    funcionarios = base_qs.filter(status=status_filtro)
+    if status_filtro == 'pendente':
+        funcionarios = base_qs.filter(status__in=STATUS_ONBOARDING)
+    else:
+        funcionarios = base_qs.filter(status=status_filtro)
 
     if busca:
         funcionarios = funcionarios.filter(
@@ -359,7 +403,7 @@ def cadastrar_funcionario_view(request):
         jornada_form = JornadaOpcionalForm(request.POST)
         if form.is_valid() and jornada_form.is_valid():
             funcionario = form.save(commit=False)
-            funcionario.status = 'pendente'
+            funcionario.status = 'pendente_documentos'
             funcionario.save()
 
             horario = jornada_form.cleaned_data.get('horario')
@@ -409,16 +453,26 @@ def detalhe_funcionario_view(request, funcionario_id):
         messages.error(request, 'Você não tem permissão para ver este funcionário.')
         return redirect('listar_funcionarios')
 
+    avancar_status_por_documentos(funcionario)
+
     documentos = funcionario.documentos.all().order_by('-data_upload')
 
     tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
-    tipos_enviados_ids = set(documentos.values_list('tipo_documento_id', flat=True))
+    # ordenado do mais antigo pro mais novo: se sobrar mais de um Documento do mesmo tipo
+    # (dados legados de antes da substituição por upsert), o dict fica com o mais recente.
+    documentos_por_tipo = {
+        documento.tipo_documento_id: documento
+        for documento in funcionario.documentos.order_by('data_upload')
+    }
     checklist_documentos = [
-        {'tipo': tipo, 'enviado': tipo.id in tipos_enviados_ids}
+        {'tipo': tipo, 'documento': documentos_por_tipo.get(tipo.id)}
         for tipo in tipos_obrigatorios
     ]
     total_obrigatorios = len(tipos_obrigatorios)
-    total_enviados_obrigatorios = sum(1 for item in checklist_documentos if item['enviado'])
+    total_enviados_obrigatorios = sum(
+        1 for item in checklist_documentos if item['documento'] and item['documento'].status != 'rejeitado'
+    )
+    pode_validar = funcionario.status == 'em_validacao' and funcionario.documentos_todos_aprovados()
 
     return render(request, 'funcionarios/rh/detalhe_funcionario.html', {
         'funcionario': funcionario,
@@ -426,6 +480,8 @@ def detalhe_funcionario_view(request, funcionario_id):
         'checklist_documentos': checklist_documentos,
         'total_obrigatorios': total_obrigatorios,
         'total_enviados_obrigatorios': total_enviados_obrigatorios,
+        'pode_validar': pode_validar,
+        'form_rejeicao': RejeitarDocumentoForm(),
         'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
         'jornada_form': FuncionarioJornadaForm(),
         'dados_form': DadosCadastraisForm(instance=funcionario),
@@ -509,6 +565,131 @@ def alternar_acesso_rh_view(request, funcionario_id):
         messages.success(request, f'Acesso ao RH concedido para {funcionario.nome}.')
     else:
         messages.success(request, f'Acesso ao RH removido de {funcionario.nome}.')
+
+    return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+
+@login_required
+@papel_required('rh')
+def gerar_contrato_view(request, funcionario_id):
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if funcionario.status not in ('aguardando_contrato', 'aguardando_assinatura'):
+        messages.error(request, 'O contrato só pode ser gerado depois que os documentos iniciais forem enviados.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if not funcionario.dados_contrato_completos():
+        messages.error(request, 'Preencha cargo, salário e endereço antes de gerar o contrato.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    contexto = {
+        'funcionario': funcionario,
+        'cpf_formatado': formatar_cpf(funcionario.cpf),
+        'salario_formatado': formatar_moeda(funcionario.salario),
+        'salario_extenso': salario_por_extenso(funcionario.salario),
+        'eh_qualidade': funcionario.setor.usa_contrato_qualidade,
+        'data_extenso': data_por_extenso(timezone.now().date()),
+    }
+    html = render_to_string('funcionarios/contratos/contrato_experiencia.html', contexto)
+
+    buffer = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html, dest=buffer)
+    if pisa_status.err:
+        messages.error(request, 'Não foi possível gerar o contrato. Tente novamente.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    pdf_bytes = buffer.getvalue()
+    nome_arquivo = f'contrato_{funcionario.cpf}.pdf'
+
+    tipo_contrato, _ = TipoDocumento.objects.get_or_create(
+        nome='Contrato de Trabalho',
+        defaults={'obrigatorio': True, 'eh_contrato': True, 'condicao': 'sempre'},
+    )
+    Documento.substituir_ou_criar(
+        funcionario=funcionario,
+        tipo_documento=tipo_contrato,
+        arquivo=ContentFile(pdf_bytes, name=nome_arquivo),
+        enviado_por=request.user,
+    )
+
+    funcionario.status = 'aguardando_assinatura'
+    funcionario.save()
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{nome_arquivo}"'
+    return response
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def aprovar_documento_view(request, documento_id):
+    usuario = request.user.usuario
+    documento = get_object_or_404(Documento, id=documento_id)
+
+    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+    if documento.funcionario.status != 'em_validacao':
+        messages.error(request, 'Este documento só pode ser revisado quando o funcionário estiver em validação.')
+        return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+    documento.status = 'aprovado'
+    documento.motivo_rejeicao = ''
+    documento.analisado_por = request.user
+    documento.analisado_em = timezone.now()
+    documento.save()
+
+    messages.success(request, f'{documento.tipo_documento} aprovado.')
+    return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def rejeitar_documento_view(request, documento_id):
+    usuario = request.user.usuario
+    documento = get_object_or_404(Documento, id=documento_id)
+
+    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+    if documento.funcionario.status != 'em_validacao':
+        messages.error(request, 'Este documento só pode ser revisado quando o funcionário estiver em validação.')
+        return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+    form = RejeitarDocumentoForm(request.POST)
+    if form.is_valid():
+        documento.status = 'rejeitado'
+        documento.motivo_rejeicao = form.cleaned_data['motivo']
+        documento.analisado_por = request.user
+        documento.analisado_em = timezone.now()
+        documento.save()
+        messages.success(request, f'{documento.tipo_documento} rejeitado. O colaborador poderá reenviar.')
+    else:
+        messages.error(request, 'Informe o motivo da rejeição.')
+
+    return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def validar_funcionario_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if funcionario.status != 'em_validacao':
+        messages.error(request, 'O funcionário precisa estar em validação para ser ativado.')
+    elif not funcionario.documentos_todos_aprovados():
+        messages.error(request, 'Ainda há documentos obrigatórios pendentes ou rejeitados. Revise antes de validar.')
+    else:
+        funcionario.status = 'ativo'
+        funcionario.save()
+        messages.success(request, f'{funcionario.nome} validado e ativado com sucesso.')
 
     return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 

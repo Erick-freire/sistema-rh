@@ -1,5 +1,5 @@
 from django import forms
-from .models import Funcionario, Documento, SolicitacaoFerias, AvisoFerias
+from .models import Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento
 
 
 class MeuPerfilForm(forms.ModelForm):
@@ -28,6 +28,19 @@ class EnviarDocumentoForm(forms.ModelForm):
         model = Documento
         fields = ['tipo_documento', 'arquivo']
 
+    def __init__(self, *args, funcionario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if funcionario is not None:
+            queryset = self.fields['tipo_documento'].queryset
+            if funcionario.status not in ('aguardando_assinatura', 'em_validacao'):
+                queryset = queryset.exclude(eh_contrato=True)
+            ids_aplicaveis = [tipo.id for tipo in queryset if tipo.aplica_a(funcionario)]
+            self.fields['tipo_documento'].queryset = queryset.filter(id__in=ids_aplicaveis)
+
+
+class RejeitarDocumentoForm(forms.Form):
+    motivo = forms.CharField(widget=forms.Textarea, required=True, label='Motivo da rejeição')
+
 class DadosCadastraisForm(forms.ModelForm):
     data_admissao = forms.DateField(
         required=False,
@@ -37,7 +50,10 @@ class DadosCadastraisForm(forms.ModelForm):
 
     class Meta:
         model = Funcionario
-        fields = ['matricula', 'setor', 'data_admissao']
+        fields = ['matricula', 'setor', 'data_admissao', 'salario']
+        widgets = {
+            'salario': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
+        }
 
 class FuncionarioForm(forms.ModelForm):
     class Meta:

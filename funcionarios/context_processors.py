@@ -31,7 +31,11 @@ def usuario_logado(request):
         contexto['badge_ferias_rh'] = badge_concluir_ferias
 
     if usuario.papel == 'colaborador':
-        contexto['documentos_pendentes'] = not usuario.funcionario.cadastro_completo()
-        contexto['aviso_ferias_pendente'] = usuario.funcionario.aviso_ferias_pendente_acao() is not None
+        funcionario = usuario.funcionario
+        contexto['documentos_pendentes'] = (
+            funcionario.documentos.filter(status='rejeitado').exists()
+            or funcionario.status in ('pendente_documentos', 'aguardando_assinatura')
+        )
+        contexto['aviso_ferias_pendente'] = funcionario.aviso_ferias_pendente_acao() is not None
 
     return contexto
