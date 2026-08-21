@@ -18,7 +18,16 @@ Meus Documentos
 <div class="card" style="border-left: 3px solid var(--color-accent);">
     <div class="card__header">
         <span class="card__title">Contrato de Trabalho</span>
-        <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Download</a>
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Download</a>
+            <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">
+                <input type="hidden" name="origem" value="meus_documentos">
+                <input type="file" name="arquivo" id="arquivo-contrato" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-contrato" class="btn btn-sm">{% icon 'upload' %} Enviar</label>
+            </form>
+        </div>
     </div>
 </div>
 {% endif %}
@@ -28,10 +37,14 @@ Meus Documentos
     <div class="card__title" style="margin-bottom: 12px;">Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }}</div>
     <div class="lista-cards">
         {% for tipo in tipos_pendentes %}
-        <div class="item-card">
+        <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" class="item-card">
+            {% csrf_token %}
+            <input type="hidden" name="tipo_documento" value="{{ tipo.id }}">
+            <input type="hidden" name="origem" value="meus_documentos">
             <div class="item-card__corpo">{{ tipo.nome }}</div>
-            <a href="{% url 'enviar_documento' %}" class="btn btn-sm">Enviar</a>
-        </div>
+            <input type="file" name="arquivo" id="arquivo-pendente-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
+            <label for="arquivo-pendente-{{ tipo.id }}" class="btn btn-sm">Enviar</label>
+        </form>
         {% endfor %}
     </div>
 </div>
@@ -57,6 +70,7 @@ Meus Documentos
         <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: -4px 0 8px; display: flex; gap: 10px; align-items: center;">
             {% csrf_token %}
             <input type="hidden" name="tipo_documento" value="{{ documento.tipo_documento_id }}">
+            <input type="hidden" name="origem" value="meus_documentos">
             <input type="file" name="arquivo" required>
             <button type="submit" class="btn btn-sm">Reenviar</button>
         </form>
@@ -66,4 +80,13 @@ Meus Documentos
         {% endfor %}
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var tipoId = new URLSearchParams(window.location.search).get('tipo');
+    if (!tipoId) return;
+    var input = document.getElementById('arquivo-pendente-' + tipoId);
+    if (input) input.click();
+});
+</script>
 {% endblock %}

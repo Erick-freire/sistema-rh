@@ -48,7 +48,7 @@ class Funcionario(models.Model):
     ]
 
     CAMPOS_PESSOAIS_OBRIGATORIOS = [
-        'cpf', 'email', 'banco', 'agencia', 'numero_conta', 'sexo', 'estado_civil',
+        'cpf', 'pis', 'email', 'banco', 'agencia', 'numero_conta', 'sexo', 'estado_civil',
     ]
 
     nome = models.CharField(max_length=150)

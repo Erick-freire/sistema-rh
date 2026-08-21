@@ -51,6 +51,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var remover = document.getElementById('arquivo-remover');
     if (!input) return;
 
+    {% if tipo_preselecionado %}
+    input.click();
+    {% endif %}
+
     input.addEventListener('change', function () {
         if (input.files && input.files.length > 0) {
             nomeEl.textContent = input.files[0].name;

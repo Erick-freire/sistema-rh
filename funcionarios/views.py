@@ -288,12 +288,18 @@ def enviar_documento_view(request):
             avancar_status_por_documentos(funcionario)
             messages.success(request, 'Documento enviado com sucesso.')
 
+            if request.POST.get('origem') == 'meus_documentos':
+                return redirect('meus_documentos')
             return redirect('enviar_documento')
+        tipo_preselecionado = False
     else:
-        form = EnviarDocumentoForm(funcionario=funcionario)
+        tipo_id = request.GET.get('tipo')
+        form = EnviarDocumentoForm(funcionario=funcionario, initial={'tipo_documento': tipo_id} if tipo_id else None)
+        tipo_preselecionado = bool(tipo_id)
 
     return render(request, 'funcionarios/enviar_documento.html', {
         'form': form,
+        'tipo_preselecionado': tipo_preselecionado,
     })
 
 

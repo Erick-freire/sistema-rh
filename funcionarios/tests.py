@@ -7,33 +7,68 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import PreCadastroFuncionarioForm
+from .forms import MeuPerfilForm, PreCadastroFuncionarioForm
 from .models import Documento, Funcionario, Setor, TipoDocumento, Usuario
 
 
 def _dados_cadastro(**kwargs):
     dados = dict(
-        nome='Novo Funcionario', cpf='11122233396', pis='12345678901',
+        nome='Novo Funcionario', cpf='11122233396',
         cargo='Analista', data_admissao='2026-08-19',
     )
     dados.update(kwargs)
     return dados
 
 
+def _dados_perfil(**kwargs):
+    dados = dict(
+        pis='12345678901', sexo='masculino', estado_civil='solteiro',
+        email='colaborador@sotrigo.com.br', banco='Banco X', agencia='0001', numero_conta='12345',
+    )
+    dados.update(kwargs)
+    return dados
+
+
 class PreCadastroFuncionarioFormTests(TestCase):
-    """PIS agora é obrigatório no pré-cadastro -- necessário pra bater ponto em relógios que identificam por PIS."""
+    """PIS não faz mais parte do pré-cadastro -- passa a ser informado pelo próprio funcionário ao completar o cadastro."""
 
     def setUp(self):
         self.setor = Setor.objects.create(nome='RH')
 
+    def test_pis_nao_faz_parte_do_formulario(self):
+        form = PreCadastroFuncionarioForm(_dados_cadastro(setor=self.setor.id))
+
+        self.assertNotIn('pis', form.fields)
+
+    def test_cadastro_valido_sem_pis(self):
+        form = PreCadastroFuncionarioForm(_dados_cadastro(setor=self.setor.id))
+
+        self.assertTrue(form.is_valid(), form.errors)
+        funcionario = form.save(commit=False)
+        funcionario.setor = self.setor
+        funcionario.status = 'pendente_documentos'
+        funcionario.save()
+
+        self.assertIsNone(funcionario.pis)
+
+
+class MeuPerfilFormPisTests(TestCase):
+    """PIS agora é informado pelo próprio funcionário em Meu Perfil, como um campo comum -- não mais um documento."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='RH')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='11122233396', cargo='Analista', setor=self.setor,
+        )
+
     def test_pis_obrigatorio(self):
-        form = PreCadastroFuncionarioForm(_dados_cadastro(pis='', setor=self.setor.id))
+        form = MeuPerfilForm(_dados_perfil(pis=''), instance=self.funcionario)
 
         self.assertFalse(form.is_valid())
         self.assertIn('pis', form.errors)
 
     def test_pis_precisa_ter_11_digitos(self):
-        form = PreCadastroFuncionarioForm(_dados_cadastro(pis='123', setor=self.setor.id))
+        form = MeuPerfilForm(_dados_perfil(pis='123'), instance=self.funcionario)
 
         self.assertFalse(form.is_valid())
         self.assertIn('pis', form.errors)
@@ -41,19 +76,16 @@ class PreCadastroFuncionarioFormTests(TestCase):
     def test_pis_duplicado_nao_permite(self):
         Funcionario.objects.create(nome='Já Existe', cpf='11111111111', pis='12345678901', cargo='X', setor=self.setor)
 
-        form = PreCadastroFuncionarioForm(_dados_cadastro(cpf='22222222222', setor=self.setor.id))
+        form = MeuPerfilForm(_dados_perfil(pis='12345678901'), instance=self.funcionario)
 
         self.assertFalse(form.is_valid())
         self.assertIn('pis', form.errors)
 
-    def test_cadastro_valido_salva_pis(self):
-        form = PreCadastroFuncionarioForm(_dados_cadastro(pis='12345678901', setor=self.setor.id))
+    def test_perfil_valido_salva_pis(self):
+        form = MeuPerfilForm(_dados_perfil(pis='12345678901'), instance=self.funcionario)
 
         self.assertTrue(form.is_valid(), form.errors)
-        funcionario = form.save(commit=False)
-        funcionario.setor = self.setor
-        funcionario.status = 'pendente_documentos'
-        funcionario.save()
+        funcionario = form.save()
 
         self.assertEqual(funcionario.pis, '12345678901')
 

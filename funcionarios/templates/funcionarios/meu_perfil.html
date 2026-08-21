@@ -52,6 +52,11 @@ Meu Perfil
                         {{ form.telefone }}
                         {{ form.telefone.errors }}
                     </div>
+                    <div>
+                        <label for="{{ form.pis.id_for_label }}">PIS</label>
+                        {{ form.pis }}
+                        {{ form.pis.errors }}
+                    </div>
                     <div class="span-2">
                         <label for="{{ form.endereco.id_for_label }}">Endereço</label>
                         {{ form.endereco }}

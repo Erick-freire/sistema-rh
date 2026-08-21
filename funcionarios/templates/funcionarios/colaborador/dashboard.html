@@ -39,7 +39,7 @@ Início
             {% for tipo in tipos_pendentes %}
             <div class="item-card">
                 <div class="item-card__corpo">{{ tipo.nome }}</div>
-                <a href="{% url 'enviar_documento' %}" class="btn btn-sm">Enviar</a>
+                <a href="{% url 'meus_documentos' %}?tipo={{ tipo.id }}" class="btn btn-sm">Enviar</a>
             </div>
             {% endfor %}
         </div>
