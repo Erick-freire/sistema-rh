@@ -4,11 +4,11 @@
 Login
 {% endblock %}
 
-{% load rh_icons %}
+{% load static %}
 {% block conteudo_sem_login %}
 <div class="login-shell">
     <div class="login-card">
-        <div class="login-card__mark">{% icon 'check-circle' %}</div>
+        <div class="login-card__mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></div>
         <h1>Sistema RH</h1>
 
         <form method="post">
