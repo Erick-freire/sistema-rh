@@ -9,7 +9,7 @@ SECRET_KEY = 'django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.79']
+ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.72']
 
 # Segurança de cookies e transporte — só entram em vigor quando DEBUG=False
 # (em produção, defina DEBUG=False no .env para ativar HTTPS/cookies seguros)
@@ -126,19 +126,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LOGIN_URL = 'login'
 
 
-# Integração Assinatura Gov.br (Conecta gov.br + Assina gov.br)
-# Credenciais reais ainda não emitidas — valores default abaixo são placeholders de sandbox
-# e precisam ser confirmados na documentação oficial (ver especificação, seção 8).
-
-GOVBR_CLIENT_ID = config('GOVBR_CLIENT_ID', default='')
-GOVBR_CLIENT_SECRET = config('GOVBR_CLIENT_SECRET', default='')
-GOVBR_REDIRECT_URI = config('GOVBR_REDIRECT_URI', default='http://localhost:8000/integracao-gov/callback/')
-GOVBR_AMBIENTE = config('GOVBR_AMBIENTE', default='sandbox')
-GOVBR_AUTHORIZE_URL = config('GOVBR_AUTHORIZE_URL', default='https://sso.staging.acesso.gov.br/authorize')
-GOVBR_TOKEN_URL = config('GOVBR_TOKEN_URL', default='https://sso.staging.acesso.gov.br/token')
-GOVBR_ASSINATURA_BASE_URL = config('GOVBR_ASSINATURA_BASE_URL', default='https://assinatura-api.staging.iti.gov.br')
-GOVBR_WEBHOOK_SECRET = config('GOVBR_WEBHOOK_SECRET', default='')
-GOVBR_TOKEN_ENCRYPTION_KEY = config('GOVBR_TOKEN_ENCRYPTION_KEY', default='')
+# Chave de cifra do EncryptedTextField (integracao_gov/fields.py) -- hoje só
+# protege Equipamento.senha_admin (app ponto). Vazia = deriva uma chave a
+# partir da SECRET_KEY.
+CHAVE_CIFRA_SEGREDOS = config('CHAVE_CIFRA_SEGREDOS', default='')
 
 
 # Secullum Ponto 4 (SQL Server) -- usado só como referência de leitura para

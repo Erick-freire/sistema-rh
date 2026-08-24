@@ -1,0 +1,38 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Meus Ajustes de Ponto{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'ponto:meu_ponto' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Meus ajustes de ponto
+</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
+            {% icon 'check-circle' %} {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="card">
+    <div class="lista-cards">
+        {% for ajuste in ajustes %}
+        <div class="item-card">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ ajuste.data|date:'d/m/Y' }} · {{ ajuste.get_tipo_evento_display }} às {{ ajuste.horario_ajustado|time:'H:i' }}</div>
+                <div class="item-card__subtitulo">{{ ajuste.motivo }}</div>
+                {% if ajuste.status == 'rejeitado' and ajuste.observacao_rh %}
+                <div class="item-card__subtitulo" style="color: var(--color-error);">RH: {{ ajuste.observacao_rh }}</div>
+                {% endif %}
+            </div>
+            <span class="badge-status badge-status--{{ ajuste.status }}">{{ ajuste.get_status_display }}</span>
+        </div>
+        {% empty %}
+        <p style="color: var(--color-text-muted);">Você ainda não solicitou nenhuma correção de ponto.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

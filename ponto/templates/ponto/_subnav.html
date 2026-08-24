@@ -4,4 +4,7 @@
     <a href="{% url 'ponto:listar_horarios' %}" class="chip{% if request.resolver_match.url_name == 'listar_horarios' or request.resolver_match.url_name == 'cadastrar_horario' or request.resolver_match.url_name == 'editar_horario' %} chip--ativo{% endif %}">Horários</a>
     <a href="{% url 'ponto:listar_feriados' %}" class="chip{% if request.resolver_match.url_name == 'listar_feriados' or request.resolver_match.url_name == 'cadastrar_feriado' %} chip--ativo{% endif %}">Feriados</a>
     <a href="{% url 'ponto:listar_calculo' %}" class="chip{% if request.resolver_match.url_name == 'listar_calculo' %} chip--ativo{% endif %}">Cálculo</a>
+    <a href="{% url 'ponto:ajustes_pendentes' %}" class="chip{% if request.resolver_match.url_name == 'ajustes_pendentes' %} chip--ativo{% endif %}">
+        Ajustes Pendentes{% if badge_ajustes_pendentes %} ({{ badge_ajustes_pendentes }}){% endif %}
+    </a>
 </div>

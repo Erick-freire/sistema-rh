@@ -1,3 +1,5 @@
+from ponto.models import AjustePonto
+
 from .models import AvisoFerias, SolicitacaoFerias, Usuario
 
 
@@ -29,6 +31,9 @@ def usuario_logado(request):
         badge_concluir_ferias += avisos_pendentes.count()
 
         contexto['badge_ferias_rh'] = badge_concluir_ferias
+
+    if usuario.papel == 'rh' or usuario.acesso_rh:
+        contexto['badge_ajustes_pendentes'] = AjustePonto.objects.filter(status='pendente').count()
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario

@@ -1,5 +1,6 @@
 import io
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
@@ -30,6 +31,7 @@ from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_e
 # atribuição em si continua sendo feita pela view do app `ponto`.
 from ponto.forms import FuncionarioJornadaForm, JornadaOpcionalForm
 from ponto.models import FuncionarioJornada
+from ponto.calculos import calcular_periodo, situacao_do_dia
 
 
 LIMITE_DIAS_ALERTA_FERIAS = 60
@@ -137,6 +139,13 @@ def dashboard_view(request):
         tem_ativa = funcionario.solicitacoes_ferias.exclude(status__in=['aprovada', 'adiada']).exists()
         aviso_pendente = funcionario.aviso_ferias_pendente_acao()
 
+        hoje = timezone.now().date()
+        resultado_ponto = calcular_periodo(funcionario, hoje - timedelta(days=6), hoje)
+        for dia in resultado_ponto['dias']:
+            texto, cor, pode_solicitar = situacao_do_dia(dia, hoje)
+            dia['situacao_texto'] = texto
+            dia['situacao_cor'] = cor
+
         return render(request, 'funcionarios/colaborador/dashboard.html', {
             'funcionario': funcionario,
             'tipos_pendentes': tipos_pendentes,
@@ -144,9 +153,10 @@ def dashboard_view(request):
             'total_enviados': total_obrigatorios - len(tipos_pendentes),
             'documentos_rejeitados': documentos_rejeitados,
             'solicitacao_ferias': solicitacao_ferias,
-            'hoje': timezone.now().date(),
+            'hoje': hoje,
             'tem_ativa': tem_ativa,
             'aviso_pendente': aviso_pendente,
+            'ultimos_dias_ponto': resultado_ponto['dias'],
         })
 
     return dashboard_rh_view(request)
@@ -290,6 +300,8 @@ def enviar_documento_view(request):
 
             if request.POST.get('origem') == 'meus_documentos':
                 return redirect('meus_documentos')
+            elif request.POST.get('origem') == 'assinatura_gov':
+                return redirect('minhas_assinaturas')
             return redirect('enviar_documento')
         tipo_preselecionado = False
     else:
@@ -324,6 +336,20 @@ def meus_documentos_view(request):
         'tipos_pendentes': tipos_pendentes,
         'contrato_documento': contrato_documento,
         'funcionario': funcionario,
+    })
+
+
+@login_required
+def assinatura_gov_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
+
+    return render(request, 'funcionarios/assinatura_gov.html', {
+        'contrato_documento': contrato_documento,
     })
 
 
@@ -551,6 +577,34 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
         'funcionario': funcionario,
         'username': user.username,
         'senha_gerada': senha_gerada,
+    })
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def resetar_senha_funcionario_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('listar_funcionarios')
+
+    if not hasattr(funcionario, 'usuario'):
+        messages.error(request, 'Este funcionário ainda não tem acesso ao sistema.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    senha_gerada = secrets.token_urlsafe(9)
+    funcionario.usuario.user.set_password(senha_gerada)
+    funcionario.usuario.user.save()
+    funcionario.usuario.senha_provisoria = True
+    funcionario.usuario.save()
+
+    return render(request, 'funcionarios/rh/senha_gerada.html', {
+        'funcionario': funcionario,
+        'username': funcionario.usuario.user.username,
+        'senha_gerada': senha_gerada,
+        'reset_senha': True,
     })
 
 

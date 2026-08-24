@@ -39,8 +39,8 @@ class MarcacaoRelogioAdmin(admin.ModelAdmin):
 
 @admin.register(AjustePonto)
 class AjustePontoAdmin(admin.ModelAdmin):
-    list_display = ('funcionario', 'data', 'tipo_evento', 'horario_ajustado', 'marcacao_original', 'usuario', 'criado_em')
-    list_filter = ('tipo_evento',)
+    list_display = ('funcionario', 'data', 'tipo_evento', 'horario_ajustado', 'status', 'marcacao_original', 'usuario', 'criado_em')
+    list_filter = ('status', 'tipo_evento')
     search_fields = ('funcionario__nome', 'funcionario__matricula')
 
 

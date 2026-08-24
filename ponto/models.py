@@ -158,7 +158,18 @@ class AjustePonto(models.Model):
     existente, `marcacao_original` aponta pra ela e o cálculo passa a usar só
     o horário lançado aqui no lugar dela; ao lançar uma batida que faltou por
     completo, `marcacao_original` fica em branco.
+
+    Pode nascer de dois jeitos: o RH lança direto (fluxo original, já sai
+    `aprovado`) ou o colaborador solicita e o RH aprova/rejeita depois. O
+    motor de cálculo (`calculos.py`) só considera os `status='aprovado'` --
+    pendente/rejeitado não pode afetar o espelho de ponto.
     """
+    STATUS_CHOICES = [
+        ('pendente', 'Pendente'),
+        ('aprovado', 'Aprovado'),
+        ('rejeitado', 'Rejeitado'),
+    ]
+
     TIPO_EVENTO_CHOICES = [
         ('entrada', 'Entrada'),
         ('saida', 'Saída'),
@@ -187,6 +198,24 @@ class AjustePonto(models.Model):
         null=True,
     )
     criado_em = models.DateTimeField(auto_now_add=True)
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pendente')
+    solicitado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ajustes_solicitados',
+    )
+    analisado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ajustes_analisados',
+    )
+    analisado_em = models.DateTimeField(null=True, blank=True)
+    observacao_rh = models.TextField(blank=True)
 
     class Meta:
         ordering = ['-data', '-criado_em']

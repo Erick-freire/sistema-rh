@@ -10,7 +10,7 @@ Cadastro concluído
     <span class="avatar avatar--lg" style="background-color: var(--color-success-bg); color: var(--color-success); margin: 0 auto 16px;">
         {% icon 'check-circle' %}
     </span>
-    <h1 style="font-size: 1.2rem;">Funcionário cadastrado</h1>
+    <h1 style="font-size: 1.2rem;">{% if reset_senha %}Senha redefinida{% else %}Funcionário cadastrado{% endif %}</h1>
     <p style="color: var(--color-text-muted); margin-top: 4px;">{{ funcionario.nome }} · {{ funcionario.setor }}</p>
 
     <div class="painel-credenciais" style="text-align: left;">
@@ -28,12 +28,16 @@ Cadastro concluído
 
     <div class="alert alert--erro" style="text-align: left;">
         {% icon 'alert-triangle' %}
-        <span>Anote ou copie esta senha agora — ela não poderá ser exibida novamente. Repasse ao colaborador para o primeiro acesso.</span>
+        <span>Anote ou copie esta senha agora — ela não poderá ser exibida novamente. Repasse ao colaborador para o {% if reset_senha %}próximo{% else %}primeiro{% endif %} acesso.</span>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+        {% if reset_senha %}
+        <a href="{% url 'detalhe_funcionario' funcionario.id %}" class="btn">Voltar para o funcionário</a>
+        {% else %}
         <a href="{% url 'cadastrar_funcionario' %}" class="btn">Cadastrar outro</a>
         <a href="{% url 'listar_funcionarios' %}" class="btn-outline">Voltar para Funcionários</a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

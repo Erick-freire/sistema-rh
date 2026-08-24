@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,16 +10,30 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from funcionarios.decorators import papel_required
-from funcionarios.models import Funcionario
+from funcionarios.models import Funcionario, Usuario
 
 from . import services
-from .calculos import calcular_periodo
+from .calculos import calcular_periodo, situacao_do_dia
 from .forms import (
     AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, FeriadoForm, FuncionarioJornadaForm,
-    HorarioDiaFormSet, HorarioForm,
+    HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
 )
 from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
 from .utils import intervalo_do_dia
+
+JANELA_MEU_PONTO_DIAS = 30
+JANELA_MEU_PONTO_MAXIMA_DIAS = 90
+
+
+def _data_do_get(request, campo, default):
+    """GET de data com fallback silencioso pro default se vier vazio/malformado -- é conteúdo digitável na URL por qualquer funcionário, não só RH."""
+    valor = request.GET.get(campo)
+    if not valor:
+        return default
+    try:
+        return date.fromisoformat(valor)
+    except ValueError:
+        return default
 
 
 def _dias_com_forms(formset):
@@ -289,7 +303,25 @@ def ajustar_marcacao_view(request, funcionario_id, data):
             ajuste.funcionario = funcionario
             ajuste.data = data_convertida
             ajuste.marcacao_original = marcacao_original
+
+            ja_existe_aprovado = AjustePonto.objects.filter(
+                funcionario=funcionario, data=data_convertida, tipo_evento=ajuste.tipo_evento, status='aprovado',
+            ).exists()
+            if ja_existe_aprovado:
+                messages.error(
+                    request,
+                    f'Já existe um ajuste aprovado pra {funcionario.nome} em {data_convertida.strftime("%d/%m/%Y")} '
+                    f'({ajuste.get_tipo_evento_display()}). Corrija ou remova o ajuste existente antes de lançar outro.',
+                )
+                return redirect(url_voltar)
+
+            # Lançado direto pelo RH: já sai aprovado, sem passar por fila de
+            # solicitação -- é o mesmo fluxo de sempre, só ganhou os campos novos.
             ajuste.usuario = request.user
+            ajuste.status = 'aprovado'
+            ajuste.solicitado_por = request.user
+            ajuste.analisado_por = request.user
+            ajuste.analisado_em = timezone.now()
             ajuste.save()
             messages.success(request, f'Ajuste de ponto de {funcionario.nome} em {data_convertida.strftime("%d/%m/%Y")} registrado.')
             return redirect(url_voltar)
@@ -396,3 +428,168 @@ def excluir_feriado_view(request, feriado_id):
     feriado.delete()
     messages.success(request, 'Feriado excluído.')
     return redirect('ponto:listar_feriados')
+
+
+# ---------- Colaborador: Meu Ponto ----------
+# Sem @papel_required de propósito -- é autoatendimento igual meu_perfil_view/
+# solicitar_ferias_view em funcionarios/views.py, disponível pra qualquer
+# Usuario (RH e gestor também são funcionários e batem ponto).
+
+def _periodo_meu_ponto(request):
+    hoje = timezone.now().date()
+    data_fim = min(_data_do_get(request, 'data_fim', hoje), hoje)
+    data_inicio = _data_do_get(request, 'data_inicio', data_fim - timedelta(days=JANELA_MEU_PONTO_DIAS - 1))
+    if data_inicio > data_fim:
+        data_inicio = data_fim - timedelta(days=JANELA_MEU_PONTO_DIAS - 1)
+    if (data_fim - data_inicio).days > JANELA_MEU_PONTO_MAXIMA_DIAS:
+        data_inicio = data_fim - timedelta(days=JANELA_MEU_PONTO_MAXIMA_DIAS)
+    return hoje, data_inicio, data_fim
+
+
+@login_required
+def meu_ponto_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    hoje, data_inicio, data_fim = _periodo_meu_ponto(request)
+    resultado = calcular_periodo(funcionario, data_inicio, data_fim)
+    for dia in resultado['dias']:
+        texto, cor, pode_solicitar = situacao_do_dia(dia, hoje)
+        dia['situacao_texto'] = texto
+        dia['situacao_cor'] = cor
+        dia['pode_solicitar'] = pode_solicitar
+        dia['tipo_sugerido'] = 'saida' if dia['marcacao_impar'] else 'entrada'
+
+    periodo_anterior = {
+        'data_inicio': (data_inicio - timedelta(days=JANELA_MEU_PONTO_DIAS)).isoformat(),
+        'data_fim': (data_inicio - timedelta(days=1)).isoformat(),
+    }
+    periodo_seguinte = None
+    if data_fim < hoje:
+        nova_data_inicio = data_fim + timedelta(days=1)
+        periodo_seguinte = {
+            'data_inicio': nova_data_inicio.isoformat(),
+            'data_fim': min(nova_data_inicio + timedelta(days=JANELA_MEU_PONTO_DIAS - 1), hoje).isoformat(),
+        }
+
+    return render(request, 'ponto/meu_ponto.html', {
+        'funcionario': funcionario,
+        'resultado': resultado,
+        'data_inicio': data_inicio,
+        'data_fim': data_fim,
+        'periodo_anterior': periodo_anterior,
+        'periodo_seguinte': periodo_seguinte,
+        'numeros_dos_pares': list(range(1, resultado['pares_no_periodo'] + 1)),
+    })
+
+
+@login_required
+def solicitar_ajuste_ponto_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    if request.method == 'POST':
+        form = SolicitarAjusteForm(request.POST, funcionario=funcionario)
+        if form.is_valid():
+            ajuste = form.save(commit=False)
+            ajuste.funcionario = funcionario
+            ajuste.usuario = request.user
+            ajuste.solicitado_por = request.user
+            ajuste.status = 'pendente'
+            ajuste.save()
+            messages.success(request, 'Solicitação enviada. Acompanhe em "Meus Ajustes" -- o RH vai analisar.')
+            return redirect('ponto:meus_ajustes')
+    else:
+        inicial = {
+            'data': request.GET.get('data') or timezone.now().date().isoformat(),
+            'tipo_evento': request.GET.get('tipo') or 'entrada',
+        }
+        marcacao_original_id = request.GET.get('marcacao_original')
+        if marcacao_original_id:
+            inicial['marcacao_original'] = marcacao_original_id
+        form = SolicitarAjusteForm(initial=inicial, funcionario=funcionario)
+
+    return render(request, 'ponto/form_solicitar_ajuste.html', {'form': form, 'funcionario': funcionario})
+
+
+@login_required
+def meus_ajustes_view(request):
+    try:
+        funcionario = request.user.usuario.funcionario
+    except Usuario.DoesNotExist:
+        return render(request, 'funcionarios/sem_perfil.html')
+
+    ajustes = AjustePonto.objects.filter(funcionario=funcionario).select_related('analisado_por')
+    return render(request, 'ponto/meus_ajustes.html', {'ajustes': ajustes})
+
+
+# ---------- RH: fila de aprovação de ajustes ----------
+
+@login_required
+@papel_required('rh')
+def ajustes_pendentes_view(request):
+    ajustes = (
+        AjustePonto.objects
+        .filter(status='pendente')
+        .select_related('funcionario', 'solicitado_por')
+        .order_by('criado_em')
+    )
+    return render(request, 'ponto/ajustes_pendentes.html', {
+        'ajustes': ajustes,
+        'form_rejeicao': RejeitarAjusteForm(),
+    })
+
+
+@login_required
+@papel_required('rh')
+def aprovar_ajuste_view(request, ajuste_id):
+    ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
+
+    if ajuste.status != 'pendente':
+        messages.error(request, 'Este ajuste já foi analisado.')
+        return redirect('ponto:ajustes_pendentes')
+
+    ja_existe_aprovado = AjustePonto.objects.filter(
+        funcionario=ajuste.funcionario, data=ajuste.data, tipo_evento=ajuste.tipo_evento, status='aprovado',
+    ).exists()
+    if ja_existe_aprovado:
+        messages.error(
+            request,
+            f'Já existe um ajuste aprovado pra {ajuste.funcionario.nome} em {ajuste.data.strftime("%d/%m/%Y")} '
+            f'({ajuste.get_tipo_evento_display()}). Rejeite este pedido ou resolva a duplicidade antes de aprovar.',
+        )
+        return redirect('ponto:ajustes_pendentes')
+
+    ajuste.status = 'aprovado'
+    ajuste.analisado_por = request.user
+    ajuste.analisado_em = timezone.now()
+    ajuste.save()
+    messages.success(request, f'Ajuste de {ajuste.funcionario.nome} aprovado.')
+    return redirect('ponto:ajustes_pendentes')
+
+
+@login_required
+@papel_required('rh')
+def rejeitar_ajuste_view(request, ajuste_id):
+    ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
+
+    if ajuste.status != 'pendente':
+        messages.error(request, 'Este ajuste já foi analisado.')
+        return redirect('ponto:ajustes_pendentes')
+
+    form = RejeitarAjusteForm(request.POST)
+    if form.is_valid():
+        ajuste.status = 'rejeitado'
+        ajuste.observacao_rh = form.cleaned_data['observacao_rh']
+        ajuste.analisado_por = request.user
+        ajuste.analisado_em = timezone.now()
+        ajuste.save()
+        messages.success(request, f'Ajuste de {ajuste.funcionario.nome} rejeitado.')
+    else:
+        messages.error(request, 'Informe o motivo da rejeição.')
+
+    return redirect('ponto:ajustes_pendentes')

@@ -115,6 +115,10 @@
             </form>
             {% else %}
             <p style="color: var(--color-text-muted); font-size: 0.88rem;">Este funcionário já possui acesso ao sistema.</p>
+            <form method="post" action="{% url 'resetar_senha_funcionario' funcionario.id %}" style="margin-top: 12px;">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline btn-sm">{% icon 'key' %} Gerar nova senha</button>
+            </form>
             {% if funcionario.usuario.papel != 'rh' %}
                 {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
                 <form method="post" action="{% url 'alternar_acesso_rh' funcionario.id %}" style="margin-top: 12px;">

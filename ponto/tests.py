@@ -962,7 +962,7 @@ class CalculosTests(TestCase):
         _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00')  # esqueceu a saída
         AjustePonto.objects.create(
             funcionario=self.funcionario, data=segunda, tipo_evento='saida',
-            horario_ajustado='17:00:00', motivo='Esqueceu de bater a saída.',
+            horario_ajustado='17:00:00', motivo='Esqueceu de bater a saída.', status='aprovado',
         )
 
         resultado = calcular_periodo(self.funcionario, segunda, segunda)
@@ -982,7 +982,7 @@ class CalculosTests(TestCase):
         AjustePonto.objects.create(
             funcionario=self.funcionario, data=segunda, tipo_evento='saida',
             horario_ajustado='17:00:00', marcacao_original=saida_errada,
-            motivo='Relógio registrou 16:00, correto é 17:00.',
+            motivo='Relógio registrou 16:00, correto é 17:00.', status='aprovado',
         )
 
         resultado = calcular_periodo(self.funcionario, segunda, segunda)
@@ -990,6 +990,26 @@ class CalculosTests(TestCase):
         dia = resultado['dias'][0]
         self.assertEqual(dia['segundos_trabalhados'], 8 * 3600)  # usa a correção (17:00), não o 16:00 do relógio
         self.assertTrue(MarcacaoRelogio.objects.filter(id=saida_errada.id).exists())  # original preservada
+
+    def test_ajuste_pendente_ou_rejeitado_nao_conta_no_calculo(self):
+        horario = _criar_horario_util(4011)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00')  # esqueceu a saída
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=segunda, tipo_evento='saida',
+            horario_ajustado='17:00:00', motivo='Pendente.', status='pendente',
+        )
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=segunda, tipo_evento='saida',
+            horario_ajustado='17:30:00', motivo='Rejeitado.', status='rejeitado',
+        )
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        dia = resultado['dias'][0]
+        self.assertTrue(dia['marcacao_impar'])  # a saída continua "faltando" pro cálculo
+        self.assertEqual(dia['segundos_trabalhados'], 4 * 3600)  # só o par 08-12 conta
 
 
 class AjustarMarcacaoViewTests(TestCase):
@@ -1058,3 +1078,276 @@ class AjustarMarcacaoViewTests(TestCase):
         )
 
         self.assertEqual(resposta.context['form'].initial['horario_ajustado'], marcacoes[0].momento.time())
+
+    def test_ajuste_lancado_pelo_rh_ja_sai_aprovado(self):
+        dia = date(2026, 8, 3)
+
+        self.client.post(
+            reverse('ponto:ajustar_marcacao', args=[self.funcionario.id, dia.isoformat()]),
+            {'tipo_evento': 'entrada', 'horario_ajustado': '08:00', 'motivo': 'Esqueceu de bater.'},
+        )
+
+        ajuste = AjustePonto.objects.get(funcionario=self.funcionario, data=dia)
+        self.assertEqual(ajuste.status, 'aprovado')
+        self.assertEqual(ajuste.solicitado_por.username, 'rhteste')
+        self.assertEqual(ajuste.analisado_por.username, 'rhteste')
+        self.assertIsNotNone(ajuste.analisado_em)
+
+    def test_bloqueia_lancar_direto_se_ja_existe_aprovado_pro_mesmo_slot(self):
+        dia = date(2026, 8, 3)
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=dia, tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Já aprovado.', status='aprovado',
+        )
+
+        resposta = self.client.post(
+            reverse('ponto:ajustar_marcacao', args=[self.funcionario.id, dia.isoformat()]),
+            {'tipo_evento': 'entrada', 'horario_ajustado': '08:10', 'motivo': 'Tentando de novo.'},
+        )
+
+        self.assertRedirects(resposta, reverse('ponto:listar_calculo') + f'?funcionario={self.funcionario.id}')
+        self.assertEqual(
+            AjustePonto.objects.filter(funcionario=self.funcionario, data=dia, tipo_evento='entrada').count(), 1
+        )
+
+
+class MeuPontoViewTests(TestCase):
+    """Tela 'Meu Ponto' do colaborador -- autoatendimento, sem @papel_required."""
+
+    def setUp(self):
+        setor = Setor.objects.create(nome='TI')
+        self.funcionario = Funcionario.objects.create(
+            nome='Ana Silva', matricula='2001', cargo='Analista', setor=setor, cpf='33333333333',
+        )
+        user = User.objects.create_user(username='anasilva', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='anasilva', password='senha123')
+
+        self.equipamento = _criar_equipamento()
+        self.outro_funcionario = _criar_funcionario(cpf='44444444444', matricula='2002')
+        horario = _criar_horario_util(4101)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        FuncionarioJornada.objects.create(funcionario=self.outro_funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+
+    def test_mostra_so_as_proprias_batidas(self):
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.funcionario, self.equipamento, segunda, '08:00', '12:00', '13:00', '17:00')
+        _bater_ponto(self.outro_funcionario, self.equipamento, segunda, '09:00', '12:00', '13:00', '19:00')
+
+        resposta = self.client.get(
+            reverse('ponto:meu_ponto') + f'?data_inicio={segunda.isoformat()}&data_fim={segunda.isoformat()}'
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        dia = resposta.context['resultado']['dias'][0]
+        self.assertEqual(dia['segundos_trabalhados'], 8 * 3600)  # a própria jornada (08-17), não a de 10h do outro
+
+    def test_dia_de_hoje_com_marcacao_impar_aparece_como_em_andamento(self):
+        hoje = timezone.now().date()
+        FuncionarioJornada.objects.filter(funcionario=self.funcionario).update(data_inicio=hoje - timedelta(days=60))
+        _bater_ponto(self.funcionario, self.equipamento, hoje, '08:00')  # só a entrada -- o dia não terminou
+
+        resposta = self.client.get(reverse('ponto:meu_ponto'))
+
+        dia_hoje = next(d for d in resposta.context['resultado']['dias'] if d['data'] == hoje)
+        self.assertEqual(dia_hoje['situacao_texto'], 'Em andamento')
+        self.assertFalse(dia_hoje['pode_solicitar'])
+
+    def test_sem_perfil_nao_quebra(self):
+        User.objects.create_user(username='semperfil', password='senha123')
+        self.client.login(username='semperfil', password='senha123')
+
+        resposta = self.client.get(reverse('ponto:meu_ponto'))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertTemplateUsed(resposta, 'funcionarios/sem_perfil.html')
+
+
+class SolicitarAjustePontoViewTests(TestCase):
+    def setUp(self):
+        setor = Setor.objects.create(nome='TI')
+        self.funcionario = Funcionario.objects.create(
+            nome='Ana Silva', matricula='2101', cargo='Analista', setor=setor, cpf='55511111111',
+        )
+        self.usuario = User.objects.create_user(username='anasolicita', password='senha123')
+        Usuario.objects.create(user=self.usuario, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='anasolicita', password='senha123')
+        self.equipamento = _criar_equipamento()
+
+    def test_cria_ajuste_pendente_com_solicitado_por(self):
+        dia = date(2026, 8, 3)
+
+        resposta = self.client.post(reverse('ponto:solicitar_ajuste_ponto'), {
+            'data': dia.isoformat(), 'tipo_evento': 'entrada', 'horario_ajustado': '08:00',
+            'marcacao_original': '', 'motivo': 'Esqueci de bater.',
+        })
+
+        self.assertRedirects(resposta, reverse('ponto:meus_ajustes'))
+        ajuste = AjustePonto.objects.get(funcionario=self.funcionario, data=dia)
+        self.assertEqual(ajuste.status, 'pendente')
+        self.assertEqual(ajuste.solicitado_por, self.usuario)
+        self.assertEqual(ajuste.usuario, self.usuario)
+        self.assertIsNone(ajuste.analisado_por)
+
+    def test_bloqueia_segunda_solicitacao_pendente_pro_mesmo_slot(self):
+        dia = date(2026, 8, 3)
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=dia, tipo_evento='entrada', horario_ajustado='08:00:00',
+            motivo='Primeira.', status='pendente', solicitado_por=self.usuario,
+        )
+
+        resposta = self.client.post(reverse('ponto:solicitar_ajuste_ponto'), {
+            'data': dia.isoformat(), 'tipo_evento': 'entrada', 'horario_ajustado': '08:05',
+            'marcacao_original': '', 'motivo': 'Segunda tentativa.',
+        })
+
+        self.assertEqual(resposta.status_code, 200)  # não redireciona -- form volta com erro
+        self.assertEqual(
+            AjustePonto.objects.filter(funcionario=self.funcionario, data=dia, tipo_evento='entrada').count(), 1
+        )
+
+    def test_marcacao_original_so_oferece_batidas_do_proprio_funcionario_no_dia(self):
+        dia = date(2026, 8, 3)
+        outro_funcionario = _criar_funcionario(cpf='55522222222', matricula='2102')
+        marcacoes_proprias = _bater_ponto(self.funcionario, self.equipamento, dia, '16:00')
+        _bater_ponto(outro_funcionario, self.equipamento, dia, '16:30')
+        _bater_ponto(self.funcionario, self.equipamento, dia + timedelta(days=1), '09:00')
+
+        resposta = self.client.get(reverse('ponto:solicitar_ajuste_ponto') + f'?data={dia.isoformat()}')
+
+        queryset = resposta.context['form'].fields['marcacao_original'].queryset
+        self.assertEqual(list(queryset), marcacoes_proprias)
+
+    def test_marcacao_de_outro_dia_e_rejeitada_na_validacao(self):
+        dia = date(2026, 8, 3)
+        marcacao_de_outro_dia = _bater_ponto(self.funcionario, self.equipamento, dia + timedelta(days=1), '09:00')[0]
+
+        resposta = self.client.post(reverse('ponto:solicitar_ajuste_ponto'), {
+            'data': dia.isoformat(), 'tipo_evento': 'entrada', 'horario_ajustado': '08:00',
+            'marcacao_original': marcacao_de_outro_dia.id, 'motivo': 'Referenciando batida de outro dia.',
+        })
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertFalse(AjustePonto.objects.filter(funcionario=self.funcionario, data=dia).exists())
+
+
+class MeusAjustesViewTests(TestCase):
+    def setUp(self):
+        setor = Setor.objects.create(nome='TI')
+        self.funcionario = Funcionario.objects.create(
+            nome='Ana Silva', matricula='2201', cargo='Analista', setor=setor, cpf='55533333333',
+        )
+        user = User.objects.create_user(username='anavelista', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='anavelista', password='senha123')
+
+    def test_rejeitado_continua_visivel_com_observacao_do_rh(self):
+        outro_funcionario = _criar_funcionario(cpf='55544444444', matricula='2202')
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada', horario_ajustado='08:00:00',
+            motivo='Meu pedido.', status='rejeitado', observacao_rh='Bateu no relógio certinho, sem erro.',
+        )
+        AjustePonto.objects.create(
+            funcionario=outro_funcionario, data=date(2026, 8, 3), tipo_evento='entrada', horario_ajustado='08:00:00',
+            motivo='Pedido de outro funcionário.', status='pendente',
+        )
+
+        resposta = self.client.get(reverse('ponto:meus_ajustes'))
+
+        self.assertEqual(resposta.status_code, 200)
+        ajustes = list(resposta.context['ajustes'])
+        self.assertEqual(len(ajustes), 1)  # só o próprio, não o de outro_funcionario
+        self.assertContains(resposta, 'Bateu no relógio certinho, sem erro.')
+
+
+class AjustesPendentesViewTests(TestCase):
+    def setUp(self):
+        setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9998', cargo='RH', setor=setor, cpf='66666666666')
+        user = User.objects.create_user(username='rhpendentes', password='senha123')
+        Usuario.objects.create(user=user, funcionario=rh, papel='rh')
+        self.client.login(username='rhpendentes', password='senha123')
+        self.funcionario = _criar_funcionario(cpf='77777777777')
+
+    def test_lista_so_pendentes(self):
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Pendente.', status='pendente',
+        )
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 4), tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Já aprovado.', status='aprovado',
+        )
+
+        resposta = self.client.get(reverse('ponto:ajustes_pendentes'))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(len(resposta.context['ajustes']), 1)
+
+    def test_colaborador_nao_acessa(self):
+        colaborador_user = User.objects.create_user(username='colabpendentes', password='senha123')
+        Usuario.objects.create(user=colaborador_user, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='colabpendentes', password='senha123')
+
+        resposta = self.client.get(reverse('ponto:ajustes_pendentes'))
+
+        self.assertRedirects(resposta, reverse('dashboard'))
+
+
+class AprovarRejeitarAjusteViewTests(TestCase):
+    def setUp(self):
+        setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9997', cargo='RH', setor=setor, cpf='88888888888')
+        self.rh_user = User.objects.create_user(username='rhaprova', password='senha123')
+        Usuario.objects.create(user=self.rh_user, funcionario=rh, papel='rh')
+        self.client.login(username='rhaprova', password='senha123')
+        self.funcionario = _criar_funcionario(cpf='99999999999')
+
+    def test_aprovar_seta_status_e_analise(self):
+        ajuste = AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Esqueci.', status='pendente',
+        )
+
+        resposta = self.client.post(reverse('ponto:aprovar_ajuste', args=[ajuste.id]))
+
+        self.assertRedirects(resposta, reverse('ponto:ajustes_pendentes'))
+        ajuste.refresh_from_db()
+        self.assertEqual(ajuste.status, 'aprovado')
+        self.assertEqual(ajuste.analisado_por, self.rh_user)
+        self.assertIsNotNone(ajuste.analisado_em)
+
+    def test_aprovar_bloqueado_se_ja_existe_aprovado_pro_mesmo_slot(self):
+        AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Já aprovado antes.', status='aprovado',
+        )
+        pendente = AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada',
+            horario_ajustado='08:10:00', motivo='Pedido duplicado.', status='pendente',
+        )
+
+        self.client.post(reverse('ponto:aprovar_ajuste', args=[pendente.id]))
+
+        pendente.refresh_from_db()
+        self.assertEqual(pendente.status, 'pendente')  # não aprova por cima do que já está aprovado
+
+    def test_rejeitar_exige_observacao(self):
+        ajuste = AjustePonto.objects.create(
+            funcionario=self.funcionario, data=date(2026, 8, 3), tipo_evento='entrada',
+            horario_ajustado='08:00:00', motivo='Esqueci.', status='pendente',
+        )
+
+        self.client.post(reverse('ponto:rejeitar_ajuste', args=[ajuste.id]), {'observacao_rh': ''})
+        ajuste.refresh_from_db()
+        self.assertEqual(ajuste.status, 'pendente')  # sem motivo, não rejeita
+
+        resposta = self.client.post(
+            reverse('ponto:rejeitar_ajuste', args=[ajuste.id]), {'observacao_rh': 'Bateu certo, sem erro.'}
+        )
+
+        self.assertRedirects(resposta, reverse('ponto:ajustes_pendentes'))
+        ajuste.refresh_from_db()
+        self.assertEqual(ajuste.status, 'rejeitado')
+        self.assertEqual(ajuste.observacao_rh, 'Bateu certo, sem erro.')
+        self.assertEqual(ajuste.analisado_por, self.rh_user)

@@ -142,7 +142,7 @@ def _eventos_do_dia(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=
         .filter(funcionario=funcionario, momento__gte=inicio, momento__lt=fim)
         .order_by('momento')
     )
-    ajustes = list(AjustePonto.objects.filter(funcionario=funcionario, data=data))
+    ajustes = list(AjustePonto.objects.filter(funcionario=funcionario, data=data, status='aprovado'))
     ids_corrigidos = {a.marcacao_original_id for a in ajustes if a.marcacao_original_id}
 
     eventos = [_Evento(momento=m.momento, manual=False) for m in reais if m.id not in ids_corrigidos]
@@ -194,11 +194,18 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         jornada = FuncionarioJornada.vigente_em(funcionario, dia_atual)
 
         if jornada is None:
+            # Sem jornada cadastrada não quer dizer que o funcionário não bateu
+            # ponto -- ainda mostramos as batidas reais do dia (só não há
+            # esperado nenhum pra comparar, então não entra no total de horas).
+            marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(
+                funcionario, dia_atual, None, horario_dia_anterior
+            )
             dias.append({
-                'data': dia_atual, 'sem_jornada': True, 'marcacoes': [], 'pares': [],
-                'segundos_esperados': 0, 'segundos_trabalhados': 0, 'saldo_segundos': 0,
+                'data': dia_atual, 'sem_jornada': True, 'marcacoes': marcacoes, 'pares': pares,
+                'entrada_esperada': None, 'saida_esperada': None,
+                'segundos_esperados': 0, 'segundos_trabalhados': segundos_trabalhados, 'saldo_segundos': 0,
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
-                'marcacao_impar': False, 'taxa_extra': None, 'folga': False,
+                'marcacao_impar': marcacao_impar, 'taxa_extra': None, 'folga': False,
             })
             horario_dia_anterior = None
             dia_atual += timedelta(days=1)
@@ -206,6 +213,8 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
 
         horario_dia, em_12x36 = _horario_do_dia(jornada, dia_atual)
         segundos_esperados = _segundos_esperados(horario_dia)
+        entrada_esperada = _primeira_entrada(horario_dia) if horario_dia else None
+        saida_esperada = _ultima_saida(horario_dia) if horario_dia else None
         marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(
             funcionario, dia_atual, horario_dia, horario_dia_anterior
         )
@@ -224,6 +233,8 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
             'marcacoes': marcacoes,
             'pares': pares,
             'marcacao_impar': marcacao_impar,
+            'entrada_esperada': entrada_esperada,
+            'saida_esperada': saida_esperada,
             'segundos_esperados': segundos_esperados,
             'segundos_trabalhados': segundos_trabalhados,
             'saldo_segundos': saldo_segundos,
@@ -262,3 +273,35 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
     }
 
     return {'dias': dias, 'totais': totais, 'pares_no_periodo': pares_no_periodo}
+
+
+def situacao_do_dia(dia, hoje):
+    """
+    Traduz um dia de `calcular_periodo` pra algo exibível ao colaborador:
+    (texto, cor, pode_solicitar_correcao). `cor` reaproveita as classes
+    `.badge-status--<cor>` já existentes no CSS (aprovado/pendente/rejeitado/
+    inativo) -- não tem relação com o `status` do AjustePonto, é só a mesma
+    paleta de cores.
+
+    Hoje nunca aparece como pendência (o dia ainda não terminou) mesmo que já
+    esteja com marcação ímpar ou saldo negativo -- só os dias já fechados são
+    sinalizados pra correção.
+    """
+    if dia['sem_jornada']:
+        return 'Sem jornada', 'inativo', False
+    if dia['folga']:
+        return 'Folga', 'inativo', False
+
+    if dia['marcacao_impar']:
+        texto, cor = 'Faltou marcação', 'pendente'
+    elif dia['segundos_trabalhados'] == 0:
+        texto, cor = 'Sem batidas', 'rejeitado'
+    elif dia['saldo_segundos'] < 0:
+        texto, cor = 'Falta/atraso', 'pendente'
+    else:
+        return 'OK', 'aprovado', False
+
+    if dia['data'] == hoje:
+        return 'Em andamento', 'inativo', False
+
+    return texto, cor, True

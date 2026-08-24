@@ -30,4 +30,14 @@ urlpatterns = [
     path('feriados/', views.listar_feriados_view, name='listar_feriados'),
     path('feriados/novo/', views.cadastrar_feriado_view, name='cadastrar_feriado'),
     path('feriados/<int:feriado_id>/excluir/', views.excluir_feriado_view, name='excluir_feriado'),
+
+    # Colaborador
+    path('meu-ponto/', views.meu_ponto_view, name='meu_ponto'),
+    path('meu-ponto/solicitar-ajuste/', views.solicitar_ajuste_ponto_view, name='solicitar_ajuste_ponto'),
+    path('meus-ajustes/', views.meus_ajustes_view, name='meus_ajustes'),
+
+    # RH — fila de aprovação
+    path('ajustes/pendentes/', views.ajustes_pendentes_view, name='ajustes_pendentes'),
+    path('ajustes/<int:ajuste_id>/aprovar/', views.aprovar_ajuste_view, name='aprovar_ajuste'),
+    path('ajustes/<int:ajuste_id>/rejeitar/', views.rejeitar_ajuste_view, name='rejeitar_ajuste'),
 ]

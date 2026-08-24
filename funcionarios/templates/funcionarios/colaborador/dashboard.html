@@ -21,6 +21,20 @@ Início
 </div>
 {% endif %}
 
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Meu Ponto</span>
+        <a href="{% url 'ponto:meu_ponto' %}" class="card__link">Ver tudo</a>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% for dia in ultimos_dias_ponto %}
+        <span class="badge-status badge-status--{{ dia.situacao_cor }}" title="{{ dia.data|date:'d/m' }} - {{ dia.situacao_texto }}">
+            {{ dia.data|date:'D' }}
+        </span>
+        {% endfor %}
+    </div>
+</div>
+
 <div class="duas-colunas">
     <div class="card">
         <div class="card__header">

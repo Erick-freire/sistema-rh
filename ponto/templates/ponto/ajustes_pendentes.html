@@ -1,0 +1,66 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Ajustes Pendentes{% endblock %}
+
+{% block conteudo %}
+<h1>Ajustes Pendentes</h1>
+{% include 'ponto/_subnav.html' %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
+            {% icon 'check-circle' %} {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Horário solicitado</th>
+                <th>Motivo</th>
+                <th>Solicitado em</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ajuste in ajustes %}
+            <tr>
+                <td>{{ ajuste.funcionario.nome }}</td>
+                <td>{{ ajuste.data|date:'d/m/Y' }}</td>
+                <td>{{ ajuste.get_tipo_evento_display }}{% if ajuste.marcacao_original %} (corrige batida existente){% endif %}</td>
+                <td>{{ ajuste.horario_ajustado|time:'H:i' }}</td>
+                <td>{{ ajuste.motivo }}</td>
+                <td>
+                    {{ ajuste.criado_em|date:'d/m/Y H:i' }}
+                    {% if ajuste.solicitado_por %}<div class="item-card__subtitulo">por {{ ajuste.solicitado_por.usuario.funcionario.nome|default:ajuste.solicitado_por.username }}</div>{% endif %}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 6px;">
+                        <form method="post" action="{% url 'ponto:aprovar_ajuste' ajuste.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
+                        </form>
+                        <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-{{ ajuste.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
+                    </div>
+                    <div id="rejeitar-{{ ajuste.id }}" style="display: none; margin-top: 8px;">
+                        <form method="post" action="{% url 'ponto:rejeitar_ajuste' ajuste.id %}">
+                            {% csrf_token %}
+                            {{ form_rejeicao.observacao_rh }}
+                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;">Confirmar rejeição</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7">Nenhum ajuste pendente.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

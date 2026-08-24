@@ -6,6 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block titulo %}Sistema RH{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -32,7 +33,11 @@
         </div>
 
         <div class="sidebar__user">
+            {% if usuario_atual.funcionario.foto %}
+            <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--sm" style="object-fit: cover;">
+            {% else %}
             <span class="avatar avatar--sm avatar--brand">{{ usuario_atual.funcionario.iniciais }}</span>
+            {% endif %}
             <div>
                 <div class="sidebar__user-name">{{ usuario_atual.funcionario.nome }}</div>
                 <div class="sidebar__user-role">{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %}{% if usuario_atual.funcionario.setor %} · {{ usuario_atual.funcionario.setor }}{% endif %}</div>
@@ -51,7 +56,10 @@
                 </li>
                 {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
                 <li class="{% if request.resolver_match.app_name == 'ponto' %}active{% endif %}">
-                    <a href="{% url 'ponto:listar_equipamentos' %}">{% icon 'clock' %} Ponto</a>
+                    <a href="{% url 'ponto:listar_equipamentos' %}">
+                        {% icon 'clock' %} Ponto
+                        {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
+                    </a>
                 </li>
                 {% endif %}
                 {% if usuario_atual.papel == 'gestor' %}
@@ -82,6 +90,9 @@
                     <a href="{% url 'dashboard' %}">{% icon 'home' %} Início</a>
                 </li>
             {% endif %}
+                <li class="{% if request.resolver_match.url_name == 'meu_ponto' %}active{% endif %}">
+                    <a href="{% url 'ponto:meu_ponto' %}">{% icon 'clock' %} Meu Ponto</a>
+                </li>
                 <li class="{% if request.resolver_match.url_name == 'meu_perfil' %}active{% endif %}">
                     <a href="{% url 'meu_perfil' %}">{% icon 'user' %} Meu Perfil</a>
                 </li>
@@ -111,7 +122,11 @@
     <main class="content">
         <div class="topbar">
             <div class="topbar__user">
+                {% if usuario_atual.funcionario.foto %}
+                <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--brand" style="object-fit: cover;">
+                {% else %}
                 <span class="avatar avatar--brand">{{ usuario_atual.funcionario.iniciais }}</span>
+                {% endif %}
                 <div class="topbar__user-info">
                     <div class="topbar__user-name">{{ usuario_atual.funcionario.nome }}</div>
                     <div class="topbar__user-role">{{ usuario_atual.get_papel_display }}</div>
@@ -128,6 +143,9 @@
 <nav class="bottom-nav">
     <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
         {% icon 'home' %} Início
+    </a>
+    <a href="{% url 'ponto:meu_ponto' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_ponto' %} active{% endif %}">
+        {% icon 'clock' %} Ponto
     </a>
     <a href="{% url 'solicitar_ferias' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'solicitar_ferias' %} active{% endif %}">
         {% icon 'umbrella' %} Férias

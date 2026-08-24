@@ -30,6 +30,7 @@ ICONS = {
     'arrow-left': '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
     'dots': '<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>',
     'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+    'key': '<circle cx="8" cy="15" r="3.3"/><path d="M10.4 12.6 20 3"/><path d="M15.2 8.2 17.6 10.6"/><path d="M18.4 7 20 8.6"/>',
 }
 
 

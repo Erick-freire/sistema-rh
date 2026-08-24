@@ -1,0 +1,48 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Assinar com Gov.br
+{% endblock %}
+
+{% block conteudo %}
+<h1>Assinar com Gov.br</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
+    {% endfor %}
+{% endif %}
+
+<div class="card">
+    <div class="card__title" style="margin-bottom: 12px;">Como assinar</div>
+    <ol style="margin: 0 0 20px 18px; padding: 0; font-size: 0.92rem; color: var(--color-text-muted);">
+        <li style="margin-bottom: 6px;">Baixe seu contrato abaixo.</li>
+        <li style="margin-bottom: 6px;">Assine em <strong>assinador.iti.br</strong>, fazendo login com sua conta gov.br.</li>
+        <li>Volte aqui e envie o arquivo já assinado.</li>
+    </ol>
+    <a href="https://assinador.iti.br/" target="_blank" rel="noopener" class="btn">{% icon 'pen' %} Assinar com o Gov.br</a>
+</div>
+
+{% if contrato_documento %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <div class="card__header">
+        <span class="card__title">Contrato de Trabalho</span>
+        <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Download</a>
+            <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">
+                <input type="hidden" name="origem" value="assinatura_gov">
+                <input type="file" name="arquivo" id="arquivo-contrato-assinado" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-contrato-assinado" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p style="color: var(--color-text-muted); font-size: 0.9rem;">Seu contrato ainda não foi gerado pelo RH. Quando estiver disponível, aparece aqui pra download.</p>
+</div>
+{% endif %}
+{% endblock %}

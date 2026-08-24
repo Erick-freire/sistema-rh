@@ -1,0 +1,57 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Solicitar correção de ponto{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'ponto:meu_ponto' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Solicitar correção de ponto
+</h1>
+
+<div class="card">
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        Descreva o que aconteceu e o horário correto. O RH vai analisar antes que a correção passe a valer no seu espelho de ponto — você pode acompanhar em "Meus Ajustes".
+    </p>
+
+    {% if form.non_field_errors %}
+        <div class="alert alert--erro">{% for erro in form.non_field_errors %}{{ erro }}{% endfor %}</div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.data.id_for_label }}">Data</label>
+                {{ form.data }}
+                {{ form.data.errors }}
+            </div>
+            <div>
+                <label for="{{ form.tipo_evento.id_for_label }}">Tipo</label>
+                {{ form.tipo_evento }}
+                {{ form.tipo_evento.errors }}
+            </div>
+            <div>
+                <label for="{{ form.horario_ajustado.id_for_label }}">Horário correto</label>
+                {{ form.horario_ajustado }}
+                {{ form.horario_ajustado.errors }}
+            </div>
+            <div>
+                <label for="{{ form.marcacao_original.id_for_label }}">{{ form.fields.marcacao_original.label }}</label>
+                {{ form.marcacao_original }}
+                {{ form.marcacao_original.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form.motivo.id_for_label }}">Motivo</label>
+                {{ form.motivo }}
+                {{ form.motivo.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Enviar solicitação</button>
+            <a href="{% url 'ponto:meu_ponto' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

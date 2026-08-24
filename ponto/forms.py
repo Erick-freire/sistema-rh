@@ -1,7 +1,11 @@
+from datetime import date
+
 from django import forms
 from django.forms import inlineformset_factory
+from django.utils import timezone
 
-from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia
+from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .utils import intervalo_do_dia
 
 
 class EquipamentoForm(forms.ModelForm):
@@ -105,6 +109,78 @@ class AjustarMarcacaoForm(forms.ModelForm):
         model = AjustePonto
         fields = ['tipo_evento', 'horario_ajustado', 'motivo']
         widgets = {'horario_ajustado': forms.TimeInput(attrs={'type': 'time'})}
+
+
+class MarcacaoOriginalChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return f'{timezone.localtime(obj.momento):%H:%M} ({obj.get_tipo_evento_display()})'
+
+
+class SolicitarAjusteForm(forms.ModelForm):
+    """
+    Pedido de correção feito pelo próprio colaborador -- vira um AjustePonto
+    com status='pendente', só passa a valer pro cálculo depois que o RH
+    aprovar (ver `ajustes_pendentes_view`/`aprovar_ajuste_view`).
+
+    `marcacao_original` só oferece as batidas do próprio funcionário no dia
+    informado (nunca um dropdown livre) -- restrição de segurança (não vaza
+    batida de outro funcionário) e de corretude: sem isso, corrigir uma
+    batida existente sem referenciá-la faria o motor de cálculo contar as
+    duas (a errada e a corrigida) em vez de uma substituir a outra.
+    """
+    class Meta:
+        model = AjustePonto
+        fields = ['data', 'tipo_evento', 'horario_ajustado', 'marcacao_original', 'motivo']
+        field_classes = {'marcacao_original': MarcacaoOriginalChoiceField}
+        widgets = {
+            'data': forms.DateInput(attrs={'type': 'date'}),
+            'horario_ajustado': forms.TimeInput(attrs={'type': 'time'}),
+        }
+        labels = {'marcacao_original': 'Corrigindo uma batida existente?'}
+
+    def __init__(self, *args, funcionario, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.funcionario = funcionario
+        self.fields['marcacao_original'].empty_label = 'Nenhuma -- foi uma batida que faltou'
+        self.fields['marcacao_original'].queryset = MarcacaoRelogio.objects.none()
+
+        data_inicial = self.data.get('data') or self.initial.get('data')
+        if isinstance(data_inicial, str):
+            try:
+                data_inicial = date.fromisoformat(data_inicial)
+            except ValueError:
+                data_inicial = None
+        if data_inicial:
+            # Range de datetime (não `momento__date=`) -- ver ponto/utils.py:
+            # esse lookup depende de tabela de timezone do MySQL que pode não
+            # estar carregada no servidor.
+            inicio, fim = intervalo_do_dia(data_inicial)
+            self.fields['marcacao_original'].queryset = MarcacaoRelogio.objects.filter(
+                funcionario=funcionario, momento__gte=inicio, momento__lt=fim,
+            ).order_by('momento')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data = cleaned_data.get('data')
+        tipo_evento = cleaned_data.get('tipo_evento')
+
+        # Não precisa checar aqui se `marcacao_original` é do mesmo dia que
+        # `data`: a queryset do campo já é escopada pelo `data` submetido (ver
+        # __init__), então um valor de outro dia já cai como "opção inválida"
+        # antes de chegar aqui.
+        if data and tipo_evento and AjustePonto.objects.filter(
+            funcionario=self.funcionario, data=data, tipo_evento=tipo_evento, status='pendente',
+        ).exists():
+            raise forms.ValidationError(
+                'Já existe uma solicitação pendente pra esse dia e tipo de evento. '
+                'Aguarde o RH decidir a primeira antes de enviar outra.'
+            )
+
+        return cleaned_data
+
+
+class RejeitarAjusteForm(forms.Form):
+    observacao_rh = forms.CharField(widget=forms.Textarea, required=True, label='Motivo da rejeição')
 
 
 class FeriadoForm(forms.ModelForm):

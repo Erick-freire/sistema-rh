@@ -7,7 +7,7 @@ from django.db import models
 
 
 def _obter_fernet():
-    chave = settings.GOVBR_TOKEN_ENCRYPTION_KEY
+    chave = settings.CHAVE_CIFRA_SEGREDOS
 
     if not chave:
         # Sem chave dedicada configurada, deriva uma a partir da SECRET_KEY do projeto.
@@ -19,7 +19,7 @@ def _obter_fernet():
 
 
 class EncryptedTextField(models.TextField):
-    """Texto cifrado em repouso (Fernet). Usado para tokens do gov.br — nunca deve ser exibido em views/admin."""
+    """Texto cifrado em repouso (Fernet). Usado por Equipamento.senha_admin (app ponto) — nunca deve ser exibido em views/admin."""
 
     def from_db_value(self, value, expression, connection):
         return self.to_python(value)
