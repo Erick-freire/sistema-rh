@@ -4,8 +4,8 @@ from .models import Setor, Funcionario, Usuario, TipoDocumento, Documento
 
 @admin.register(TipoDocumento)
 class TipoDocumentoAdmin(admin.ModelAdmin):
-    list_display = ('nome', 'obrigatorio', 'eh_contrato', 'condicao')
-    list_filter = ('obrigatorio', 'eh_contrato', 'condicao')
+    list_display = ('nome', 'obrigatorio', 'eh_contrato', 'condicao', 'permite_varios')
+    list_filter = ('obrigatorio', 'eh_contrato', 'condicao', 'permite_varios')
 
 
 @admin.register(Documento)

@@ -60,6 +60,28 @@ Meus Documentos
 </div>
 {% endif %}
 
+{% if tipos_opcionais %}
+<div class="card">
+    <div class="card__title" style="margin-bottom: 12px;">Enviar outro documento</div>
+    <p class="item-card__subtitulo" style="margin-bottom: 12px;">Opcional. Pode ser enviado a qualquer momento.</p>
+    <div class="lista-cards">
+        {% for tipo in tipos_opcionais %}
+        <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" class="item-card">
+            {% csrf_token %}
+            <input type="hidden" name="tipo_documento" value="{{ tipo.id }}">
+            <input type="hidden" name="origem" value="meus_documentos">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ tipo.nome }}</div>
+                {% with dica=tipo.nome|dica_documento %}{% if dica %}<div class="item-card__subtitulo">{{ dica }}</div>{% endif %}{% endwith %}
+            </div>
+            <input type="file" name="arquivo" id="arquivo-opcional-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
+            <label for="arquivo-opcional-{{ tipo.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar</label>
+        </form>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card__title" style="margin-bottom: 12px;">Enviados</div>
     <div class="lista-cards">

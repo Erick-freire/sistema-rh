@@ -4,11 +4,7 @@ from decouple import config, Csv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Mantém o valor atual como default (não altera comportamento em ambientes
-# sem SECRET_KEY no .env) -- em produção, definir um valor novo e forte no
-# .env. Atenção: se CHAVE_CIFRA_SEGREDOS estiver vazia no .env, trocar a
-# SECRET_KEY invalida a decifragem de senhas já salvas (Equipamento.senha_admin
-# em integracao_gov/fields.py) -- ver PRODUCAO.md antes de rotacionar.
+
 SECRET_KEY = config(
     'SECRET_KEY',
     default='django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q',
@@ -19,7 +15,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1,192.168.1.69',
+    default='localhost,127.0.0.1,192.168.0.56',
     cast=Csv(),
 )
 

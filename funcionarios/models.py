@@ -164,6 +164,12 @@ class Funcionario(models.Model):
             if tipo.aplica_a(self)
         ]
 
+    def tipos_documentos_opcionais(self):
+        return [
+            tipo for tipo in TipoDocumento.objects.filter(obrigatorio=False, eh_contrato=False)
+            if tipo.aplica_a(self)
+        ]
+
     def tipos_documentos_nunca_enviados(self):
         """
         Tipos obrigatórios sem nenhum envio ainda (nem sequer rejeitado) --
@@ -306,6 +312,11 @@ class TipoDocumento(models.Model):
         default='sempre',
         help_text='Define quando este documento é exigido, além do campo "obrigatório" estar marcado.'
     )
+    permite_varios = models.BooleanField(
+        default=False,
+        help_text='Marque para tipos que podem ser enviados mais de uma vez pelo mesmo funcionário '
+                   '(ex.: Atestado Médico): cada envio fica guardado no histórico em vez de substituir o anterior.'
+    )
 
     def __str__(self):
         return self.nome
@@ -365,7 +376,9 @@ class Documento(models.Model):
 
     @classmethod
     def substituir_ou_criar(cls, funcionario, tipo_documento, arquivo, enviado_por):
-        documento = cls.objects.filter(funcionario=funcionario, tipo_documento=tipo_documento).first()
+        documento = None
+        if not tipo_documento.permite_varios:
+            documento = cls.objects.filter(funcionario=funcionario, tipo_documento=tipo_documento).first()
         if documento is None:
             return cls.objects.create(
                 funcionario=funcionario,
