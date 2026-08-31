@@ -5,7 +5,7 @@
 
 {% block conteudo %}
 <h1 class="titulo-com-voltar">
-    <a href="{% url 'ponto:listar_feriados' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    <a href="{% url 'ponto:listar_horarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
     Novo feriado
 </h1>
 
@@ -27,7 +27,7 @@
 
         <div style="display: flex; gap: 12px; margin-top: 20px;">
             <button type="submit" class="btn-primario">Salvar</button>
-            <a href="{% url 'ponto:listar_feriados' %}" class="btn-outline">Cancelar</a>
+            <a href="{% url 'ponto:listar_horarios' %}" class="btn-outline">Cancelar</a>
         </div>
     </form>
 </div>

@@ -45,4 +45,22 @@
         </tbody>
     </table>
 </div>
+
+<div class="lista-cards mobile-only">
+    {% for feriado in feriados %}
+    <div class="item-card">
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">{{ feriado.data|date:'d/m/Y' }}</div>
+            <div class="item-card__subtitulo">{{ feriado.descricao|default:'—' }}</div>
+        </div>
+        <form method="post" action="{% url 'ponto:excluir_feriado' feriado.id %}"
+              onsubmit="return confirm('Excluir feriado de {{ feriado.data|date:'d/m/Y' }}?');">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-sm">Excluir</button>
+        </form>
+    </div>
+    {% empty %}
+    <p>Nenhum feriado cadastrado.</p>
+    {% endfor %}
+</div>
 {% endblock %}

@@ -4,10 +4,11 @@
 {% block titulo %}Meus Ajustes de Ponto{% endblock %}
 
 {% block conteudo %}
-<h1 class="titulo-com-voltar">
-    <a href="{% url 'ponto:meu_ponto' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
-    Meus ajustes de ponto
-</h1>
+<h1>Meu ponto</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    Suas batidas e o horário esperado de cada dia. Encontrou algo errado? Peça correção — o RH analisa antes de valer no espelho.
+</p>
+{% include 'ponto/_meu_ponto_tabs.html' %}
 
 {% if messages %}
     {% for message in messages %}

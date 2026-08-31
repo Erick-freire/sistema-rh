@@ -1,10 +1,10 @@
 {% extends 'funcionarios/base.html' %}
 {% load rh_icons %}
 
-{% block titulo %}Horários{% endblock %}
+{% block titulo %}Horários e Feriados{% endblock %}
 
 {% block conteudo %}
-<h1>Horários</h1>
+{% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
 {% if messages %}
@@ -15,6 +15,7 @@
     {% endfor %}
 {% endif %}
 
+<h2 style="margin-top: 4px;">Horários</h2>
 <a href="{% url 'ponto:cadastrar_horario' %}" class="btn btn-novo">{% icon 'plus' %} Novo horário</a>
 
 <div class="table-responsive desktop-only">
@@ -53,5 +54,83 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for horario in horarios %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div class="item-card__titulo">
+            {{ horario.numero }} · {{ horario.nome|default:'—' }}
+            {% if horario.eh_12x36 %}<span class="chip" style="cursor: default;">12x36</span>{% endif %}
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            {% for dia in horario.dias.all %}
+                <span class="badge-status {% if dia.folga %}badge-status--inativo{% else %}badge-status--ativo{% endif %}" title="{{ dia.get_dia_semana_display }}">
+                    {{ dia.get_dia_semana_display|slice:':3' }}
+                </span>
+            {% endfor %}
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <a href="{% url 'ponto:editar_horario' horario.id %}" class="btn-outline btn-sm" style="flex: 1;">Editar</a>
+            <form method="post" action="{% url 'ponto:excluir_horario' horario.id %}" style="flex: 1;"
+                  onsubmit="return confirm('Excluir horário {{ horario.numero }}?');">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline btn-bloco">Excluir</button>
+            </form>
+        </div>
+    </div>
+    {% empty %}
+    <p>Nenhum horário cadastrado.</p>
+    {% endfor %}
+</div>
+
+<h2>Feriados</h2>
+<a href="{% url 'ponto:cadastrar_feriado' %}" class="btn btn-novo">{% icon 'plus' %} Novo feriado</a>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Descrição</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for feriado in feriados %}
+            <tr>
+                <td>{{ feriado.data|date:'d/m/Y' }}</td>
+                <td>{{ feriado.descricao|default:'—' }}</td>
+                <td>
+                    <form method="post" action="{% url 'ponto:excluir_feriado' feriado.id %}" style="display:inline"
+                          onsubmit="return confirm('Excluir feriado de {{ feriado.data|date:'d/m/Y' }}?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline btn-sm">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3">Nenhum feriado cadastrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for feriado in feriados %}
+    <div class="item-card">
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">{{ feriado.data|date:'d/m/Y' }}</div>
+            <div class="item-card__subtitulo">{{ feriado.descricao|default:'—' }}</div>
+        </div>
+        <form method="post" action="{% url 'ponto:excluir_feriado' feriado.id %}"
+              onsubmit="return confirm('Excluir feriado de {{ feriado.data|date:'d/m/Y' }}?');">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-sm">Excluir</button>
+        </form>
+    </div>
+    {% empty %}
+    <p>Nenhum feriado cadastrado.</p>
+    {% endfor %}
 </div>
 {% endblock %}

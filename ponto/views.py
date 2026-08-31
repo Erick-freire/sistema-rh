@@ -215,7 +215,8 @@ def listar_marcacoes_view(request):
 @papel_required('rh')
 def listar_horarios_view(request):
     horarios = Horario.objects.prefetch_related('dias')
-    return render(request, 'ponto/listar_horarios.html', {'horarios': horarios})
+    feriados = Feriado.objects.all()
+    return render(request, 'ponto/listar_horarios.html', {'horarios': horarios, 'feriados': feriados})
 
 
 @login_required
@@ -414,7 +415,7 @@ def cadastrar_feriado_view(request):
         if form.is_valid():
             form.save()
             messages.success(request, 'Feriado cadastrado com sucesso.')
-            return redirect('ponto:listar_feriados')
+            return redirect('ponto:listar_horarios')
     else:
         form = FeriadoForm()
 
@@ -427,7 +428,7 @@ def excluir_feriado_view(request, feriado_id):
     feriado = get_object_or_404(Feriado, id=feriado_id)
     feriado.delete()
     messages.success(request, 'Feriado excluído.')
-    return redirect('ponto:listar_feriados')
+    return redirect('ponto:listar_horarios')
 
 
 # ---------- Colaborador: Meu Ponto ----------

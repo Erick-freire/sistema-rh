@@ -1,29 +1,52 @@
 {% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
 
 {% block titulo %}
 Painel do RH
 {% endblock %}
 
 {% block conteudo %}
-<h1>Painel do RH</h1>
+<h1>{{ saudacao }}, {{ nome_usuario }}</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ data_extenso }} · {{ total_itens_acao }} ite{{ total_itens_acao|pluralize:"m,ns" }} esperando o RH
+</p>
+
+{% if avisos_vencendo_30_dias %}
+<div class="alert alert--aviso alert--com-acao">
+    <span>{% icon 'alert-triangle' %} {{ avisos_vencendo_30_dias }} colaborador{{ avisos_vencendo_30_dias|pluralize }} {{ avisos_vencendo_30_dias|pluralize:"tem,têm" }} férias vencendo em menos de 30 dias.</span>
+    <a href="{% url 'rh_vencimento_ferias' %}" class="btn btn-sm">Resolver</a>
+</div>
+{% endif %}
 
 <div class="stats-grid">
-    <div class="stat-card">
+    <a href="{% url 'listar_funcionarios' %}?status=ativo" class="stat-card">
         <div class="rotulo">Funcionários ativos</div>
         <div class="valor">{{ total_funcionarios }}</div>
-    </div>
-    <div class="stat-card">
+        {% if admitidos_no_mes %}<div class="stat-card__sub stat-card__sub--positivo">+{{ admitidos_no_mes }} no mês</div>{% endif %}
+    </a>
+    <a href="{% url 'listar_funcionarios' %}?status=pendente" class="stat-card">
         <div class="rotulo">Cadastros pendentes</div>
         <div class="valor">{{ cadastros_pendentes }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="rotulo">Férias aguardando gestor</div>
+        {% if cadastros_pendentes_antigos %}<div class="stat-card__sub stat-card__sub--alerta">{{ cadastros_pendentes_antigos }} há mais de 7 dias</div>{% endif %}
+    </a>
+    {% if usuario_atual.papel == 'gestor' %}
+    <a href="{% url 'gestor_listar_ferias' %}" class="stat-card">
+        <div class="rotulo">Férias com o gestor</div>
         <div class="valor">{{ ferias_aguardando_gestor }}</div>
-    </div>
+        {% if dias_mais_antiga_gestor %}<div class="stat-card__sub stat-card__sub--alerta">mais antiga: {{ dias_mais_antiga_gestor }} dia{{ dias_mais_antiga_gestor|pluralize }}</div>{% endif %}
+    </a>
+    {% else %}
     <div class="stat-card">
-        <div class="rotulo">Férias aguardando RH</div>
-        <div class="valor">{{ ferias_aguardando_rh }}</div>
+        <div class="rotulo">Férias com o gestor</div>
+        <div class="valor">{{ ferias_aguardando_gestor }}</div>
+        {% if dias_mais_antiga_gestor %}<div class="stat-card__sub stat-card__sub--alerta">mais antiga: {{ dias_mais_antiga_gestor }} dia{{ dias_mais_antiga_gestor|pluralize }}</div>{% endif %}
     </div>
+    {% endif %}
+    <a href="{% url 'concluir_ferias' %}" class="stat-card">
+        <div class="rotulo">Férias com o RH</div>
+        <div class="valor">{{ ferias_aguardando_rh }}</div>
+        {% if ferias_aguardando_rh %}<div class="stat-card__sub">prontas para concluir</div>{% endif %}
+    </a>
 </div>
 
 <div class="duas-colunas">
@@ -48,30 +71,22 @@ Painel do RH
 
     <div class="card">
         <div class="card__header">
-            <span class="card__title">Documentos recentes</span>
+            <span class="card__title">Precisa da sua ação</span>
+            <a href="{% url 'dashboard' %}" class="card__link">Ver tudo</a>
         </div>
-        <table class="tabela-limpa">
-            <thead>
-                <tr>
-                    <th>Funcionário</th>
-                    <th>Tipo</th>
-                    <th>Envio</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for documento in documentos_recentes %}
-                <tr>
-                    <td>{{ documento.funcionario.nome }}</td>
-                    <td>{{ documento.tipo_documento }}</td>
-                    <td>{{ documento.data_upload|date:"d/m H:i" }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="3">Nenhum documento recente.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="lista-cards">
+            {% for item in itens_acao %}
+            <a href="{{ item.url }}" class="item-card">
+                <div class="item-card__corpo">
+                    <div class="item-card__titulo">{{ item.titulo }}</div>
+                    <div class="item-card__subtitulo">{{ item.subtitulo }}</div>
+                </div>
+                {% icon 'chevron-right' %}
+            </a>
+            {% empty %}
+            <p style="color: var(--color-text-muted); font-size: 0.9rem;">Tudo em dia por aqui.</p>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endblock %}

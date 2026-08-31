@@ -1,10 +1,10 @@
 {% load rh_icons %}
-<div class="filtros-status" style="margin-bottom: 20px;">
-    <a href="{% url 'ponto:listar_equipamentos' %}" class="chip{% if request.resolver_match.url_name == 'listar_equipamentos' or request.resolver_match.url_name == 'cadastrar_equipamento' or request.resolver_match.url_name == 'editar_equipamento' %} chip--ativo{% endif %}">Equipamentos</a>
-    <a href="{% url 'ponto:listar_horarios' %}" class="chip{% if request.resolver_match.url_name == 'listar_horarios' or request.resolver_match.url_name == 'cadastrar_horario' or request.resolver_match.url_name == 'editar_horario' %} chip--ativo{% endif %}">Horários</a>
-    <a href="{% url 'ponto:listar_feriados' %}" class="chip{% if request.resolver_match.url_name == 'listar_feriados' or request.resolver_match.url_name == 'cadastrar_feriado' %} chip--ativo{% endif %}">Feriados</a>
-    <a href="{% url 'ponto:listar_calculo' %}" class="chip{% if request.resolver_match.url_name == 'listar_calculo' %} chip--ativo{% endif %}">Cálculo</a>
-    <a href="{% url 'ponto:ajustes_pendentes' %}" class="chip{% if request.resolver_match.url_name == 'ajustes_pendentes' %} chip--ativo{% endif %}">
-        Ajustes Pendentes{% if badge_ajustes_pendentes %} ({{ badge_ajustes_pendentes }}){% endif %}
+<div class="tabs">
+    <a href="{% url 'ponto:listar_calculo' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_calculo' %} is-ativo{% endif %}">Espelho e cálculo</a>
+    <a href="{% url 'ponto:ajustes_pendentes' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_pendentes' %} is-ativo{% endif %}">
+        Ajustes pendentes
+        {% if badge_ajustes_pendentes %}<span class="tabs__badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
     </a>
+    <a href="{% url 'ponto:listar_equipamentos' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_equipamentos' or request.resolver_match.url_name == 'cadastrar_equipamento' or request.resolver_match.url_name == 'editar_equipamento' %} is-ativo{% endif %}">Equipamentos</a>
+    <a href="{% url 'ponto:listar_horarios' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_horarios' or request.resolver_match.url_name == 'cadastrar_horario' or request.resolver_match.url_name == 'editar_horario' or request.resolver_match.url_name == 'listar_feriados' or request.resolver_match.url_name == 'cadastrar_feriado' %} is-ativo{% endif %}">Horários e feriados</a>
 </div>

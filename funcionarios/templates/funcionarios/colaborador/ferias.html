@@ -2,11 +2,11 @@
 {% load rh_icons %}
 
 {% block titulo %}
-Férias
+Minhas Férias
 {% endblock %}
 
 {% block conteudo %}
-<h1>Férias</h1>
+<h1>Minhas férias</h1>
 
 {% if messages %}
     {% for message in messages %}
@@ -67,29 +67,35 @@ Férias
 {% else %}
 <div class="card">
     <div class="card__header"><span class="card__title">Nova solicitação</span></div>
+    <p class="item-card__subtitulo" style="margin: -8px 0 16px;">Escolha quando quer começar e quantos dias. O gestor analisa e o RH conclui.</p>
     <form method="post">
         {% csrf_token %}
-        <label for="{{ form.data_solicitada.id_for_label }}">{{ form.data_solicitada.label }}</label>
+        <label for="{{ form.data_solicitada.id_for_label }}">Primeiro dia de férias</label>
         {{ form.data_solicitada }}
         {{ form.data_solicitada.errors }}
 
         <label style="margin-top: 16px;">Quantidade de dias</label>
         <div class="filtros-status" id="dias-chips">
-            <button type="button" class="chip" data-dias="30">30</button>
-            <button type="button" class="chip" data-dias="15">15</button>
-            <button type="button" class="chip" data-dias="20">20</button>
-            <button type="button" class="chip" data-dias="outro">Outro</button>
+            <button type="button" class="chip" data-dias="30">30 dias</button>
+            <button type="button" class="chip" data-dias="20">20 dias</button>
+            <button type="button" class="chip" data-dias="15">15 dias</button>
+            <button type="button" class="chip" data-dias="10">10 dias</button>
         </div>
         {{ form.dias_solicitados }}
         {{ form.dias_solicitados.errors }}
 
-        <button type="submit" class="btn-primario" style="margin-top: 16px;">Solicitar</button>
+        <div id="ferias-resumo" class="painel-credenciais" style="display: none;"></div>
+
+        <button type="submit" class="btn-primario" style="margin-top: 16px;">Enviar solicitação</button>
     </form>
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var chips = document.getElementById('dias-chips');
     var campoDias = document.getElementById('{{ form.dias_solicitados.id_for_label }}');
+    var campoData = document.getElementById('{{ form.data_solicitada.id_for_label }}');
+    var resumo = document.getElementById('ferias-resumo');
+    var saldoDias = {{ saldo_dias|default:0 }};
     if (!chips || !campoDias) return;
 
     function marcar(valor) {
@@ -97,71 +103,51 @@ document.addEventListener('DOMContentLoaded', function () {
             chip.classList.toggle('chip--ativo', chip.dataset.dias === String(valor));
         });
     }
+
+    function atualizarResumo() {
+        var dias = parseInt(campoDias.value, 10);
+        if (!campoData || !campoData.value || !dias) {
+            resumo.style.display = 'none';
+            return;
+        }
+        var inicio = new Date(campoData.value + 'T00:00:00');
+        var volta = new Date(inicio);
+        volta.setDate(volta.getDate() + dias);
+        var voltaFormatada = volta.toLocaleDateString('pt-BR');
+        var restante = saldoDias - dias;
+        resumo.innerHTML = 'Você volta ao trabalho em <strong>' + voltaFormatada + '</strong>. Restarão <strong>' +
+            Math.max(restante, 0) + ' dias</strong> do seu saldo.';
+        resumo.style.display = 'block';
+    }
+
     chips.querySelectorAll('.chip').forEach(function (chip) {
         chip.addEventListener('click', function () {
-            if (chip.dataset.dias === 'outro') {
-                campoDias.focus();
-                return;
-            }
             campoDias.value = chip.dataset.dias;
             marcar(chip.dataset.dias);
+            atualizarResumo();
         });
     });
+    campoDias.addEventListener('input', function () {
+        marcar(campoDias.value);
+        atualizarResumo();
+    });
+    if (campoData) campoData.addEventListener('change', atualizarResumo);
+
     marcar(campoDias.value);
+    atualizarResumo();
 });
 </script>
 {% endif %}
 
-<h2>Minhas solicitações</h2>
-<div class="table-responsive desktop-only">
-    <table>
-        <thead>
-            <tr>
-                <th>Data solicitada</th>
-                <th>Dias</th>
-                <th>Situação</th>
-                <th>Atualizado</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for s in solicitacoes %}
-            <tr>
-                <td>{{ s.data_solicitada|date:"d/m/Y" }}</td>
-                <td>{{ s.dias_solicitados }}</td>
-                <td>
-                    <span class="badge-status
-                        {% if s.status == 'aprovada' %}badge-status--aprovada
-                        {% elif s.status == 'adiada' %}badge-status--adiada
-                        {% elif s.status == 'sugestao_gestor' %}badge-status--sugestao
-                        {% else %}badge-status--aguardando{% endif %}">
-                        {{ s.get_status_display }}
-                    </span>
-                </td>
-                <td>{{ s.atualizado_em|date:"d/m/Y" }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="4">Nenhuma solicitação ainda.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<div class="lista-cards mobile-only">
-    {% for s in solicitacoes %}
+<h2>Histórico</h2>
+<div class="lista-cards">
+    {% for item in historico %}
     <div class="item-card">
         <div class="item-card__corpo">
-            <div class="item-card__titulo">{{ s.data_solicitada|date:"d/m/Y" }} · {{ s.dias_solicitados }} dias</div>
-            <div class="item-card__subtitulo">{{ s.atualizado_em|date:"d/m/Y" }}</div>
+            <div class="item-card__titulo">{{ item.solicitacao.data_solicitada|date:"d/m/Y" }} · {{ item.solicitacao.dias_solicitados }} dias</div>
+            <div class="item-card__subtitulo">{{ item.descricao }}</div>
         </div>
-        <span class="badge-status
-            {% if s.status == 'aprovada' %}badge-status--aprovada
-            {% elif s.status == 'adiada' %}badge-status--adiada
-            {% elif s.status == 'sugestao_gestor' %}badge-status--sugestao
-            {% else %}badge-status--aguardando{% endif %}">
-            {{ s.get_status_display }}
-        </span>
+        <span class="badge-status badge-status--{{ item.classe }}">{{ item.rotulo }}</span>
     </div>
     {% empty %}
     <p>Nenhuma solicitação ainda.</p>

@@ -1,0 +1,4 @@
+<div class="tabs">
+    <a href="{% url 'ponto:meu_ponto' %}" class="tabs__link{% if request.resolver_match.url_name == 'meu_ponto' %} is-ativo{% endif %}">Meu espelho</a>
+    <a href="{% url 'ponto:meus_ajustes' %}" class="tabs__link{% if request.resolver_match.url_name == 'meus_ajustes' %} is-ativo{% endif %}">Minhas correções</a>
+</div>

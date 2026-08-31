@@ -15,13 +15,31 @@ Assinar com Gov.br
 {% endif %}
 
 <div class="card">
-    <div class="card__title" style="margin-bottom: 12px;">Como assinar</div>
-    <ol style="margin: 0 0 20px 18px; padding: 0; font-size: 0.92rem; color: var(--color-text-muted);">
-        <li style="margin-bottom: 6px;">Baixe seu contrato abaixo.</li>
-        <li style="margin-bottom: 6px;">Assine em <strong>assinador.iti.br</strong>, fazendo login com sua conta gov.br.</li>
-        <li>Volte aqui e envie o arquivo já assinado.</li>
-    </ol>
-    <a href="https://assinador.iti.br/" target="_blank" rel="noopener" class="btn">{% icon 'pen' %} Assinar com o Gov.br</a>
+    <div class="card__title" style="margin-bottom: 16px;">Como assinar</div>
+    <div class="passos">
+        <div class="passo">
+            <span class="passo__num">1</span>
+            <div>
+                <div class="passo__titulo">Baixe o seu contrato</div>
+                <div class="passo__sub">O arquivo em PDF gerado pelo RH.</div>
+            </div>
+        </div>
+        <div class="passo">
+            <span class="passo__num">2</span>
+            <div>
+                <div class="passo__titulo">Assine em assinador.iti.br</div>
+                <div class="passo__sub">Login com a sua conta gov.br.</div>
+            </div>
+        </div>
+        <div class="passo">
+            <span class="passo__num">3</span>
+            <div>
+                <div class="passo__titulo">Envie o arquivo assinado</div>
+                <div class="passo__sub">Volte aqui e anexe a via assinada.</div>
+            </div>
+        </div>
+    </div>
+    <a href="https://assinador.iti.br/" target="_blank" rel="noopener" class="btn">{% icon 'pen' %} Abrir assinador.iti.br</a>
 </div>
 
 {% if contrato_documento %}
@@ -29,7 +47,7 @@ Assinar com Gov.br
     <div class="card__header">
         <span class="card__title">Contrato de Trabalho</span>
         <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
-            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Download</a>
+            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Baixar</a>
             <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
                 <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">

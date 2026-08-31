@@ -1,6 +1,8 @@
 from django import template
 from django.utils.safestring import mark_safe
 
+from ..utils import DIAS_SEMANA
+
 register = template.Library()
 
 ICONS = {
@@ -32,6 +34,31 @@ ICONS = {
     'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
     'key': '<circle cx="8" cy="15" r="3.3"/><path d="M10.4 12.6 20 3"/><path d="M15.2 8.2 17.6 10.6"/><path d="M18.4 7 20 8.6"/>',
 }
+
+
+DICAS_DOCUMENTOS = {
+    'comprovante de residência': 'Conta de luz, água ou telefone dos últimos 3 meses',
+    'carteira de trabalho digital': 'PDF baixado do app da CTPS',
+    'rg': 'Frente e verso, legível',
+    'cpf': 'Frente e verso, legível',
+    'título de eleitor': 'Frente e verso ou comprovante de quitação eleitoral',
+    'certificado de reservista': 'Obrigatório para candidatos do sexo masculino',
+    'foto 3x4': 'Fundo branco, rosto visível',
+    'foto 3×4': 'Fundo branco, rosto visível',
+    'exame admissional': 'ASO emitido pela clínica conveniada',
+}
+
+
+@register.filter
+def dica_documento(nome):
+    return DICAS_DOCUMENTOS.get((nome or '').strip().lower(), '')
+
+
+@register.filter
+def dia_semana_curto(data):
+    if not data:
+        return ''
+    return DIAS_SEMANA[data.weekday()]
 
 
 @register.simple_tag

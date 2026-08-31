@@ -1,0 +1,24 @@
+{% with status=funcionario.status %}
+<div class="stepper">
+    <div class="stepper__step {% if status == 'pendente_documentos' %}stepper__step--atual{% else %}stepper__step--feito{% endif %}">
+        <span class="stepper__dot">{% if status == 'pendente_documentos' %}1{% else %}✓{% endif %}</span>
+        <span class="stepper__label">Documentos</span>
+    </div>
+    <div class="stepper__step {% if status == 'pendente_documentos' %}stepper__step--pendente{% elif status == 'aguardando_contrato' %}stepper__step--atual{% else %}stepper__step--feito{% endif %}">
+        <span class="stepper__dot">{% if status == 'pendente_documentos' or status == 'aguardando_contrato' %}2{% else %}✓{% endif %}</span>
+        <span class="stepper__label">Contrato</span>
+    </div>
+    <div class="stepper__step {% if status == 'pendente_documentos' or status == 'aguardando_contrato' %}stepper__step--pendente{% elif status == 'aguardando_assinatura' %}stepper__step--atual{% else %}stepper__step--feito{% endif %}">
+        <span class="stepper__dot">{% if status == 'pendente_documentos' or status == 'aguardando_contrato' or status == 'aguardando_assinatura' %}3{% else %}✓{% endif %}</span>
+        <span class="stepper__label">Assinatura</span>
+    </div>
+    <div class="stepper__step {% if status == 'em_validacao' %}stepper__step--atual{% elif status == 'ativo' or status == 'inativo' %}stepper__step--feito{% else %}stepper__step--pendente{% endif %}">
+        <span class="stepper__dot">{% if status == 'ativo' or status == 'inativo' %}✓{% else %}4{% endif %}</span>
+        <span class="stepper__label">Validação</span>
+    </div>
+    <div class="stepper__step {% if status == 'ativo' or status == 'inativo' %}stepper__step--feito{% else %}stepper__step--meta{% endif %}">
+        <span class="stepper__dot">{% if status == 'ativo' or status == 'inativo' %}✓{% endif %}</span>
+        <span class="stepper__label">Ativo</span>
+    </div>
+</div>
+{% endwith %}

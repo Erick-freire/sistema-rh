@@ -1,1 +1,15 @@
-<h1>Seu usuário ainda não está vinculado a um perfil (Usuario/Funcionario).</h1>
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}Sem perfil{% endblock %}
+
+{% block conteudo_sem_login %}
+<div class="login-shell">
+    <div class="card" style="max-width: 420px; text-align: center;">
+        <h1 style="margin-bottom: 10px;">Sem acesso configurado</h1>
+        <p style="color: var(--color-text-muted); font-size: 0.92rem;">
+            Seu usuário ainda não está vinculado a um perfil de funcionário. Fale com o RH para liberar o seu acesso.
+        </p>
+        <a href="{% url 'logout' %}" class="btn-outline btn-bloco" style="margin-top: 20px;">Sair</a>
+    </div>
+</div>
+{% endblock %}

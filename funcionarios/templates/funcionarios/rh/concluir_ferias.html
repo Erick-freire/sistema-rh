@@ -6,7 +6,8 @@ Concluir Férias
 {% endblock %}
 
 {% block conteudo %}
-<h1>Concluir Férias</h1>
+{% include 'funcionarios/_ferias_header.html' %}
+{% include 'funcionarios/_ferias_tabs.html' %}
 
 {% if messages %}
     {% for message in messages %}

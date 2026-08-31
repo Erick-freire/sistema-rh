@@ -7,6 +7,10 @@ MESES = [
     'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ]
 
+DIAS_SEMANA = [
+    'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo',
+]
+
 
 def formatar_cpf(cpf):
     return f'{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}'
@@ -14,6 +18,10 @@ def formatar_cpf(cpf):
 
 def data_por_extenso(data):
     return f'{data.day} de {MESES[data.month - 1]} de {data.year}'
+
+
+def data_curta_por_extenso(data):
+    return f'{DIAS_SEMANA[data.weekday()]}, {data.day} de {MESES[data.month - 1]}'
 
 
 def formatar_moeda(valor):

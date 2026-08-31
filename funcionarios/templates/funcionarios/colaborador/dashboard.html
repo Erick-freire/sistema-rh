@@ -23,14 +23,20 @@ Início
 
 <div class="card">
     <div class="card__header">
-        <span class="card__title">Meu Ponto</span>
+        <span class="card__title">Meu ponto</span>
         <a href="{% url 'ponto:meu_ponto' %}" class="card__link">Ver tudo</a>
     </div>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <p class="item-card__subtitulo" style="margin-bottom: 14px;">Últimos 7 dias. Algo errado? Você pode pedir correção ao RH.</p>
+    <div class="mini-ponto-grid">
         {% for dia in ultimos_dias_ponto %}
-        <span class="badge-status badge-status--{{ dia.situacao_cor }}" title="{{ dia.data|date:'d/m' }} - {{ dia.situacao_texto }}">
-            {{ dia.data|date:'D' }}
-        </span>
+        <div class="mini-ponto-dia">
+            <span class="mini-ponto-dia__rotulo">{{ dia.data|dia_semana_curto|slice:':3'|upper }}</span>
+            <span class="badge-status badge-status--icone badge-status--{{ dia.situacao_cor }}" title="{{ dia.data|date:'d/m' }} - {{ dia.situacao_texto }}">
+                {% if dia.situacao_cor == 'aprovado' %}{% icon 'check-circle' %}
+                {% elif dia.situacao_cor == 'inativo' %}–
+                {% else %}!{% endif %}
+            </span>
+        </div>
         {% endfor %}
     </div>
 </div>
@@ -42,9 +48,11 @@ Início
             <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
         </div>
 
+        <div style="margin-bottom: 16px;">{% include 'funcionarios/_status_stepper.html' %}</div>
+
         {% if funcionario.status == 'pendente_documentos' %}
         <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
-            Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }} obrigatório{{ tipos_pendentes|length|pluralize }}. Quando todos chegarem, o RH gera seu contrato.
+            Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }} obrigatório{{ tipos_pendentes|length|pluralize }}. Quando todos chegarem, o RH gera o seu contrato — você é avisado aqui.
         </p>
         <div class="progress" style="margin-bottom: 16px;">
             <div class="progress__bar progress__bar--accent" style="width: {% widthratio total_enviados total_obrigatorios 100 %}%;"></div>
@@ -52,7 +60,10 @@ Início
         <div class="lista-cards">
             {% for tipo in tipos_pendentes %}
             <div class="item-card">
-                <div class="item-card__corpo">{{ tipo.nome }}</div>
+                <div class="item-card__corpo">
+                    <div class="item-card__titulo">{{ tipo.nome }}</div>
+                    {% with dica=tipo.nome|dica_documento %}{% if dica %}<div class="item-card__subtitulo">{{ dica }}</div>{% endif %}{% endwith %}
+                </div>
                 <a href="{% url 'meus_documentos' %}?tipo={{ tipo.id }}" class="btn btn-sm">Enviar</a>
             </div>
             {% endfor %}

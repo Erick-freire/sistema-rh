@@ -1,15 +1,32 @@
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-SECRET_KEY = 'django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q'
+# Mantém o valor atual como default (não altera comportamento em ambientes
+# sem SECRET_KEY no .env) -- em produção, definir um valor novo e forte no
+# .env. Atenção: se CHAVE_CIFRA_SEGREDOS estiver vazia no .env, trocar a
+# SECRET_KEY invalida a decifragem de senhas já salvas (Equipamento.senha_admin
+# em integracao_gov/fields.py) -- ver PRODUCAO.md antes de rotacionar.
+SECRET_KEY = config(
+    'SECRET_KEY',
+    default='django-insecure-q-85**d&ea#**roz^z%=3b(2+j=gibvswhtc9u7x06^=*jaw4q',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['localhost','127.0.0.1','192.168.1.72']
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,192.168.1.69',
+    cast=Csv(),
+)
+
+# Domínios com esquema (https://...) autorizados a enviar POST/CSRF -- em
+# produção, preencher no .env com o domínio real por trás do proxy, ex.:
+# CSRF_TRUSTED_ORIGINS=https://rh.sotrigo.com.br
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 # Segurança de cookies e transporte — só entram em vigor quando DEBUG=False
 # (em produção, defina DEBUG=False no .env para ativar HTTPS/cookies seguros)
@@ -20,6 +37,17 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# Ativar no .env (ATRAS_DE_PROXY=True) só quando o Django estiver atrás de um
+# proxy reverso (IIS/nginx) que já termina o TLS com um certificado real e
+# repassa o protocolo original pelo header X-Forwarded-Proto -- sem isso, com
+# SECURE_SSL_REDIRECT ligado, o Django não reconhece a requisição como HTTPS
+# e entra em loop de redirecionamento.
+# NUNCA ativar isso com o Django exposto direto (sem proxy na frente):
+# qualquer cliente poderia forjar esse header e enganar o redirect de HTTPS.
+if config('ATRAS_DE_PROXY', default=False, cast=bool):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
 
 
 # Application definition
@@ -148,3 +176,11 @@ SECULLUM_PASSWORD = config('SECULLUM_PASSWORD', default='')
 # primeiro login continua ativa via senha_provisoria=True.
 
 SENHA_PADRAO_ACESSO = config('SENHA_PADRAO_ACESSO', default='Sotrigo@123')
+
+
+# Google reCAPTCHA v2 ("Não sou um robô") na tela de login -- cadastrar o
+# site em https://www.google.com/recaptcha/admin e colar as chaves no .env.
+# Com RECAPTCHA_SITE_KEY vazia (padrão em dev, sem conta cadastrada ainda), o
+# desafio não aparece e não é exigido no login.
+RECAPTCHA_SITE_KEY = config('RECAPTCHA_SITE_KEY', default='')
+RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')

@@ -164,6 +164,16 @@ class Funcionario(models.Model):
             if tipo.aplica_a(self)
         ]
 
+    def tipos_documentos_nunca_enviados(self):
+        """
+        Tipos obrigatórios sem nenhum envio ainda (nem sequer rejeitado) --
+        usado nas telas pra listar "Faltam N documentos" separado dos que já
+        foram enviados uma vez e só precisam de reenvio (esses aparecem em
+        "Enviados", com o badge de rejeitado).
+        """
+        tipos_com_documento = set(self.documentos.values_list('tipo_documento_id', flat=True))
+        return [tipo for tipo in self.tipos_documentos_iniciais() if tipo.id not in tipos_com_documento]
+
     def documentos_iniciais_completos(self):
         tipos_enviados = set(
             self.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)

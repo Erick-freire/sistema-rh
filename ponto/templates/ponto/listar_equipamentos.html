@@ -4,7 +4,7 @@
 {% block titulo %}Equipamentos de Ponto{% endblock %}
 
 {% block conteudo %}
-<h1>Equipamentos de Ponto</h1>
+{% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
 {% if messages %}
@@ -66,42 +66,17 @@
                 <td>{{ equipamento.local }}</td>
                 <td>
                     {% if equipamento.status_conexao == 'online' %}
-                        <span class="badge-status badge-status--ativo">🟢 Online</span>
+                        <span class="badge-status badge-status--ativo status-dot">Online</span>
                     {% elif equipamento.status_conexao == 'offline' %}
-                        <span class="badge-status badge-status--erro">🔴 Offline</span>
+                        <span class="badge-status badge-status--erro status-dot">Offline</span>
                     {% else %}
-                        <span class="badge-status badge-status--inativo">Desconhecido</span>
+                        <span class="badge-status badge-status--inativo status-dot">Desconhecido</span>
                     {% endif %}
                     {% if not equipamento.ativo %}<span class="badge-status badge-status--inativo">Inativo</span>{% endif %}
                 </td>
                 <td>{{ equipamento.ultima_comunicacao|default:'—' }}</td>
                 <td>
                     <a href="#sincronizar-{{ equipamento.id }}" class="btn-outline btn-sm">{% icon 'check-square' %} Sincronizar</a>
-                    <div class="modal-overlay" id="sincronizar-{{ equipamento.id }}">
-                        <div class="modal">
-                            <div class="modal__header">
-                                <span class="modal__title">Sincronizar {{ equipamento.nome }}</span>
-                                <a href="#" class="modal__close" aria-label="Fechar">{% icon 'x' %}</a>
-                            </div>
-                            <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 16px;">
-                                <strong>Enviar</strong>: manda cadastro pendente pro equipamento (pode demorar mais se
-                                tiver muita pendência acumulada).<br>
-                                <strong>Receber</strong>: só puxa as marcações novas, sem mexer em cadastro -- geralmente rápido.
-                            </p>
-                            <div class="modal__footer">
-                                <form method="post" action="{% url 'ponto:enviar_equipamento' equipamento.id %}"
-                                      data-loading-form data-loading-message="Enviando cadastros pendentes de {{ equipamento.nome }}...">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn-outline">{% icon 'check-square' %} Enviar</button>
-                                </form>
-                                <form method="post" action="{% url 'ponto:receber_equipamento' equipamento.id %}"
-                                      data-loading-form data-loading-message="Recebendo marcações novas de {{ equipamento.nome }}...">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn-primario">{% icon 'download' %} Receber</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
                     <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm">Editar</a>
                 </td>
             </tr>
@@ -111,4 +86,62 @@
         </tbody>
     </table>
 </div>
+
+<div class="lista-cards mobile-only">
+    {% for equipamento in equipamentos %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ equipamento.nome }}</div>
+                <div class="item-card__subtitulo">{{ equipamento.local }} · {{ equipamento.modelo }}</div>
+                <div class="item-card__subtitulo">Última comunicação: {{ equipamento.ultima_comunicacao|default:'—' }}</div>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                {% if equipamento.status_conexao == 'online' %}
+                    <span class="badge-status badge-status--ativo status-dot">Online</span>
+                {% elif equipamento.status_conexao == 'offline' %}
+                    <span class="badge-status badge-status--erro status-dot">Offline</span>
+                {% else %}
+                    <span class="badge-status badge-status--inativo status-dot">Desconhecido</span>
+                {% endif %}
+                {% if not equipamento.ativo %}<span class="badge-status badge-status--inativo">Inativo</span>{% endif %}
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <a href="#sincronizar-{{ equipamento.id }}" class="btn-outline btn-sm" style="flex: 1;">{% icon 'check-square' %} Sincronizar</a>
+            <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm" style="flex: 1;">Editar</a>
+        </div>
+    </div>
+    {% empty %}
+    <p>Nenhum equipamento cadastrado.</p>
+    {% endfor %}
+</div>
+
+{% for equipamento in equipamentos %}
+<div class="modal-overlay" id="sincronizar-{{ equipamento.id }}">
+    <div class="modal">
+        <div class="modal__header">
+            <span class="modal__title">Sincronizar {{ equipamento.nome }}</span>
+            <a href="#" class="modal__close" aria-label="Fechar">{% icon 'x' %}</a>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 16px;">
+            <strong>Enviar</strong>: manda cadastro pendente pro equipamento (pode demorar mais se
+            tiver muita pendência acumulada).<br>
+            <strong>Receber</strong>: só puxa as marcações novas, sem mexer em cadastro -- geralmente rápido.
+        </p>
+        <div class="modal__footer">
+            <form method="post" action="{% url 'ponto:enviar_equipamento' equipamento.id %}"
+                  data-loading-form data-loading-message="Enviando cadastros pendentes de {{ equipamento.nome }}...">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline">{% icon 'check-square' %} Enviar</button>
+            </form>
+            <form method="post" action="{% url 'ponto:receber_equipamento' equipamento.id %}"
+                  data-loading-form data-loading-message="Recebendo marcações novas de {{ equipamento.nome }}...">
+                {% csrf_token %}
+                <button type="submit" class="btn-primario">{% icon 'download' %} Receber</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
 {% endblock %}

@@ -11,12 +11,21 @@
     {{ funcionario.nome }}
     <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
 </h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ funcionario.cargo }} · {{ funcionario.setor }} · mat. {{ funcionario.matricula }}</p>
 
 {% if messages %}
     {% for message in messages %}
         <p class="message message-error">{{ message }}</p>
     {% endfor %}
 {% endif %}
+
+<div class="card">
+    <div class="card__title" style="margin-bottom: 4px;">Onde este cadastro está</div>
+    {% include 'funcionarios/_status_stepper.html' %}
+    {% if funcionario.status == 'ativo' or funcionario.status == 'inativo' %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-top: 16px;">Cadastro completo. Nada pendente.</p>
+    {% endif %}
+</div>
 
 <div class="duas-colunas">
     <div>
@@ -202,62 +211,47 @@
 
         <div class="card">
             <div class="card__header">
-                <span class="card__title">Documentos enviados</span>
+                <span class="card__title">Enviados recentemente</span>
                 <a href="{% url 'enviar_documento' %}" class="btn btn-sm btn-outline">{% icon 'upload' %} Anexar</a>
             </div>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Tipo</th>
-                            <th>Arquivo</th>
-                            <th>Envio</th>
-                            <th>Status</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for documento in documentos %}
-                        <tr>
-                            <td>{{ documento.tipo_documento }}</td>
-                            <td>{{ documento.nome_arquivo }}</td>
-                            <td>{{ documento.data_upload|date:"d/m/Y" }}</td>
-                            <td>
-                                <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
-                                {% if documento.status == 'rejeitado' %}
-                                <div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">{{ documento.motivo_rejeicao }}</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <span class="acoes-tabela">
-                                    <a href="{% url 'ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
-                                    <a href="{% url 'ver_documento' documento.id %}" download title="Baixar">{% icon 'download' %}</a>
-                                </span>
-                                {% if funcionario.status == 'em_validacao' %}
-                                <div style="display: flex; gap: 6px; margin-top: 6px;">
-                                    <form method="post" action="{% url 'aprovar_documento' documento.id %}">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn-outline btn-sm">Aprovar</button>
-                                    </form>
-                                    <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-{{ documento.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
-                                </div>
-                                <div id="rejeitar-{{ documento.id }}" style="display: none; margin-top: 8px;">
-                                    <form method="post" action="{% url 'rejeitar_documento' documento.id %}">
-                                        {% csrf_token %}
-                                        {{ form_rejeicao.motivo }}
-                                        <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;">Confirmar rejeição</button>
-                                    </form>
-                                </div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="5">Nenhum documento enviado.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="lista-cards">
+                {% for documento in documentos %}
+                <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+                        <div class="item-card__corpo">
+                            <div class="item-card__titulo">{{ documento.tipo_documento }}</div>
+                            <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.data_upload|date:"d/m/Y" }}</div>
+                        </div>
+                        <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
+                        {% if funcionario.status == 'em_validacao' and documento.status == 'pendente' %}
+                        <form method="post" action="{% url 'aprovar_documento' documento.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
+                        </form>
+                        <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-{{ documento.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
+                        {% endif %}
+                        <span class="acoes-tabela">
+                            <a href="{% url 'ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                            <a href="{% url 'ver_documento' documento.id %}" download title="Baixar">{% icon 'download' %}</a>
+                        </span>
+                    </div>
+                    {% if documento.status == 'rejeitado' %}
+                    <div style="font-size: 0.85rem; color: var(--color-error);">{{ documento.motivo_rejeicao }}</div>
+                    {% endif %}
+                    {% if funcionario.status == 'em_validacao' and documento.status == 'pendente' %}
+                    <div id="rejeitar-{{ documento.id }}" style="display: none;">
+                        <form method="post" action="{% url 'rejeitar_documento' documento.id %}">
+                            {% csrf_token %}
+                            {{ form_rejeicao.motivo }}
+                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;">Confirmar rejeição</button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <p>Nenhum documento enviado.</p>
+                {% endfor %}
             </div>
         </div>
     </div>

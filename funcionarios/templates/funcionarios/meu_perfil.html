@@ -106,7 +106,7 @@ Meu Perfil
                 </div>
 
                 <div class="card__title" style="margin: 20px 0 16px;">Dados bancários</div>
-                <div class="form-grid">
+                <div class="form-grid form-grid--3">
                     <div>
                         <label for="{{ form.banco.id_for_label }}">Banco</label>
                         {{ form.banco }}
@@ -118,14 +118,14 @@ Meu Perfil
                         {{ form.agencia.errors }}
                     </div>
                     <div>
-                        <label for="{{ form.numero_conta.id_for_label }}">Número da conta</label>
+                        <label for="{{ form.numero_conta.id_for_label }}">Conta</label>
                         {{ form.numero_conta }}
                         {{ form.numero_conta.errors }}
                     </div>
                 </div>
 
                 <div style="display: flex; gap: 12px; margin-top: 20px;">
-                    <button type="submit" class="btn-primario">Salvar</button>
+                    <button type="submit" class="btn-primario">Salvar alterações</button>
                     <a href="{% url 'meu_perfil' %}" class="btn-outline">Cancelar</a>
                 </div>
             </div>

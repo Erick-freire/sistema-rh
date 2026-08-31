@@ -54,31 +54,18 @@
                 <li class="{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'detalhe_funcionario' or request.resolver_match.url_name == 'cadastrar_funcionario' %}active{% endif %}">
                     <a href="{% url 'listar_funcionarios' %}">{% icon 'users' %} Funcionários</a>
                 </li>
+                <li class="{% if request.resolver_match.url_name == 'gestor_listar_ferias' or request.resolver_match.url_name == 'concluir_ferias' or request.resolver_match.url_name == 'rh_vencimento_ferias' %}active{% endif %}">
+                    <a href="{% if usuario_atual.papel == 'gestor' %}{% url 'gestor_listar_ferias' %}{% else %}{% url 'concluir_ferias' %}{% endif %}">
+                        {% icon 'umbrella' %} Férias
+                        {% if badge_ferias_total %}<span class="nav-badge">{{ badge_ferias_total }}</span>{% endif %}
+                    </a>
+                </li>
                 {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
                 <li class="{% if request.resolver_match.app_name == 'ponto' %}active{% endif %}">
                     <a href="{% url 'ponto:listar_equipamentos' %}">
                         {% icon 'clock' %} Ponto
                         {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
                     </a>
-                </li>
-                {% endif %}
-                {% if usuario_atual.papel == 'gestor' %}
-                <li class="{% if request.resolver_match.url_name == 'gestor_listar_ferias' %}active{% endif %}">
-                    <a href="{% url 'gestor_listar_ferias' %}">
-                        {% icon 'umbrella' %} Aprovação de Férias
-                        {% if badge_ferias_gestor %}<span class="nav-badge">{{ badge_ferias_gestor }}</span>{% endif %}
-                    </a>
-                </li>
-                {% endif %}
-                <li class="{% if request.resolver_match.url_name == 'concluir_ferias' %}active{% endif %}">
-                    <a href="{% url 'concluir_ferias' %}">
-                        {% icon 'check-square' %} Concluir Férias
-                        {% if badge_ferias_rh %}<span class="nav-badge">{{ badge_ferias_rh }}</span>{% endif %}
-                    </a>
-                </li>
-                {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
-                <li class="{% if request.resolver_match.url_name == 'rh_vencimento_ferias' %}active{% endif %}">
-                    <a href="{% url 'rh_vencimento_ferias' %}">{% icon 'alert-triangle' %} Vencimento de Férias</a>
                 </li>
                 {% endif %}
             </ul>
@@ -90,26 +77,26 @@
                     <a href="{% url 'dashboard' %}">{% icon 'home' %} Início</a>
                 </li>
             {% endif %}
-                <li class="{% if request.resolver_match.url_name == 'meu_ponto' %}active{% endif %}">
+                <li class="{% if request.resolver_match.url_name == 'meu_ponto' or request.resolver_match.url_name == 'meus_ajustes' %}active{% endif %}">
                     <a href="{% url 'ponto:meu_ponto' %}">{% icon 'clock' %} Meu Ponto</a>
-                </li>
-                <li class="{% if request.resolver_match.url_name == 'meu_perfil' %}active{% endif %}">
-                    <a href="{% url 'meu_perfil' %}">{% icon 'user' %} Meu Perfil</a>
-                </li>
-                <li class="{% if request.resolver_match.url_name == 'enviar_documento' %}active{% endif %}">
-                    <a href="{% url 'enviar_documento' %}">{% icon 'upload' %} Enviar Documento</a>
-                </li>
-                <li class="{% if request.resolver_match.url_name == 'meus_documentos' %}active{% endif %}">
-                    <a href="{% url 'meus_documentos' %}">{% icon 'folder' %} Meus Documentos</a>
                 </li>
                 <li class="{% if request.resolver_match.url_name == 'solicitar_ferias' %}active{% endif %}">
                     <a href="{% url 'solicitar_ferias' %}">
-                        {% icon 'calendar-plus' %} Solicitar Férias
+                        {% icon 'calendar-plus' %} Minhas Férias
                         {% if aviso_ferias_pendente %}<span class="nav-badge">1</span>{% endif %}
+                    </a>
+                </li>
+                <li class="{% if request.resolver_match.url_name == 'meus_documentos' %}active{% endif %}">
+                    <a href="{% url 'meus_documentos' %}">
+                        {% icon 'folder' %} Meus Documentos
+                        {% if badge_documentos %}<span class="nav-badge">{{ badge_documentos }}</span>{% endif %}
                     </a>
                 </li>
                 <li class="{% if request.resolver_match.url_name == 'minhas_assinaturas' %}active{% endif %}">
                     <a href="{% url 'minhas_assinaturas' %}">{% icon 'pen' %} Assinar com Gov.br</a>
+                </li>
+                <li class="{% if request.resolver_match.url_name == 'meu_perfil' %}active{% endif %}">
+                    <a href="{% url 'meu_perfil' %}">{% icon 'user' %} Meu Perfil</a>
                 </li>
             </ul>
         </nav>
@@ -134,8 +121,10 @@
             </div>
         </div>
 
-        {% block conteudo %}
-        {% endblock %}
+        <div class="content__body">
+            {% block conteudo %}
+            {% endblock %}
+        </div>
     </main>
 </div>
 

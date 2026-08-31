@@ -32,6 +32,9 @@ def usuario_logado(request):
 
         contexto['badge_ferias_rh'] = badge_concluir_ferias
 
+    if 'badge_ferias_gestor' in contexto or 'badge_ferias_rh' in contexto:
+        contexto['badge_ferias_total'] = contexto.get('badge_ferias_gestor', 0) + contexto.get('badge_ferias_rh', 0)
+
     if usuario.papel == 'rh' or usuario.acesso_rh:
         contexto['badge_ajustes_pendentes'] = AjustePonto.objects.filter(status='pendente').count()
 
@@ -41,6 +44,7 @@ def usuario_logado(request):
             funcionario.documentos.filter(status='rejeitado').exists()
             or funcionario.status in ('pendente_documentos', 'aguardando_assinatura')
         )
+        contexto['badge_documentos'] = len(funcionario.tipos_documentos_nunca_enviados())
         contexto['aviso_ferias_pendente'] = funcionario.aviso_ferias_pendente_acao() is not None
 
     return contexto

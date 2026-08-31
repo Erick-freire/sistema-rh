@@ -2,6 +2,7 @@ import io
 import secrets
 from datetime import timedelta
 
+import requests
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -12,6 +13,7 @@ from django.contrib import messages
 from django.core.cache import cache
 from django.db.models import Q, Count
 from django.core.paginator import Paginator
+from django.urls import reverse
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.http import HttpResponse, FileResponse
@@ -25,12 +27,12 @@ from .forms import (
     DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
     RejeitarDocumentoForm,
 )
-from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso
+from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso, data_curta_por_extenso
 
 # Só pra mostrar/atribuir a jornada de ponto na ficha do funcionário -- a
 # atribuição em si continua sendo feita pela view do app `ponto`.
 from ponto.forms import FuncionarioJornadaForm, JornadaOpcionalForm
-from ponto.models import FuncionarioJornada
+from ponto.models import AjustePonto, FuncionarioJornada
 from ponto.calculos import calcular_periodo, situacao_do_dia
 
 
@@ -44,13 +46,47 @@ JANELA_BLOQUEIO_LOGIN = 15 * 60  # segundos
 
 MENSAGEM_BLOQUEIO_LOGIN = 'Muitas tentativas de login. Tente novamente em alguns minutos.'
 MENSAGEM_CREDENCIAL_INVALIDA = 'Usuário ou senha inválidos.'
+MENSAGEM_RECAPTCHA_INVALIDO = 'Não foi possível confirmar o reCAPTCHA. Marque a caixa novamente e envie o formulário.'
 
 
 # ---------- Autenticação ----------
 
+def _recaptcha_valido(request):
+    """Confere o desafio do reCAPTCHA v2 na API do Google.
+
+    Sem RECAPTCHA_SECRET_KEY configurada (nenhum site cadastrado ainda), o
+    desafio não é exigido. Se o Google ficar inacessível, deixa passar --
+    uma instabilidade externa não pode travar o login de todo mundo -- mas
+    uma reprovação explícita da API bloqueia o envio.
+    """
+    secret = settings.RECAPTCHA_SECRET_KEY
+    if not secret:
+        return True
+
+    token = request.POST.get('g-recaptcha-response', '')
+    if not token:
+        return False
+
+    try:
+        resposta = requests.post(
+            'https://www.google.com/recaptcha/api/siteverify',
+            data={
+                'secret': secret,
+                'response': token,
+                'remoteip': request.META.get('REMOTE_ADDR'),
+            },
+            timeout=5,
+        )
+        return resposta.json().get('success', False)
+    except requests.RequestException:
+        return True
+
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
+
+    contexto = {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY}
 
     if request.method == 'POST':
         username = request.POST.get('username', '')
@@ -62,9 +98,12 @@ def login_view(request):
 
         if cache.get(chave_usuario, 0) >= LIMITE_TENTATIVAS_LOGIN_USUARIO or \
            cache.get(chave_ip, 0) >= LIMITE_TENTATIVAS_LOGIN_IP:
-            return render(request, 'funcionarios/login.html', {
-                'erro': MENSAGEM_BLOQUEIO_LOGIN
-            })
+            contexto['erro'] = MENSAGEM_BLOQUEIO_LOGIN
+            return render(request, 'funcionarios/login.html', contexto)
+
+        if not _recaptcha_valido(request):
+            contexto['erro'] = MENSAGEM_RECAPTCHA_INVALIDO
+            return render(request, 'funcionarios/login.html', contexto)
 
         user = authenticate(request, username=username, password=password)
 
@@ -75,11 +114,10 @@ def login_view(request):
         else:
             cache.set(chave_usuario, cache.get(chave_usuario, 0) + 1, JANELA_BLOQUEIO_LOGIN)
             cache.set(chave_ip, cache.get(chave_ip, 0) + 1, JANELA_BLOQUEIO_LOGIN)
-            return render(request, 'funcionarios/login.html', {
-                'erro': MENSAGEM_CREDENCIAL_INVALIDA
-            })
+            contexto['erro'] = MENSAGEM_CREDENCIAL_INVALIDA
+            return render(request, 'funcionarios/login.html', contexto)
 
-    return render(request, 'funcionarios/login.html')
+    return render(request, 'funcionarios/login.html', contexto)
 
 
 def logout_view(request):
@@ -128,10 +166,7 @@ def dashboard_view(request):
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario
         tipos_iniciais = funcionario.tipos_documentos_iniciais()
-        tipos_enviados_ids = set(
-            funcionario.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
-        )
-        tipos_pendentes = [t for t in tipos_iniciais if t.id not in tipos_enviados_ids]
+        tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
         total_obrigatorios = len(tipos_iniciais)
         documentos_rejeitados = funcionario.documentos.filter(status='rejeitado')
 
@@ -166,39 +201,122 @@ def dashboard_view(request):
 @papel_required('rh', 'gestor')
 def dashboard_rh_view(request):
     usuario = request.user.usuario
+    funcionario_atual = usuario.funcionario
 
     if usuario.papel == 'rh' or usuario.acesso_rh:
         funcionarios_do_escopo = Funcionario.objects.all()
     else:
         funcionarios_do_escopo = Funcionario.objects.filter(setor=usuario.funcionario.setor)
 
+    agora = timezone.localtime(timezone.now())
+    hoje = agora.date()
+
     funcionarios_ativos = funcionarios_do_escopo.filter(status='ativo')
     total_funcionarios = funcionarios_ativos.count()
-    cadastros_pendentes = funcionarios_do_escopo.filter(status__in=STATUS_ONBOARDING).count()
+    admitidos_no_mes = funcionarios_ativos.filter(
+        data_admissao__year=hoje.year, data_admissao__month=hoje.month
+    ).count()
+
+    cadastros_pendentes_qs = funcionarios_do_escopo.filter(status__in=STATUS_ONBOARDING)
+    cadastros_pendentes = cadastros_pendentes_qs.count()
+    limite_parado = hoje - timedelta(days=7)
+    cadastros_pendentes_antigos = cadastros_pendentes_qs.filter(data_admissao__lte=limite_parado).count()
+
     funcionarios_por_setor = funcionarios_ativos.values('setor__nome').annotate(total=Count('id')).order_by('-total')
-    documentos_recentes = Documento.objects.filter(
-        funcionario__in=funcionarios_do_escopo
-    ).order_by('-data_upload')[:5]
+    maior_total_setor = max([item['total'] for item in funcionarios_por_setor], default=0)
 
-    ferias_aguardando_gestor = SolicitacaoFerias.objects.filter(
+    ferias_gestor_qs = SolicitacaoFerias.objects.filter(
         status='pendente_gestor', funcionario__in=funcionarios_do_escopo
-    ).count()
-    ferias_aguardando_rh = SolicitacaoFerias.objects.filter(
-        status='pendente_rh', funcionario__in=funcionarios_do_escopo
-    ).count()
+    ).order_by('criado_em')
+    ferias_aguardando_gestor = ferias_gestor_qs.count()
+    mais_antiga_gestor = ferias_gestor_qs.first()
+    dias_mais_antiga_gestor = (hoje - mais_antiga_gestor.criado_em.date()).days if mais_antiga_gestor else None
 
-    maior_total_setor = max(
-        [item['total'] for item in funcionarios_por_setor], default=0
-    )
+    ferias_rh_qs = SolicitacaoFerias.objects.filter(
+        status='pendente_rh', funcionario__in=funcionarios_do_escopo
+    ).select_related('funcionario').order_by('atualizado_em')
+    ferias_aguardando_rh = ferias_rh_qs.count()
+
+    # ---- Feed "Precisa da sua ação": junta tudo que só o RH consegue resolver ----
+    itens_acao = []
+
+    for f in funcionarios_do_escopo.filter(status='em_validacao'):
+        total_docs = f.documentos.count()
+        sufixo_docs = '' if total_docs == 1 else 's'
+        itens_acao.append({
+            'titulo': f'{f.nome} — validar cadastro',
+            'subtitulo': f'{total_docs} documento{sufixo_docs} enviados, aguardando análise',
+            'url': reverse('detalhe_funcionario', args=[f.id]),
+        })
+
+    for s in ferias_rh_qs:
+        itens_acao.append({
+            'titulo': f'{s.funcionario.nome} — concluir férias',
+            'subtitulo': f'aprovada pelo gestor em {timezone.localtime(s.atualizado_em).strftime("%d/%m")}',
+            'url': reverse('concluir_ferias'),
+        })
+
+    avisos_sem_solicitacao = AvisoFerias.objects.filter(
+        funcionario__in=funcionarios_do_escopo, solicitacoes_geradas__isnull=True,
+    ).select_related('funcionario').order_by('data_prevista')
+    for aviso in avisos_sem_solicitacao:
+        dias = (aviso.data_prevista - hoje).days
+        if dias >= 0:
+            titulo_aviso = f'{aviso.funcionario.nome} — férias vencem em {dias} dia{"s" if dias != 1 else ""}'
+        else:
+            titulo_aviso = f'{aviso.funcionario.nome} — férias venceram há {abs(dias)} dia{"s" if abs(dias) != 1 else ""}'
+        itens_acao.append({
+            'titulo': titulo_aviso,
+            'subtitulo': 'sem solicitação registrada',
+            'url': reverse('rh_vencimento_ferias'),
+        })
+
+    for f in funcionarios_do_escopo.filter(status='aguardando_assinatura'):
+        contrato = f.documentos.filter(tipo_documento__eh_contrato=True).order_by('-data_upload').first()
+        if contrato:
+            dias_gerado = (hoje - timezone.localtime(contrato.data_upload).date()).days
+            subtitulo = f'gerado há {dias_gerado} dia{"s" if dias_gerado != 1 else ""}'
+        else:
+            subtitulo = 'aguardando geração'
+        itens_acao.append({
+            'titulo': f'{f.nome} — contrato sem assinatura',
+            'subtitulo': subtitulo,
+            'url': reverse('detalhe_funcionario', args=[f.id]),
+        })
+
+    ajustes_pendentes_count = AjustePonto.objects.filter(
+        status='pendente', funcionario__in=funcionarios_do_escopo
+    ).count()
+    if ajustes_pendentes_count:
+        itens_acao.append({
+            'titulo': f'{ajustes_pendentes_count} correç{"ão" if ajustes_pendentes_count == 1 else "ões"} de ponto para analisar',
+            'subtitulo': 'pedidas pelos colaboradores',
+            'url': reverse('ponto:ajustes_pendentes'),
+        })
+
+    if agora.hour < 12:
+        saudacao = 'Bom dia'
+    elif agora.hour < 18:
+        saudacao = 'Boa tarde'
+    else:
+        saudacao = 'Boa noite'
 
     return render(request, 'funcionarios/rh/dashboard.html', {
+        'saudacao': saudacao,
+        'nome_usuario': funcionario_atual.primeiro_nome,
+        'data_extenso': data_curta_por_extenso(hoje),
         'total_funcionarios': total_funcionarios,
+        'admitidos_no_mes': admitidos_no_mes,
         'cadastros_pendentes': cadastros_pendentes,
+        'cadastros_pendentes_antigos': cadastros_pendentes_antigos,
         'ferias_aguardando_gestor': ferias_aguardando_gestor,
+        'dias_mais_antiga_gestor': dias_mais_antiga_gestor,
         'ferias_aguardando_rh': ferias_aguardando_rh,
         'funcionarios_por_setor': funcionarios_por_setor,
         'maior_total_setor': maior_total_setor,
-        'documentos_recentes': documentos_recentes,
+        'itens_acao': itens_acao[:5],
+        'total_itens_acao': len(itens_acao),
+        'avisos_vencendo_30_dias': avisos_sem_solicitacao.filter(data_prevista__lte=hoje + timedelta(days=30)).count(),
     })
 
 
@@ -326,14 +444,15 @@ def meus_documentos_view(request):
     contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
 
     tipos_obrigatorios = funcionario.tipos_documentos_iniciais()
-    tipos_enviados_ids = set(
-        funcionario.documentos.exclude(status='rejeitado').values_list('tipo_documento_id', flat=True)
-    )
-    tipos_pendentes = [t for t in tipos_obrigatorios if t.id not in tipos_enviados_ids]
+    tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
+    total_obrigatorios = len(tipos_obrigatorios)
+    total_enviados = total_obrigatorios - len(tipos_pendentes)
 
     return render(request, 'funcionarios/meus_documentos.html', {
         'documentos': documentos,
         'tipos_pendentes': tipos_pendentes,
+        'total_obrigatorios': total_obrigatorios,
+        'total_enviados': total_enviados,
         'contrato_documento': contrato_documento,
         'funcionario': funcionario,
     })
@@ -756,6 +875,48 @@ def validar_funcionario_view(request, funcionario_id):
 
 # ---------- Férias — Colaborador ----------
 
+def _resumo_historico_ferias(solicitacao, hoje):
+    """
+    Rótulo curto + descrição pro histórico de "Minhas férias" -- usa uma
+    linguagem mais compacta que `get_status_display()` (ex.: "Concluída" em
+    vez de "Aprovada" quando já passou, "Alterada" em vez de "Gestor sugeriu
+    alteração"), sem mudar o texto usado no resto do sistema.
+    """
+    if solicitacao.status == 'aprovada':
+        if solicitacao.data_fim < hoje:
+            return {
+                'solicitacao': solicitacao,
+                'rotulo': 'Concluída',
+                'classe': 'aprovada',
+                'descricao': f'concluída pelo RH em {timezone.localtime(solicitacao.atualizado_em).strftime("%d/%m/%Y")}',
+            }
+        return {
+            'solicitacao': solicitacao,
+            'rotulo': 'Aprovada',
+            'classe': 'aprovada',
+            'descricao': f'começa em {solicitacao.data_solicitada.strftime("%d/%m/%Y")}',
+        }
+    if solicitacao.status == 'sugestao_gestor':
+        return {
+            'solicitacao': solicitacao, 'rotulo': 'Alterada', 'classe': 'sugestao',
+            'descricao': 'gestor sugeriu outra data',
+        }
+    if solicitacao.status == 'adiada':
+        return {
+            'solicitacao': solicitacao, 'rotulo': 'Adiada', 'classe': 'adiada',
+            'descricao': 'adiada pelo colaborador',
+        }
+    if solicitacao.status == 'pendente_rh':
+        return {
+            'solicitacao': solicitacao, 'rotulo': 'Aguardando RH', 'classe': 'aguardando',
+            'descricao': f'aprovada pelo gestor em {timezone.localtime(solicitacao.atualizado_em).strftime("%d/%m/%Y")}',
+        }
+    return {
+        'solicitacao': solicitacao, 'rotulo': 'Aguardando Gestor', 'classe': 'aguardando',
+        'descricao': f'enviada em {timezone.localtime(solicitacao.criado_em).strftime("%d/%m/%Y")}',
+    }
+
+
 @login_required
 def solicitar_ferias_view(request):
     try:
@@ -767,6 +928,8 @@ def solicitar_ferias_view(request):
     solicitacao_ativa = solicitacoes.exclude(status__in=['aprovada', 'adiada']).first()
     tem_ativa = solicitacao_ativa is not None
     aviso_pendente = funcionario.aviso_ferias_pendente_acao()
+    hoje_ferias = timezone.now().date()
+    historico = [_resumo_historico_ferias(s, hoje_ferias) for s in solicitacoes]
 
     if request.method == 'POST' and not tem_ativa:
         form = SolicitarFeriasForm(request.POST)
@@ -790,9 +953,12 @@ def solicitar_ferias_view(request):
         'form': form,
         'funcionario': funcionario,
         'solicitacoes': solicitacoes,
+        'historico': historico,
         'solicitacao_ativa': solicitacao_ativa,
         'tem_ativa': tem_ativa,
         'aviso_pendente': aviso_pendente,
+        'saldo_dias': funcionario.dias_pendentes_ferias() or 0,
+        'hoje': hoje_ferias,
     })
 
 

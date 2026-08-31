@@ -2,10 +2,10 @@
 {% load rh_icons %}
 {% load ponto_extras %}
 
-{% block titulo %}Cálculo{% endblock %}
+{% block titulo %}Espelho e Cálculo{% endblock %}
 
 {% block conteudo %}
-<h1>Cálculo</h1>
+{% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
 {% if messages %}
@@ -83,27 +83,27 @@
     <div class="card__header">
         <span class="card__title">Totais do período</span>
     </div>
-    <div class="table-responsive desktop-only">
-        <table>
-            <thead>
-                <tr>
-                    <th>Extra 50%</th>
-                    <th>Extra 100%</th>
-                    <th>Falta/atraso a descontar</th>
-                    <th>Dias sem jornada</th>
-                    <th>Dias com marcação ímpar</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{{ resultado.totais.extra_50_segundos|horas }}</td>
-                    <td>{{ resultado.totais.extra_100_segundos|horas }}</td>
-                    <td>{{ resultado.totais.falta_segundos|horas }}</td>
-                    <td>{{ resultado.totais.dias_sem_jornada }}</td>
-                    <td>{{ resultado.totais.dias_com_marcacao_impar }}</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="totais-grid totais-grid--5">
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Extra 50%</div>
+            <div class="totais-grid__valor">{{ resultado.totais.extra_50_segundos|horas }}</div>
+        </div>
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Extra 100%</div>
+            <div class="totais-grid__valor">{{ resultado.totais.extra_100_segundos|horas }}</div>
+        </div>
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Falta/atraso a descontar</div>
+            <div class="totais-grid__valor totais-grid__valor--alerta">{{ resultado.totais.falta_segundos|horas }}</div>
+        </div>
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Dias sem jornada</div>
+            <div class="totais-grid__valor">{{ resultado.totais.dias_sem_jornada }}</div>
+        </div>
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Dias com marcação ímpar</div>
+            <div class="totais-grid__valor">{{ resultado.totais.dias_com_marcacao_impar }}</div>
+        </div>
     </div>
 </div>
 
@@ -115,7 +115,7 @@
             <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('espelho-scroll').scrollBy({left: 240, behavior: 'smooth'});">{% icon 'chevron-right' %}</button>
         </div>
     </div>
-    <div class="table-responsive desktop-only" id="espelho-scroll">
+    <div class="table-responsive" id="espelho-scroll">
         <table class="tabela-compacta">
             <thead>
                 <tr>

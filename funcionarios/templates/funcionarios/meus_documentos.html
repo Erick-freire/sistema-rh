@@ -7,6 +7,7 @@ Meus Documentos
 
 {% block conteudo %}
 <h1>Meus documentos</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">O que falta aparece primeiro. O resto fica guardado abaixo.</p>
 
 {% if messages %}
     {% for message in messages %}
@@ -19,7 +20,7 @@ Meus Documentos
     <div class="card__header">
         <span class="card__title">Contrato de Trabalho</span>
         <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
-            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Download</a>
+            <a href="{% url 'ver_documento' contrato_documento.id %}" download class="btn btn-sm">{% icon 'download' %} Baixar</a>
             <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
                 <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">
@@ -34,14 +35,23 @@ Meus Documentos
 
 {% if tipos_pendentes %}
 <div class="card" style="border-left: 3px solid var(--color-accent);">
-    <div class="card__title" style="margin-bottom: 12px;">Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }}</div>
+    <div class="card__header">
+        <span class="card__title">Faltam {{ tipos_pendentes|length }} documento{{ tipos_pendentes|length|pluralize }}</span>
+        <span style="color: var(--color-text-muted); font-size: 0.85rem;">{{ total_enviados }} de {{ total_obrigatorios }} enviados</span>
+    </div>
+    <div class="progress" style="margin-bottom: 16px;">
+        <div class="progress__bar progress__bar--accent" style="width: {% widthratio total_enviados total_obrigatorios 100 %}%;"></div>
+    </div>
     <div class="lista-cards">
         {% for tipo in tipos_pendentes %}
         <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" class="item-card">
             {% csrf_token %}
             <input type="hidden" name="tipo_documento" value="{{ tipo.id }}">
             <input type="hidden" name="origem" value="meus_documentos">
-            <div class="item-card__corpo">{{ tipo.nome }}</div>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ tipo.nome }}</div>
+                {% with dica=tipo.nome|dica_documento %}{% if dica %}<div class="item-card__subtitulo">{{ dica }}</div>{% endif %}{% endwith %}
+            </div>
             <input type="file" name="arquivo" id="arquivo-pendente-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
             <label for="arquivo-pendente-{{ tipo.id }}" class="btn btn-sm">Enviar</label>
         </form>
@@ -54,27 +64,30 @@ Meus Documentos
     <div class="card__title" style="margin-bottom: 12px;">Enviados</div>
     <div class="lista-cards">
         {% for documento in documentos %}
-        <div class="item-card">
-            <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
-            <div class="item-card__corpo">
-                <div class="item-card__titulo">{{ documento.tipo_documento }}</div>
-                <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.data_upload|date:"d/m/Y" }}</div>
+        <div class="item-card" {% if documento.status == 'rejeitado' %}style="flex-direction: column; align-items: stretch; gap: 10px;"{% endif %}>
+            <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+                <div class="item-card__corpo">
+                    <div class="item-card__titulo">{{ documento.tipo_documento }}</div>
+                    <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.data_upload|date:"d/m/Y" }}</div>
+                </div>
+                <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
                 {% if documento.status == 'rejeitado' %}
-                <div class="item-card__subtitulo" style="color: var(--color-error);">Rejeitado: {{ documento.motivo_rejeicao }}</div>
+                <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: 0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="tipo_documento" value="{{ documento.tipo_documento_id }}">
+                    <input type="hidden" name="origem" value="meus_documentos">
+                    <input type="file" name="arquivo" id="arquivo-reenvio-{{ documento.id }}" style="display: none;" required onchange="this.form.submit()">
+                    <label for="arquivo-reenvio-{{ documento.id }}" class="btn btn-sm">Reenviar</label>
+                </form>
+                {% else %}
+                <a href="{% url 'ver_documento' documento.id %}" download title="Baixar" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
                 {% endif %}
             </div>
-            <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
-            <a href="{% url 'ver_documento' documento.id %}" download title="Baixar" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
+            {% if documento.status == 'rejeitado' %}
+            <div style="font-size: 0.85rem; color: var(--color-error);">{{ documento.motivo_rejeicao }}</div>
+            {% endif %}
         </div>
-        {% if documento.status == 'rejeitado' %}
-        <form method="post" action="{% url 'enviar_documento' %}" enctype="multipart/form-data" style="margin: -4px 0 8px; display: flex; gap: 10px; align-items: center;">
-            {% csrf_token %}
-            <input type="hidden" name="tipo_documento" value="{{ documento.tipo_documento_id }}">
-            <input type="hidden" name="origem" value="meus_documentos">
-            <input type="file" name="arquivo" required>
-            <button type="submit" class="btn btn-sm">Reenviar</button>
-        </form>
-        {% endif %}
         {% empty %}
         <p>Nenhum documento enviado ainda.</p>
         {% endfor %}

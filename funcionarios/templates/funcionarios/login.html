@@ -7,30 +7,55 @@ Login
 {% load static %}
 {% block conteudo_sem_login %}
 <div class="login-shell">
-    <div class="login-card">
-        <div class="login-card__mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></div>
-        <h1>Sistema RH</h1>
+    <div class="login-split">
+        <div class="login-painel login-painel--marca">
+            <div class="login-brand">
+                <span class="login-brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
+                Sotrigo RH
+            </div>
+            <div>
+                <h1>Seus documentos, férias e ponto num só lugar.</h1>
+                <p>Entre com o seu CPF. No primeiro acesso, use a senha provisória entregue pelo RH.</p>
+            </div>
+            <div class="login-ajuda">Precisa de ajuda? Fale com o RH pelo ramal 218.</div>
+        </div>
 
-        <form method="post">
-            {% csrf_token %}
+        <div class="login-painel login-painel--form">
+            <div class="login-card">
+                <h2>Entrar</h2>
+                <p>Bem-vindo de volta.</p>
 
-            {% if erro %}
-                <p class="message message-error">{{ erro }}</p>
-            {% endif %}
+                <form method="post">
+                    {% csrf_token %}
 
-            <p>
-                <label for="username">Usuário</label>
-                <input type="text" id="username" name="username" placeholder="CPF" autofocus>
-            </p>
-            <p>
-                <label for="password">Senha</label>
-                <input type="password" id="password" name="password" placeholder="Senha">
-            </p>
+                    {% if erro %}
+                        <p class="message message-error">{{ erro }}</p>
+                    {% endif %}
 
-            <button type="submit" class="btn-primario btn-bloco">Entrar</button>
-        </form>
+                    <p>
+                        <label for="username">CPF</label>
+                        <input type="text" id="username" name="username" placeholder="000.000.000-00" autofocus>
+                    </p>
+                    <p>
+                        <label for="password">Senha</label>
+                        <input type="password" id="password" name="password" placeholder="Senha">
+                    </p>
 
-        <p class="login-card__aviso">Primeiro acesso? Use a senha provisória entregue pelo RH.</p>
+                    {% if recaptcha_site_key %}
+                    <p>
+                        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                    </p>
+                    {% endif %}
+
+                    <button type="submit" class="btn-primario btn-bloco">Entrar</button>
+                </form>
+
+                <p class="login-card__aviso">Esqueceu a senha? O RH pode gerar uma nova.</p>
+            </div>
+        </div>
     </div>
 </div>
+{% if recaptcha_site_key %}
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endif %}
 {% endblock %}
