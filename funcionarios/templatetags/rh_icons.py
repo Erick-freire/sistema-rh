@@ -46,6 +46,7 @@ DICAS_DOCUMENTOS = {
     'foto 3x4': 'Fundo branco, rosto visível',
     'foto 3×4': 'Fundo branco, rosto visível',
     'exame admissional': 'ASO emitido pela clínica conveniada',
+    'atestado médico': 'PDF ou foto legível, com CID e assinatura do médico',
 }
 
 

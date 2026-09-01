@@ -447,6 +447,7 @@ def meus_documentos_view(request):
     tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
     total_obrigatorios = len(tipos_obrigatorios)
     total_enviados = total_obrigatorios - len(tipos_pendentes)
+    tipos_opcionais = funcionario.tipos_documentos_opcionais()
 
     return render(request, 'funcionarios/meus_documentos.html', {
         'documentos': documentos,
@@ -454,6 +455,7 @@ def meus_documentos_view(request):
         'total_obrigatorios': total_obrigatorios,
         'total_enviados': total_enviados,
         'contrato_documento': contrato_documento,
+        'tipos_opcionais': tipos_opcionais,
         'funcionario': funcionario,
     })
 
