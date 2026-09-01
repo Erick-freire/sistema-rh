@@ -21,11 +21,11 @@ from django.core.files.base import ContentFile
 from xhtml2pdf import pisa
 
 from .decorators import papel_required
-from .models import Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
+from .models import Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
     DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
-    RejeitarDocumentoForm,
+    RejeitarDocumentoForm, AtestadoForm,
 )
 from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso, data_curta_por_extenso
 
@@ -636,6 +636,8 @@ def detalhe_funcionario_view(request, funcionario_id):
         'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
         'jornada_form': FuncionarioJornadaForm(),
         'dados_form': DadosCadastraisForm(instance=funcionario),
+        'atestados': funcionario.atestados.all()[:10],
+        'atestado_form': AtestadoForm(),
     })
 
 
@@ -656,6 +658,29 @@ def editar_dados_funcionario_view(request, funcionario_id):
             messages.success(request, 'Dados atualizados com sucesso.')
         else:
             messages.error(request, 'Não foi possível atualizar os dados. Verifique os campos.')
+
+    return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+
+@login_required
+@papel_required('rh', 'gestor')
+def lancar_atestado_view(request, funcionario_id):
+    usuario = request.user.usuario
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+        messages.error(request, 'Você não tem permissão para essa ação.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if request.method == 'POST':
+        form = AtestadoForm(request.POST)
+        if form.is_valid():
+            atestado = form.save(commit=False)
+            atestado.funcionario = funcionario
+            atestado.save()
+            messages.success(request, 'Atestado lançado com sucesso.')
+        else:
+            messages.error(request, 'Não foi possível lançar o atestado. Verifique os campos.')
 
     return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 

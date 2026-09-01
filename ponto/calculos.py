@@ -28,6 +28,30 @@ from django.utils import timezone
 from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio
 from .utils import intervalo_do_dia
 
+# `funcionario.solicitacoes_ferias`/`funcionario.atestados` são relations
+# reversas (definidas em `funcionarios.models`) -- não precisa importar os
+# models de lá aqui pra usá-las.
+
+
+def _dias_ferias_aprovadas(funcionario):
+    dias = set()
+    for solicitacao in funcionario.solicitacoes_ferias.filter(status='aprovada'):
+        data = solicitacao.data_solicitada
+        while data <= solicitacao.data_fim:
+            dias.add(data)
+            data += timedelta(days=1)
+    return dias
+
+
+def _dias_atestado(funcionario):
+    dias = set()
+    for atestado in funcionario.atestados.all():
+        data = atestado.data_inicio
+        while data <= atestado.data_fim:
+            dias.add(data)
+            data += timedelta(days=1)
+    return dias
+
 # date.isoweekday() (1=segunda...7=domingo) já bate exatamente com HorarioDia.dia_semana.
 
 
@@ -189,9 +213,13 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
     dias = []
     dia_atual = data_inicio
     horario_dia_anterior = _horario_dia_de(funcionario, data_inicio - timedelta(days=1))
+    dias_ferias = _dias_ferias_aprovadas(funcionario)
+    dias_atestado = _dias_atestado(funcionario)
 
     while dia_atual <= data_fim:
         jornada = FuncionarioJornada.vigente_em(funcionario, dia_atual)
+        em_ferias = dia_atual in dias_ferias
+        em_atestado = not em_ferias and dia_atual in dias_atestado
 
         if jornada is None:
             # Sem jornada cadastrada não quer dizer que o funcionário não bateu
@@ -206,12 +234,18 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
                 'segundos_esperados': 0, 'segundos_trabalhados': segundos_trabalhados, 'saldo_segundos': 0,
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
                 'marcacao_impar': marcacao_impar, 'taxa_extra': None, 'folga': False,
+                'ferias': em_ferias, 'atestado': em_atestado,
             })
             horario_dia_anterior = None
             dia_atual += timedelta(days=1)
             continue
 
         horario_dia, em_12x36 = _horario_do_dia(jornada, dia_atual)
+        # Em férias aprovadas ou atestado, o dia não tem jornada esperada --
+        # trata igual folga pro cálculo (0 esperado, sem desconto de falta),
+        # só troca o rótulo exibido (ver `situacao_do_dia`/templates).
+        if em_ferias or em_atestado:
+            horario_dia = None
         segundos_esperados = _segundos_esperados(horario_dia)
         entrada_esperada = _primeira_entrada(horario_dia) if horario_dia else None
         saida_esperada = _ultima_saida(horario_dia) if horario_dia else None
@@ -225,11 +259,13 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         dias.append({
             'data': dia_atual,
             'sem_jornada': False,
-            # `horario_dia is None` só cobre o dia de folga do 12x36; numa
-            # jornada fixa, o HorarioDia do fim de semana existe mas sem
-            # nenhum entrada/saída -- `.folga` (a property do model) cobre
-            # os dois casos.
+            # `horario_dia is None` cobre o dia de folga do 12x36, férias e
+            # atestado; numa jornada fixa, o HorarioDia do fim de semana
+            # existe mas sem nenhum entrada/saída -- `.folga` (a property do
+            # model) cobre esse caso.
             'folga': horario_dia is None or horario_dia.folga,
+            'ferias': em_ferias,
+            'atestado': em_atestado,
             'marcacoes': marcacoes,
             'pares': pares,
             'marcacao_impar': marcacao_impar,
@@ -287,6 +323,10 @@ def situacao_do_dia(dia, hoje):
     esteja com marcação ímpar ou saldo negativo -- só os dias já fechados são
     sinalizados pra correção.
     """
+    if dia['ferias']:
+        return 'Férias', 'inativo', False
+    if dia['atestado']:
+        return 'Atestado', 'inativo', False
     if dia['sem_jornada']:
         return 'Sem jornada', 'inativo', False
     if dia['folga']:

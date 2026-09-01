@@ -14,6 +14,7 @@ urlpatterns = [
     path('documentos/<int:documento_id>/aprovar/', views.aprovar_documento_view, name='aprovar_documento'),
     path('documentos/<int:documento_id>/rejeitar/', views.rejeitar_documento_view, name='rejeitar_documento'),
     path('funcionarios/', views.listar_funcionarios_view, name='listar_funcionarios'),
+    path('funcionarios/<int:funcionario_id>/lancar-atestado/', views.lancar_atestado_view, name='lancar_atestado'),
     path('funcionarios/<int:funcionario_id>/gerar-acesso/', views.gerar_acesso_funcionario_view, name='gerar_acesso_funcionario'),
     path('funcionarios/<int:funcionario_id>/resetar-senha/', views.resetar_senha_funcionario_view, name='resetar_senha_funcionario'),
     path('funcionarios/novo/', views.cadastrar_funcionario_view, name='cadastrar_funcionario'),

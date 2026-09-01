@@ -1,5 +1,5 @@
 from django import forms
-from .models import Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento
+from .models import Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento
 
 
 class MeuPerfilForm(forms.ModelForm):
@@ -62,6 +62,24 @@ class DadosCadastraisForm(forms.ModelForm):
         widgets = {
             'salario': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
         }
+
+class AtestadoForm(forms.ModelForm):
+    class Meta:
+        model = Atestado
+        fields = ['data_inicio', 'data_fim', 'motivo']
+        widgets = {
+            'data_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'data_fim': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data_inicio = cleaned_data.get('data_inicio')
+        data_fim = cleaned_data.get('data_fim')
+        if data_inicio and data_fim and data_fim < data_inicio:
+            raise forms.ValidationError('A data final não pode ser antes da data inicial.')
+        return cleaned_data
+
 
 class FuncionarioForm(forms.ModelForm):
     class Meta:

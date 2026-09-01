@@ -9,7 +9,7 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from funcionarios.models import Funcionario, Setor, Usuario
+from funcionarios.models import Atestado, Funcionario, Setor, SolicitacaoFerias, Usuario
 from .calculos import calcular_periodo
 from .controlid_client import ControlIdAPIError, ControlIdTimeoutError, ControlIdUsuarioNaoEncontradoError
 from .models import (
@@ -1010,6 +1010,50 @@ class CalculosTests(TestCase):
         dia = resultado['dias'][0]
         self.assertTrue(dia['marcacao_impar'])  # a saída continua "faltando" pro cálculo
         self.assertEqual(dia['segundos_trabalhados'], 4 * 3600)  # só o par 08-12 conta
+
+    def test_dia_em_ferias_aprovadas_nao_desconta_falta(self):
+        horario = _criar_horario_util(4012)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)  # dia útil, sem nenhuma marcação -- faltaria em condições normais
+        SolicitacaoFerias.objects.create(
+            funcionario=self.funcionario, data_solicitada=date(2026, 8, 3), dias_solicitados=5, status='aprovada',
+        )
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        dia = resultado['dias'][0]
+        self.assertTrue(dia['ferias'])
+        self.assertFalse(dia['atestado'])
+        self.assertEqual(dia['segundos_esperados'], 0)
+        self.assertEqual(dia['segundos_falta_dia'], 0)
+
+    def test_ferias_pendente_nao_conta_como_ferias(self):
+        horario = _criar_horario_util(4013)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        SolicitacaoFerias.objects.create(
+            funcionario=self.funcionario, data_solicitada=date(2026, 8, 3), dias_solicitados=5, status='pendente_gestor',
+        )
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        dia = resultado['dias'][0]
+        self.assertFalse(dia['ferias'])
+        self.assertEqual(dia['segundos_falta_dia'], 8 * 3600)  # falta normal, já que a solicitação não foi aprovada
+
+    def test_dia_com_atestado_nao_desconta_falta(self):
+        horario = _criar_horario_util(4014)
+        FuncionarioJornada.objects.create(funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        segunda = date(2026, 8, 3)
+        Atestado.objects.create(funcionario=self.funcionario, data_inicio=segunda, data_fim=segunda, motivo='Gripe')
+
+        resultado = calcular_periodo(self.funcionario, segunda, segunda)
+
+        dia = resultado['dias'][0]
+        self.assertTrue(dia['atestado'])
+        self.assertFalse(dia['ferias'])
+        self.assertEqual(dia['segundos_esperados'], 0)
+        self.assertEqual(dia['segundos_falta_dia'], 0)
 
 
 class AjustarMarcacaoViewTests(TestCase):

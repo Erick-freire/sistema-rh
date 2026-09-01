@@ -177,6 +177,47 @@
                 </p>
             </div>
         </div>
+
+        {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Atestados</div>
+            {% if atestados %}
+                <ul style="font-size: 0.88rem; padding-left: 18px; margin-bottom: 14px;">
+                    {% for atestado in atestados %}
+                    <li>{{ atestado.data_inicio|date:"d/m/Y" }} a {{ atestado.data_fim|date:"d/m/Y" }}{% if atestado.motivo %} — {{ atestado.motivo }}{% endif %}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhum atestado lançado.</p>
+            {% endif %}
+
+            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-lancar-atestado" data-texto-alternativo="Cancelar">Lançar atestado</button>
+
+            <div id="form-lancar-atestado" style="display: none; margin-top: 14px;">
+                <form method="post" action="{% url 'lancar_atestado' funcionario.id %}">
+                    {% csrf_token %}
+                    <div class="form-grid">
+                        <div>
+                            <label for="{{ atestado_form.data_inicio.id_for_label }}">De</label>
+                            {{ atestado_form.data_inicio }}
+                        </div>
+                        <div>
+                            <label for="{{ atestado_form.data_fim.id_for_label }}">Até</label>
+                            {{ atestado_form.data_fim }}
+                        </div>
+                        <div class="span-2">
+                            <label for="{{ atestado_form.motivo.id_for_label }}">Motivo (opcional)</label>
+                            {{ atestado_form.motivo }}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar atestado</button>
+                </form>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+                    Nesses dias, o espelho de ponto mostra "Atestado" em vez de folga/falta e não desconta horas.
+                </p>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div>

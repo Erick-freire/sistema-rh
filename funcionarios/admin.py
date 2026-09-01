@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Setor, Funcionario, Usuario, TipoDocumento, Documento
+from .models import Atestado, Setor, Funcionario, Usuario, TipoDocumento, Documento
+
+
+@admin.register(Atestado)
+class AtestadoAdmin(admin.ModelAdmin):
+    list_display = ('funcionario', 'data_inicio', 'data_fim', 'motivo')
+    list_filter = ('data_inicio',)
+    search_fields = ('funcionario__nome',)
 
 
 @admin.register(TipoDocumento)

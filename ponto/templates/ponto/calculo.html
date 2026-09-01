@@ -132,15 +132,15 @@
             <tbody>
                 {% for dia in resultado.dias %}
                 <tr {% if dia.sem_jornada %}style="background-color: var(--color-error-bg);"{% elif dia.folga %}style="background-color: var(--color-neutral-bg);"{% elif dia.marcacao_impar %}style="background-color: var(--color-pending-bg);"{% endif %}
-                    title="{% if dia.sem_jornada %}Sem jornada cadastrada{% elif dia.folga %}Folga{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
+                    title="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.sem_jornada %}Sem jornada cadastrada{% elif dia.folga %}Folga{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
                     <td>{{ dia.data|date:'d/m' }} - {{ dia.data|date:'D' }}</td>
                     {% for entrada, saida in dia.pares %}
                         <td class="celula-ponto">
-                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.folga %}Folga{% else %}—{% endif %}
+                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.folga %}Folga{% else %}—{% endif %}
                             <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.id %}&marcacao_original={{ entrada.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                         <td class="celula-ponto">
-                            {% if saida %}{{ saida.momento|time:'H:i' }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.folga %}Folga{% else %}—{% endif %}
+                            {% if saida %}{{ saida.momento|time:'H:i' }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.folga %}Folga{% else %}—{% endif %}
                             <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.id %}&marcacao_original={{ saida.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                     {% endfor %}

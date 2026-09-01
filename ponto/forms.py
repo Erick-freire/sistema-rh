@@ -67,11 +67,14 @@ class HorarioSelect(forms.Select):
     Marca no HTML (`data-doze36`) quais opções são horário 12x36, pra tela
     trocar o rótulo/ajuda da data pra algo específico de ciclo (ver
     static/js/ui.js) sem precisar duplicar horário ou expor par/ímpar.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._ids_12x36 = set(Horario.objects.filter(eh_12x36=True).values_list('id', flat=True))
 
+    A consulta ao banco fica em `create_option` (só roda quando o widget é
+    de fato renderizado numa request) -- nunca em `__init__`, porque
+    `Meta.widgets`/`widget=` instancia o widget na hora em que o módulo é
+    importado, e um `__init__` que consulta o banco travaria qualquer
+    comando (`migrate`, `showmigrations`...) se o banco estiver fora do ar
+    nesse instante.
+    """
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
         valor_bruto = getattr(value, 'value', value)  # Django >=4.1 embrulha em ModelChoiceIteratorValue
@@ -79,7 +82,7 @@ class HorarioSelect(forms.Select):
             horario_id = int(valor_bruto)
         except (TypeError, ValueError):
             horario_id = None
-        if horario_id in self._ids_12x36:
+        if horario_id is not None and Horario.objects.filter(id=horario_id, eh_12x36=True).exists():
             option['attrs']['data-doze36'] = '1'
         return option
 

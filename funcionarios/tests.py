@@ -7,8 +7,10 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from .forms import MeuPerfilForm, PreCadastroFuncionarioForm
-from .models import Documento, Funcionario, Setor, TipoDocumento, Usuario
+from datetime import date
+
+from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
+from .models import Atestado, Documento, Funcionario, Setor, TipoDocumento, Usuario
 
 
 def _dados_cadastro(**kwargs):
@@ -408,3 +410,55 @@ class AssinaturaGovViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'funcionarios/sem_perfil.html')
+
+
+class AtestadoFormTests(TestCase):
+    def test_data_fim_antes_da_data_inicio_e_rejeitada(self):
+        form = AtestadoForm(data={'data_inicio': '2026-08-10', 'data_fim': '2026-08-05', 'motivo': ''})
+
+        self.assertFalse(form.is_valid())
+
+    def test_periodo_valido_e_aceito(self):
+        form = AtestadoForm(data={'data_inicio': '2026-08-05', 'data_fim': '2026-08-10', 'motivo': 'Gripe'})
+
+        self.assertTrue(form.is_valid())
+
+
+class LancarAtestadoViewTests(TestCase):
+    """RH/gestor registra um atestado (período de afastamento) pra um funcionário."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=self.setor, status='ativo',
+        )
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=self.setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+
+        user_colaborador = User.objects.create_user(username='12345678901', password='senha123')
+        Usuario.objects.create(user=user_colaborador, funcionario=self.funcionario, papel='colaborador')
+        self.user_colaborador = user_colaborador
+
+    def test_rh_lanca_atestado(self):
+        self.client.force_login(self.user_rh)
+
+        response = self.client.post(reverse('lancar_atestado', args=[self.funcionario.id]), {
+            'data_inicio': '2026-08-05', 'data_fim': '2026-08-07', 'motivo': 'Gripe',
+        })
+
+        self.assertRedirects(response, reverse('detalhe_funcionario', args=[self.funcionario.id]))
+        atestado = Atestado.objects.get(funcionario=self.funcionario)
+        self.assertEqual(atestado.data_inicio, date(2026, 8, 5))
+        self.assertEqual(atestado.data_fim, date(2026, 8, 7))
+
+    def test_colaborador_comum_nao_lanca_atestado_de_terceiros(self):
+        self.client.force_login(self.user_colaborador)
+
+        self.client.post(reverse('lancar_atestado', args=[self.funcionario.id]), {
+            'data_inicio': '2026-08-05', 'data_fim': '2026-08-07', 'motivo': 'Gripe',
+        })
+
+        self.assertFalse(Atestado.objects.filter(funcionario=self.funcionario).exists())

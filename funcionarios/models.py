@@ -437,6 +437,25 @@ class SolicitacaoFerias(models.Model):
     def data_fim(self):
         return self.data_solicitada + timedelta(days=self.dias_solicitados - 1)
 
+
+class Atestado(models.Model):
+    """
+    Período de afastamento por atestado médico. Usado pelo espelho de ponto
+    (`ponto.calculos`) pra mostrar "Atestado" em vez de falta/folga nesses
+    dias e não descontar horas -- ver `Funcionario.atestados`.
+    """
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.CASCADE, related_name='atestados')
+    data_inicio = models.DateField()
+    data_fim = models.DateField()
+    motivo = models.CharField(max_length=200, blank=True, help_text='CID ou motivo, se informado no atestado.')
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-data_inicio']
+
+    def __str__(self):
+        return f'{self.funcionario.nome} ({self.data_inicio:%d/%m/%Y} a {self.data_fim:%d/%m/%Y})'
+
 class AvisoFerias(models.Model):
     funcionario = models.ForeignKey(
         Funcionario, on_delete=models.CASCADE, related_name='avisos_ferias'
