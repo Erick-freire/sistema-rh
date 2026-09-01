@@ -1,0 +1,28 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Sem conexão{% endblock %}
+
+{% block conteudo %}
+<div class="card" style="max-width: 420px; margin: 40px auto; text-align: center;">
+    {% icon 'alert-triangle' %}
+    <h1 style="margin-top: 10px; margin-bottom: 10px;">Sem conexão</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.92rem;">
+        Não foi possível carregar esta página. Verifique sua internet e tente novamente.
+    </p>
+    <button type="button" class="btn-primario btn-bloco" style="margin-top: 20px;" onclick="location.reload()">Tentar novamente</button>
+</div>
+{% endblock %}
+
+{% block conteudo_sem_login %}
+<div class="login-shell">
+    <div class="card" style="max-width: 420px; text-align: center;">
+        {% icon 'alert-triangle' %}
+        <h1 style="margin-top: 10px; margin-bottom: 10px;">Sem conexão</h1>
+        <p style="color: var(--color-text-muted); font-size: 0.92rem;">
+            Não foi possível carregar esta página. Verifique sua internet e tente novamente.
+        </p>
+        <button type="button" class="btn-primario btn-bloco" style="margin-top: 20px;" onclick="location.reload()">Tentar novamente</button>
+    </div>
+</div>
+{% endblock %}
