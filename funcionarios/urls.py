@@ -1,9 +1,12 @@
 from django.urls import path
 from . import views
+from . import pwa_views
 
 urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('service-worker.js', pwa_views.service_worker_view, name='service_worker'),
+    path('offline/', pwa_views.offline_view, name='offline'),
     path('', views.dashboard_view, name='dashboard'),
     path('meu-perfil/', views.meu_perfil_view, name='meu_perfil'),
     path('meu-perfil/foto/', views.atualizar_foto_view, name='atualizar_foto'),
