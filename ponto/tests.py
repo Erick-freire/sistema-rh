@@ -304,6 +304,30 @@ class ColetaMarcacoesTests(TestCase):
         equipamento.refresh_from_db()
         self.assertEqual(equipamento.ultimo_nsr_coletado, 2)
 
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_coleta_em_lotes_processa_tudo_e_avanca_checkpoint_pro_maior_nsr(self, mock_login):
+        """
+        Regressão do travamento da Farinha: get_afd devolve tudo de uma vez
+        (não pagina), então processamos em lotes salvando o checkpoint a cada
+        um -- se parar no meio, o que já rodou fica salvo. Aqui simulamos com
+        um lote bem menor que o total pra garantir que múltiplos lotes somam
+        certo e o checkpoint final é o maior NSR de todos, não só do último lote.
+        """
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario(cpf='12345678901')
+        texto = self._texto_afd([
+            (n, '12345678901', f'2026-08-{n:02d}T08:00:00-0300') for n in range(1, 6)
+        ])
+
+        with patch('ponto.services.client.get_afd', return_value=texto), \
+             patch('ponto.services.TAMANHO_LOTE_COLETA', 2):
+            total = coletar_marcacoes(equipamento)
+
+        self.assertEqual(total, 5)
+        self.assertEqual(MarcacaoRelogio.objects.filter(equipamento=equipamento).count(), 5)
+        equipamento.refresh_from_db()
+        self.assertEqual(equipamento.ultimo_nsr_coletado, 5)
+
     @patch('ponto.services.client.login', side_effect=ControlIdAPIError('equipamento indisponível'))
     def test_relogio_offline_durante_coleta_nao_derruba_e_nao_perde_checkpoint(self, mock_login):
         equipamento = _criar_equipamento(ultimo_nsr_coletado=10)

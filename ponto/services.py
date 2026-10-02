@@ -206,6 +206,9 @@ def processar_pendencias(equipamento=None):
     return processadas, sucesso
 
 
+TAMANHO_LOTE_COLETA = 2000  # ver docstring de `coletar_marcacoes`
+
+
 def coletar_marcacoes(equipamento):
     """
     Coleta incremental e idempotente: só pede eventos com NSR maior que o
@@ -213,6 +216,18 @@ def coletar_marcacoes(equipamento):
     `ignore_conflicts` (constraint única por equipamento+NSR) para nunca
     duplicar uma marcação já gravada -- mesmo se o NSR de corte se repetir
     entre duas chamadas.
+
+    O get_afd.fcgi não tem paginação -- devolve tudo desde `initial_nsr` numa
+    resposta só, não tem como "pedir menos" ao equipamento. Em equipamentos
+    com muito histórico acumulado (ex.: Farinha, 641 cadastros) isso vira uma
+    resposta enorme, e processar/gravar tudo de uma vez só salvando o
+    checkpoint no final tinha um problema sério: se a operação fosse
+    interrompida no meio (timeout de proxy/navegador), o checkpoint nunca
+    avançava e a tentativa seguinte recomeçava do zero -- travava pra sempre
+    no mesmo ponto. Processa e salva o checkpoint em lotes: se for
+    interrompida no meio, o que já foi processado fica salvo, e a próxima
+    tentativa parte dali em vez de repetir tudo -- converge em algumas
+    tentativas em vez de travar pra sempre.
     """
     try:
         session = client.login(equipamento)
@@ -245,29 +260,38 @@ def coletar_marcacoes(equipamento):
     def _funcionario_do_identificador(identificador):
         return funcionarios_por_cpf.get(identificador) or funcionarios_por_pis.get(identificador)
 
-    marcacoes = [
-        MarcacaoRelogio(
-            equipamento=equipamento,
-            funcionario=_funcionario_do_identificador(registro['identificador']),
-            id_evento_dispositivo=str(registro['nsr']),
-            momento=registro['momento'],
-            tipo_evento='desconhecido',
-            dados_brutos={**registro, 'momento': registro['momento'].isoformat()},
-        )
-        for registro in registros
-    ]
+    total_novas = 0
+    for inicio in range(0, len(registros), TAMANHO_LOTE_COLETA):
+        lote = registros[inicio:inicio + TAMANHO_LOTE_COLETA]
+        marcacoes = [
+            MarcacaoRelogio(
+                equipamento=equipamento,
+                funcionario=_funcionario_do_identificador(registro['identificador']),
+                id_evento_dispositivo=str(registro['nsr']),
+                momento=registro['momento'],
+                tipo_evento='desconhecido',
+                dados_brutos={**registro, 'momento': registro['momento'].isoformat()},
+            )
+            for registro in lote
+        ]
 
-    # bulk_create com ignore_conflicts não informa quantas linhas foram de fato
-    # inseridas (duplicatas batidas contra a constraint única são silenciosamente
-    # puladas) -- contamos antes/depois para reportar o número real de novidades.
-    total_antes = MarcacaoRelogio.objects.filter(equipamento=equipamento).count()
-    MarcacaoRelogio.objects.bulk_create(marcacoes, ignore_conflicts=True)
-    total_depois = MarcacaoRelogio.objects.filter(equipamento=equipamento).count()
+        # bulk_create com ignore_conflicts não informa quantas linhas foram de
+        # fato inseridas (duplicatas batidas contra a constraint única são
+        # silenciosamente puladas) -- contamos antes/depois do lote pra
+        # reportar o número real de novidades.
+        total_antes = MarcacaoRelogio.objects.filter(equipamento=equipamento).count()
+        MarcacaoRelogio.objects.bulk_create(marcacoes, ignore_conflicts=True)
+        total_depois = MarcacaoRelogio.objects.filter(equipamento=equipamento).count()
+        total_novas += total_depois - total_antes
 
-    maior_nsr = max(r['nsr'] for r in registros)
-    equipamento.ultimo_nsr_coletado = maior_nsr
-    equipamento.status_conexao = 'online'
-    equipamento.ultima_comunicacao = timezone.now()
-    equipamento.save(update_fields=['ultimo_nsr_coletado', 'status_conexao', 'ultima_comunicacao', 'atualizado_em'])
+        equipamento.ultimo_nsr_coletado = max(r['nsr'] for r in lote)
+        equipamento.status_conexao = 'online'
+        equipamento.ultima_comunicacao = timezone.now()
+        equipamento.save(update_fields=[
+            'ultimo_nsr_coletado', 'status_conexao', 'ultima_comunicacao', 'atualizado_em',
+        ])
 
-    return total_depois - total_antes
+        if not connection.in_atomic_block:
+            close_old_connections()
+
+    return total_novas
