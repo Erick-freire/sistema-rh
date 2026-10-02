@@ -86,4 +86,142 @@ document.addEventListener('DOMContentLoaded', function () {
         select.addEventListener('change', atualizar);
         atualizar();
     });
+
+    // Toasts (mensagens do Django messages) -- somem sozinhos depois de um tempo.
+    document.querySelectorAll('.toast').forEach(function (toast) {
+        setTimeout(function () {
+            toast.classList.add('toast--fadeout');
+            setTimeout(function () { toast.remove(); }, 350);
+        }, 5000);
+    });
+
+    // Modal de confirmação genérico: qualquer elemento com data-confirmar
+    // (botão de submit ou link) pede "tem certeza?" antes de executar a ação.
+    var modalConfirmacao = document.getElementById('modal-confirmacao');
+    if (modalConfirmacao) {
+        var modalTitulo = document.getElementById('modal-titulo');
+        var modalMensagem = document.getElementById('modal-mensagem');
+        var modalConfirmar = document.getElementById('modal-confirmar');
+        var modalCancelar = document.getElementById('modal-cancelar');
+        var acaoConfirmada = null;
+
+        function abrirModalConfirmacao(titulo, mensagem, acao) {
+            modalTitulo.textContent = titulo;
+            modalMensagem.textContent = mensagem;
+            acaoConfirmada = acao;
+            modalConfirmacao.hidden = false;
+            modalConfirmar.focus();
+        }
+
+        function fecharModalConfirmacao() {
+            modalConfirmacao.hidden = true;
+            acaoConfirmada = null;
+        }
+
+        modalConfirmar.addEventListener('click', function () {
+            if (acaoConfirmada) acaoConfirmada();
+            fecharModalConfirmacao();
+        });
+        modalCancelar.addEventListener('click', fecharModalConfirmacao);
+        modalConfirmacao.addEventListener('click', function (evento) {
+            if (evento.target === modalConfirmacao) fecharModalConfirmacao();
+        });
+        document.addEventListener('keydown', function (evento) {
+            if (!modalConfirmacao.hidden && evento.key === 'Escape') fecharModalConfirmacao();
+        });
+
+        document.addEventListener('click', function (evento) {
+            var el = evento.target.closest('[data-confirmar]');
+            if (!el) return;
+
+            evento.preventDefault();
+            var mensagem = el.dataset.confirmar;
+            var titulo = el.dataset.confirmarTitulo || 'Confirmar ação';
+
+            abrirModalConfirmacao(titulo, mensagem, function () {
+                var form = el.closest('form');
+                if (form && (el.tagName === 'BUTTON' || el.type === 'submit')) {
+                    if (form.requestSubmit) {
+                        form.requestSubmit(el);
+                    } else {
+                        form.submit();
+                    }
+                    return;
+                }
+                if (el.tagName === 'A' && el.href) {
+                    window.location = el.href;
+                }
+            });
+        });
+    }
+    // Modal de motivo: botão com data-motivo abre uma janela pedindo um texto
+    // (ex.: rejeitar documento). O texto vai para o input escondido do próprio
+    // form -- indicado por data-motivo-campo, padrão "motivo" -- e só então o
+    // form é enviado. Sem texto, não envia.
+    var modalMotivo = document.getElementById('modal-motivo');
+    if (modalMotivo) {
+        var motivoTitulo = document.getElementById('modal-motivo-titulo');
+        var motivoMensagem = document.getElementById('modal-motivo-mensagem');
+        var motivoTexto = document.getElementById('modal-motivo-texto');
+        var motivoErro = document.getElementById('modal-motivo-erro');
+        var motivoConfirmar = document.getElementById('modal-motivo-confirmar');
+        var motivoCancelar = document.getElementById('modal-motivo-cancelar');
+        var botaoMotivo = null;
+
+        function fecharModalMotivo() {
+            modalMotivo.hidden = true;
+            motivoErro.hidden = true;
+            botaoMotivo = null;
+        }
+
+        motivoCancelar.addEventListener('click', fecharModalMotivo);
+        modalMotivo.addEventListener('click', function (evento) {
+            if (evento.target === modalMotivo) fecharModalMotivo();
+        });
+        document.addEventListener('keydown', function (evento) {
+            if (!modalMotivo.hidden && evento.key === 'Escape') fecharModalMotivo();
+        });
+
+        motivoConfirmar.addEventListener('click', function () {
+            if (!botaoMotivo) return;
+
+            var texto = motivoTexto.value.trim();
+            if (!texto) {
+                motivoErro.hidden = false;
+                motivoTexto.focus();
+                return;
+            }
+
+            var form = botaoMotivo.closest('form');
+            var campo = form && form.querySelector(
+                '[name="' + (botaoMotivo.dataset.motivoCampo || 'motivo') + '"]'
+            );
+            if (!form || !campo) return;
+
+            campo.value = texto;
+            var botao = botaoMotivo;
+            fecharModalMotivo();
+            if (form.requestSubmit) {
+                form.requestSubmit(botao);
+            } else {
+                form.submit();
+            }
+        });
+
+        document.addEventListener('click', function (evento) {
+            var el = evento.target.closest('[data-motivo]');
+            if (!el) return;
+
+            evento.preventDefault();
+            botaoMotivo = el;
+            motivoTitulo.textContent = el.dataset.motivoTitulo || 'Motivo';
+            motivoMensagem.textContent = el.dataset.motivo;
+            motivoTexto.value = '';
+            motivoTexto.placeholder = el.dataset.motivoPlaceholder || '';
+            motivoErro.hidden = true;
+            modalMotivo.hidden = false;
+            motivoTexto.focus();
+        });
+    }
+
 });

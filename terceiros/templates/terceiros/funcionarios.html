@@ -1,0 +1,134 @@
+{% extends 'terceiros/base_terceiro.html' %}
+{% load rh_icons %}
+
+{#
+Aba "Funcionários": a equipe alocada na Sotrigo. Cada pessoa abre na tela de
+detalhe, onde ficam os documentos dela.
+
+O checklist do que falta aparece aqui mesmo, e não só no detalhe, porque é o que
+trava a validação da prestadora -- o responsável precisa ver de relance quem
+ainda está incompleto.
+#}
+
+{% block titulo %}
+Funcionários
+{% endblock %}
+
+{% block conteudo_terceiro %}
+<h1>Funcionários</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ empresa.razao_social }} · {{ resumo_equipe|length }} pessoa{{ resumo_equipe|length|pluralize }} na equipe
+</p>
+
+{% if not equipe_editavel %}
+<div class="alert alert--aviso">
+    {% icon 'alert-triangle' %}
+    <span>
+        A equipe é cadastrada depois que o RH da Sotrigo gerar o contrato.
+        Enquanto isso, complete os dados em <a href="{% url 'terceiros:minha_empresa' %}">Minha Empresa</a>.
+    </span>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Equipe</span>
+        {% if equipe_editavel %}
+        <a href="{% url 'terceiros:cadastrar_colaborador' %}" class="btn btn-sm btn-outline">
+            {% icon 'plus' %} Adicionar pessoa
+        </a>
+        {% endif %}
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.82rem; margin-bottom: 14px;">
+        De cada pessoa: contrato assinado, documento pessoal, selfie, ASO, comprovante de EPI e ao
+        menos uma ordem de serviço. Enquanto faltar algum, a prestadora não é validada.
+    </p>
+
+    <div class="lista-cards">
+        {% for item in resumo_equipe %}
+        <div class="item-card{% if equipe_editavel %} item-card--acoes{% endif %}" style="flex-wrap: wrap;">
+            <a href="{% url 'terceiros:detalhe_colaborador' item.colaborador.id %}" class="item-card__principal">
+                <span class="avatar avatar--sm">{{ item.colaborador.iniciais }}</span>
+                <div class="item-card__corpo">
+                    <div class="item-card__titulo">{{ item.colaborador.nome }}</div>
+                    <div class="item-card__subtitulo">
+                        {{ item.colaborador.cpf_formatado }}{% if item.colaborador.funcao %} · {{ item.colaborador.funcao }}{% endif %}
+                    </div>
+                    <div class="item-card__subtitulo">
+                        {% if item.tipos_pendentes %}
+                            Faltam {{ item.tipos_pendentes|length }} documento{{ item.tipos_pendentes|length|pluralize }} de cadastro
+                        {% else %}
+                            Documentação de cadastro completa
+                        {% endif %}
+                        · {{ item.ordens_servico|length }} ordem{{ item.ordens_servico|length|pluralize:"ns" }} de serviço
+                    </div>
+                </div>
+                <div class="item-card__extra">
+                    {% if item.colaborador.documentos_todos_aprovados %}
+                    <span class="badge-status badge-status--aprovado">Aprovado</span>
+                    {% elif not item.tipos_pendentes %}
+                    <span class="badge-status badge-status--pendente">Em análise</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">Incompleto</span>
+                    {% endif %}
+                    {% icon 'chevron-right' %}
+                </div>
+            </a>
+
+            {% if item.tipos_pendentes %}
+            <div class="checklist-docs" style="width: 100%; border-top: 1px solid var(--color-border); padding-top: 10px;">
+                {% for tipo, rotulo in item.tipos_pendentes %}
+                <div class="checklist-docs__item checklist-docs__item--pendente">
+                    {% icon 'alert-triangle' %}
+                    <a href="{% url 'terceiros:detalhe_colaborador' item.colaborador.id %}?tipo={{ tipo }}">
+                        {{ rotulo }} não enviado
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if equipe_editavel %}
+            <div class="item-card__acoes">
+                <a href="{% url 'terceiros:editar_colaborador' item.colaborador.id %}" class="btn-outline btn-sm">
+                    {% icon 'pen' %} Editar
+                </a>
+                <form method="post" action="{% url 'terceiros:remover_colaborador' item.colaborador.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-outline btn-sm"
+                            data-confirmar="Remover {{ item.colaborador.nome }} da equipe? Os documentos já enviados por essa pessoa são apagados junto."
+                            data-confirmar-titulo="Remover da equipe">
+                        {% icon 'trash' %} Remover
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}
+        <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+            {% if equipe_editavel %}
+                Nenhuma pessoa cadastrada ainda.
+            {% else %}
+                Você poderá cadastrar a equipe depois que o contrato for gerado pelo RH.
+            {% endif %}
+        </p>
+        {% endfor %}
+    </div>
+
+    {% if empresa.status == 'aguardando_assinatura' and resumo_equipe %}
+    <form method="post" action="{% url 'terceiros:enviar_para_validacao' %}" style="margin-top: 16px;">
+        {% csrf_token %}
+        <button type="submit" class="btn-primario" {% if not pode_enviar_para_validacao %}disabled title="Complete a documentação de cadastro de cada pessoa da equipe antes de mandar para o RH."{% endif %}
+                data-confirmar="Enviar a documentação para validação do RH da Sotrigo?"
+                data-confirmar-titulo="Enviar para validação">
+            {% icon 'check-square' %} Enviar para validação do RH
+        </button>
+    </form>
+    {% if not pode_enviar_para_validacao %}
+    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+        Disponível quando cada pessoa da equipe tiver a documentação de cadastro completa.
+    </p>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

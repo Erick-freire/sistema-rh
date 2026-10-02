@@ -1,0 +1,100 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Terceiros
+{% endblock %}
+
+{% block conteudo %}
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+    <h1>Empresas terceiras</h1>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'terceiros:listar_clausulas' %}" class="btn-outline btn-sm">{% icon 'file' %} Biblioteca de cláusulas</a>
+        <a href="{% url 'terceiros:cadastrar_empresa' %}" class="btn btn-novo" style="margin-bottom: 0;">{% icon 'plus' %} Nova empresa</a>
+    </div>
+</div>
+
+<div class="acoes-linha">
+    <form method="get" class="form-busca">
+        <input type="hidden" name="status" value="{{ status_filtro }}">
+        <div class="form-busca__campo">
+            {% icon 'search' %}
+            <input type="text" name="busca" placeholder="Buscar por razão social, nome fantasia ou CNPJ" value="{{ busca }}">
+        </div>
+        <button type="submit" class="btn-outline">Buscar</button>
+    </form>
+</div>
+
+<div class="filtros-status">
+    <a href="?status=em_andamento&busca={{ busca }}" class="chip{% if status_filtro == 'em_andamento' %} chip--ativo{% endif %}">Em andamento {{ contagem_em_andamento }}</a>
+    <a href="?status=ativo&busca={{ busca }}" class="chip{% if status_filtro == 'ativo' %} chip--ativo{% endif %}">Ativas {{ contagem_ativos }}</a>
+    <a href="?status=inativo&busca={{ busca }}" class="chip{% if status_filtro == 'inativo' %} chip--ativo{% endif %}">Inativas {{ contagem_inativos }}</a>
+</div>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th>Responsável</th>
+                <th>Equipe</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for empresa in pagina %}
+            <tr class="tabela-linha--link" data-href="{% url 'terceiros:detalhe_empresa' empresa.id %}">
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ empresa.iniciais }}</span>
+                        {{ empresa.nome_curto }}
+                    </span>
+                </td>
+                <td>{{ empresa.cnpj_formatado }}</td>
+                <td>{{ empresa.responsavel.nome|default:"—" }}</td>
+                <td>{{ empresa.total_colaboradores }}</td>
+                <td>
+                    <span class="badge-status badge-status--{{ empresa.status }}">{{ empresa.get_status_display }}</span>
+                </td>
+                <td>{% icon 'chevron-right' %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhuma empresa terceira encontrada.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for empresa in pagina %}
+    <a href="{% url 'terceiros:detalhe_empresa' empresa.id %}" class="item-card">
+        <span class="avatar">{{ empresa.iniciais }}</span>
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">{{ empresa.nome_curto }}</div>
+            <div class="item-card__subtitulo">{{ empresa.cnpj_formatado }}</div>
+            <div class="item-card__subtitulo">{{ empresa.total_colaboradores }} na equipe</div>
+        </div>
+        <div class="item-card__extra">
+            <span class="badge-status badge-status--{{ empresa.status }}">{{ empresa.get_status_display }}</span>
+            {% icon 'chevron-right' %}
+        </div>
+    </a>
+    {% empty %}
+    <p>Nenhuma empresa terceira encontrada.</p>
+    {% endfor %}
+</div>
+
+<div class="paginacao">
+    {% if pagina.has_previous %}
+        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.previous_page_number }}" class="pagina-link">‹ Anterior</a>
+    {% endif %}
+    <span class="pagina-atual">{{ pagina.number }}</span>
+    {% if pagina.has_next %}
+        <a href="?status={{ status_filtro }}&busca={{ busca }}&page={{ pagina.next_page_number }}" class="pagina-link">Próxima ›</a>
+    {% endif %}
+</div>
+{% endblock %}

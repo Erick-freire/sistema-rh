@@ -1,0 +1,70 @@
+<html>
+<head>
+<style>
+    @page { size: A4; margin: 2.5cm; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #222; }
+    .logo { width: 140px; margin-bottom: 20px; }
+    h1 { text-align: center; font-size: 14pt; text-transform: uppercase; }
+    p { text-align: justify; line-height: 1.5; }
+    .negrito { font-weight: bold; }
+    .assinatura { margin-top: 60px; }
+    .linha-assinatura { border-top: 1px solid #000; width: 350px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<img class="logo" src="{{ caminho_logo }}">
+
+<h1>Termo de Guarda e Responsabilidade por Uso de Equipamento</h1>
+
+<p>
+    Eu, <span class="negrito">{{ funcionario.nome }}</span>, inscrito no CPF nº
+    <span class="negrito">{{ cpf_formatado }}</span>, função
+    <span class="negrito">{{ funcionario.cargo }}</span>, venho para os devidos fins DECLARAR
+    que a empresa, <span class="negrito">SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA</span>,
+    inscrita do CNPJ nº <span class="negrito">04.577.125/0001-30</span>, na qualidade de minha
+    Empregadora, está entregando nesta data, a título de empréstimo, o(s) equipamento(s)
+    abaixo discriminado(s) em perfeito estado de conservação e funcionamento, me
+    comprometendo a mantê-lo nestas mesmas características, ficando ciente que:
+</p>
+
+<p>
+    I - Assumo integral e exclusiva responsabilidade civil, criminal, administrativa e ambiental
+    pelo uso e operação do equipamento disponibilizado pela SOTRIGO SOCIEDADE TRITICOLA DE
+    GOIAS LTDA.
+</p>
+
+<p>
+    Fico responsável pelo ressarcimento de quaisquer danos, avarias, multas ou despesas
+    decorrentes de acidentes envolvendo o equipamento, incluindo taxas administrativas e
+    honorários advocatícios que a empresa venha a suportar. Desde já, autorizo expressamente
+    que tais valores sejam descontados de minha folha de pagamento ou, se aplicável, do
+    montante devido em minha rescisão contratual, conforme permitido pelos artigos 462 e 477
+    da Consolidação das Leis do Trabalho (CLT), respeitando os limites legais.
+</p>
+
+<p>
+    Declaro estar ciente das implicações desta cláusula e da possibilidade de responder perante
+    os órgãos competentes em caso de infração às normas civis, penais e ambientais aplicáveis,
+    em especial o Código Civil (arts. 186 e 927), o Código Penal (arts. 163 e 347) e a
+    legislação ambiental vigente (Lei nº 9.605/1998).
+</p>
+
+<p class="negrito">EQUIPAMENTOS ENTREGUES</p>
+
+<p>
+    {% for item in itens %}
+        <span class="negrito">{{ item.item_catalogo.nome }}{% if item.descricao %}, {{ item.descricao }}{% endif %}{% if item.numero_serie %}, número de série {{ item.numero_serie }}{% endif %}</span>{% if item.quantidade > 1 %} (quantidade: {{ item.quantidade }}){% endif %}{% if not forloop.last %}; {% endif %}
+    {% endfor %}
+</p>
+
+<p>Anápolis - GO, {{ data_extenso }}.</p>
+
+<div class="assinatura">
+    <br>
+    <hr class="linha-assinatura">
+    <p class="negrito">COLABORADOR</p>
+</div>
+
+</body>
+</html>

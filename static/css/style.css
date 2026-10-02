@@ -554,12 +554,16 @@ button:focus-visible, .btn:focus-visible {
 .badge-status--sugestao,
 .badge-status--aguardando,
 .badge-status--pendente_documentos,
+.badge-status--pendente_cadastro,
 .badge-status--aguardando_contrato,
 .badge-status--aguardando_assinatura,
 .badge-status--em_validacao { background-color: var(--color-pending-bg); color: var(--color-pending); }
 .badge-status--inativo,
+.badge-status--devolvido_total,
+.badge-status--devolvido_parcial,
 .badge-status--adiada { background-color: var(--color-neutral-bg); color: var(--color-text-muted); }
 .badge-status--erro,
+.badge-status--extraviado,
 .badge-status--rejeitado { background-color: var(--color-error-bg); color: var(--color-error); }
 
 .mini-ponto-grid { display: flex; gap: 8px; }
@@ -678,6 +682,65 @@ a.item-card:hover, button.item-card:hover {
 .item-card__titulo { font-weight: 700; font-size: 0.95rem; }
 .item-card__subtitulo { font-size: 0.82rem; color: var(--color-text-muted); }
 .item-card__extra { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* Linha com ação própria (ex.: equipe do prestador): o miolo continua sendo um
+   link para a tela de detalhe, e os botões ficam fora dele -- <button> dentro
+   de <a> é HTML inválido e o clique disputaria com a navegação. */
+.item-card--acoes { gap: 16px; }
+.item-card__principal {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+    color: inherit;
+}
+.item-card__principal:hover { text-decoration: none; }
+.item-card__principal:hover .item-card__titulo { text-decoration: underline; }
+.item-card__acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.item-card__acoes form { margin: 0; }
+
+/* ---------- Linha de documento (análise do RH) ---------- */
+
+/* Nome de arquivo é texto longo e sem espaço para quebrar: sem `min-width: 0` e
+   reticências ele transborda o próprio bloco e passa por cima do selo de status
+   e dos botões. O selo e as ações andam em grupo, então quando a coluna aperta
+   descem juntos para a linha de baixo em vez de se espremerem. */
+.doc-linha {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--color-border);
+    padding-top: 10px;
+}
+.doc-linha__icone { display: flex; color: var(--color-text-muted); flex-shrink: 0; }
+.doc-linha__corpo { flex: 1 1 180px; min-width: 0; }
+.doc-linha__titulo { font-weight: 700; font-size: 0.88rem; }
+.doc-linha__sub {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.doc-linha__acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+.doc-linha__acoes form { margin: 0; }
+/* Selo tem `white-space: nowrap`: sem isto ele encolheria e o texto sairia da pílula. */
+.doc-linha__acoes .badge-status { flex-shrink: 0; }
+.doc-linha__motivo { flex-basis: 100%; font-size: 0.85rem; color: var(--color-error); }
 .item-card .icon { color: var(--color-text-muted); }
 
 .item-card--ponto { flex-wrap: wrap; row-gap: 10px; }
@@ -757,6 +820,64 @@ a.item-card:hover, button.item-card:hover {
     background-color: var(--color-error-bg);
     border-left-color: var(--color-error);
     color: var(--color-error);
+}
+
+/* ---------- Toasts (notificações flutuantes, substituem .message/.alert das messages) ---------- */
+
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    max-width: 400px;
+}
+
+.toast {
+    background: var(--color-surface);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    box-shadow: var(--shadow-md);
+    border-left: 4px solid var(--color-primary);
+    pointer-events: auto;
+    animation: toast-enter 0.25s ease-out;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.toast--success { border-left-color: var(--color-success); }
+.toast--error   { border-left-color: var(--color-error); }
+.toast--warning { border-left-color: var(--color-accent); }
+
+.toast__close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0;
+    margin-left: auto;
+}
+.toast__close:hover { background: none; color: var(--color-text); transform: none; box-shadow: none; }
+
+.toast--fadeout { animation: toast-exit 0.3s ease-in forwards; }
+
+@keyframes toast-enter {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-exit {
+    to { transform: translateX(120%); opacity: 0; }
+}
+
+@media (max-width: 640px) {
+    .toast-container { top: 10px; right: 10px; left: 10px; max-width: none; }
 }
 
 /* ---------- Barras de progresso ---------- */
@@ -1057,6 +1178,56 @@ a.stat-card:hover, button.stat-card:hover {
     margin-top: 20px;
 }
 
+.modal__mensagem { margin: 0 0 4px 0; color: var(--color-text); font-size: 0.92rem; }
+
+.btn-perigo { background-color: var(--color-error); }
+.btn-perigo:hover { background-color: #8F1E18; box-shadow: 0 8px 18px rgba(179, 38, 30, 0.25); }
+
+/* ---------- Modal de confirmação genérico (data-confirmar) ---------- */
+
+.modal-backdrop {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(43, 43, 39, 0.5);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 80;
+    animation: fade-in 0.15s ease-out;
+}
+
+.modal-backdrop[hidden] { display: none; }
+
+.modal-backdrop .modal { max-width: 440px; animation: modal-enter 0.2s ease-out; }
+
+/* O campo do modal de motivo fica fora de um <form>, então não pega as regras
+   de `form textarea`. */
+.modal__campo {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    resize: vertical;
+}
+.modal__campo:focus {
+    outline: none;
+    border-color: var(--color-primary-light);
+    box-shadow: 0 0 0 3px rgba(74, 122, 87, 0.18);
+}
+.modal__erro { margin: 6px 0 0; font-size: 0.82rem; color: var(--color-error); }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-enter {
+    from { transform: scale(0.95); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
 /* ---------- Tela de carregamento (formulários que demoram, ex.: Sincronizar do Ponto) ---------- */
 
 .overlay-carregando {
@@ -1294,4 +1465,114 @@ a.stat-card:hover, button.stat-card:hover {
         border-top: 1px solid var(--color-border);
         z-index: 20;
     }
+}
+
+/* ---------- Portal do Prestador (app terceiros) ---------- */
+/* O portal usa o mesmo shell do sistema principal (app-shell + sidebar), só com
+   outra sidebar -- ver terceiros/base_terceiro.html. Aqui fica apenas o que o
+   nome do portal exige a mais: "Portal do Prestador" não cabe no tamanho de
+   marca de "Sotrigo RH". */
+
+.sidebar__brand--compacto { font-size: 1.05rem; line-height: 1.25; }
+
+@media (max-width: 640px) {
+    /* Sem espaço para link + botões na mesma linha: as ações descem. */
+    .item-card--acoes { flex-wrap: wrap; }
+    .item-card--acoes .item-card__principal { flex: 1 1 100%; }
+    .item-card--acoes .item-card__acoes { width: 100%; }
+    .item-card--acoes .item-card__acoes > * { flex: 1; }
+    .item-card--acoes .item-card__acoes .btn-sm { width: 100%; justify-content: center; }
+}
+
+/* ---------- Comodatos ---------- */
+
+.busca-funcionario { position: relative; }
+
+.busca-funcionario__lista {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    max-height: 280px;
+    overflow-y: auto;
+    list-style: none;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+}
+
+.busca-funcionario__lista li {
+    padding: 9px 12px;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.busca-funcionario__lista li:hover,
+.busca-funcionario__lista li.ativo { background-color: var(--color-bg); }
+.busca-funcionario__lista li.vazio { color: var(--color-text-muted); cursor: default; }
+
+.tabela-itens-comodato th,
+.tabela-itens-comodato td { padding: 8px 10px; vertical-align: top; }
+.tabela-itens-comodato td input,
+.tabela-itens-comodato td select { min-width: 110px; }
+.tabela-itens-comodato input[name$="-quantidade"] { min-width: 72px; }
+.tabela-itens-comodato .col-excluir { width: 36px; padding-right: 0; }
+
+.btn-excluir-linha {
+    background: none;
+    border: none;
+    padding: 6px 4px;
+    color: var(--color-error);
+    font-weight: bold;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+}
+
+.linha-marcada-exclusao td:not(.col-excluir) {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+.linha-marcada-exclusao .btn-excluir-linha { color: var(--color-text-muted); }
+.btn-excluir-linha:hover { background: none; box-shadow: none; transform: none; }
+
+/* Janela de validação do termo (lista de comodatos). Fica abaixo do modal de
+   motivo (z-index 80), que abre por cima dela ao rejeitar. */
+.modal-backdrop.modal-termo { z-index: 70; }
+.modal-backdrop.modal-termo .modal { max-width: 900px; padding: 20px; }
+
+.modal-termo__pdf {
+    display: block;
+    width: 100%;
+    height: 70vh;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background-color: var(--color-bg);
+}
+
+.modal-termo .modal__header { margin-bottom: 12px; gap: 12px; }
+.modal-termo .modal__footer { flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.modal-termo__acoes { display: flex; gap: 12px; }
+.modal-termo__acoes[hidden] { display: none; }
+
+.btn-fechar-modal,
+.btn-fechar-modal:hover {
+    background: none;
+    border: none;
+    padding: 4px;
+    color: var(--color-text-muted);
+    box-shadow: none;
+    transform: none;
+}
+.btn-fechar-modal:hover { color: var(--color-text); }
+
+.linha-aguardando-rh { background-color: var(--color-pending-bg); }
+
+@media (max-width: 640px) {
+    .modal-termo__pdf { height: 55vh; }
+    .modal-termo__acoes { width: 100%; }
+    .modal-termo__acoes form, .modal-termo__acoes button { flex: 1; }
 }

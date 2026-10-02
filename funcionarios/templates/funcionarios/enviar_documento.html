@@ -8,12 +8,6 @@ Enviar Documento
 {% block conteudo %}
 <h1>Enviar documento</h1>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 <div class="card" style="max-width: 480px;">
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}

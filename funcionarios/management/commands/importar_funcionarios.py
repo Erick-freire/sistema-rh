@@ -35,6 +35,7 @@ class Command(BaseCommand):
         funcionarios_criados = 0
         funcionarios_atualizados = 0
         gestores_placeholder = 0
+        gestores_reaproveitados = 0
 
         try:
             with transaction.atomic():
@@ -89,9 +90,12 @@ class Command(BaseCommand):
                         gestor = placeholders_criados.get(chave)
 
                     if gestor is None:
-                        gestor = self._criar_gestor_placeholder(nome_responsavel)
+                        gestor, criado_agora = self._criar_gestor_placeholder(nome_responsavel)
                         placeholders_criados[chave] = gestor
-                        gestores_placeholder += 1
+                        if criado_agora:
+                            gestores_placeholder += 1
+                        else:
+                            gestores_reaproveitados += 1
 
                     setor.gestor = gestor
                     setor.save()
@@ -100,7 +104,8 @@ class Command(BaseCommand):
                     f'Setores criados: {setores_criados}\n'
                     f'Funcionários criados: {funcionarios_criados}\n'
                     f'Funcionários atualizados: {funcionarios_atualizados}\n'
-                    f'Gestores criados como placeholder: {gestores_placeholder}'
+                    f'Gestores criados como placeholder: {gestores_placeholder}\n'
+                    f'Gestores placeholder reaproveitados (já existiam): {gestores_reaproveitados}'
                 ))
 
                 if dry_run:
@@ -146,8 +151,22 @@ class Command(BaseCommand):
         return ''
 
     def _criar_gestor_placeholder(self, nome):
+        nome = nome.strip()
+
+        # Reaproveita um placeholder já existente com esse nome -- sem isso, rodar a
+        # importação duas vezes cria um segundo placeholder para a mesma pessoa.
+        existente = Funcionario.objects.filter(
+            nome__iexact=nome,
+            cargo='Gestor (cadastro pendente)',
+        ).order_by('pk').first()
+        if existente:
+            return existente, False
+
         contador = Funcionario.objects.filter(cargo='Gestor (cadastro pendente)').count() + 1
-        return Funcionario.objects.create(
+        while Funcionario.objects.filter(matricula=f'PENDENTE-{contador}').exists():
+            contador += 1
+
+        novo = Funcionario.objects.create(
             nome=nome,
             cpf=f'{contador:011d}',
             matricula=f'PENDENTE-{contador}',
@@ -155,3 +174,4 @@ class Command(BaseCommand):
             setor=Setor.objects.get_or_create(nome='A definir')[0],
             status='ativo',
         )
+        return novo, True

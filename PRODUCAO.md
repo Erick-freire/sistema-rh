@@ -12,8 +12,12 @@ RECAPTCHA_SECRET_KEY=<da conta do reCAPTCHA>
 ATRAS_DE_PROXY=True                          # só se houver IIS/nginx com HTTPS na frente (seção 2)
 ```
 
-Com `DEBUG=False`, os cookies de sessão/CSRF e o redirect para HTTPS
-(`SECURE_SSL_REDIRECT`, HSTS) já ligam sozinhos — ver `config/settings.py`.
+Com `DEBUG=False`, os cookies de sessão/CSRF seguros já ligam sozinhos.
+O redirect para HTTPS (`SECURE_SSL_REDIRECT`) e o HSTS **não** dependem de
+`DEBUG`: só ligam com `ATRAS_DE_PROXY=True`, que deve ficar `True` apenas
+quando o Nginx/IIS com certificado real estiver na frente do sistema. Assim
+dá para testar `DEBUG=False` localmente com o runserver em HTTP sem o
+navegador passar a forçar HTTPS em localhost — ver `config/settings.py`.
 
 ## 2. Certificado SSL / HTTPS
 

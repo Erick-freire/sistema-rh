@@ -1,4 +1,9 @@
+import os
+
 from django import template
+from django.conf import settings
+from django.contrib.staticfiles.finders import find
+from django.templatetags.static import static
 from django.utils.safestring import mark_safe
 
 from ..utils import DIAS_SEMANA
@@ -33,6 +38,8 @@ ICONS = {
     'dots': '<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>',
     'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
     'key': '<circle cx="8" cy="15" r="3.3"/><path d="M10.4 12.6 20 3"/><path d="M15.2 8.2 17.6 10.6"/><path d="M18.4 7 20 8.6"/>',
+    'trash': '<path d="M4 7h16"/><path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L18.5 7"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    'briefcase': '<rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5"/><path d="M3 12.5h18"/>',
 }
 
 
@@ -71,3 +78,24 @@ def icon(name, css_class=''):
         f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
         f'aria-hidden="true">{inner}</svg>'
     )
+
+_VERSAO_ESTATICOS = {}
+
+
+@register.simple_tag
+def static_v(caminho):
+    """
+    `{% static %}` com a data de modificação do arquivo na query.
+
+    Os arquivos não têm hash no nome, então trocar o CSS não muda a URL -- e o
+    navegador (ou o cache do service worker) continua servindo a versão antiga
+    até alguém limpar na mão. Com o mtime na URL, cada alteração vira endereço
+    novo e o cache velho deixa de ser encontrado sozinho.
+    """
+    if settings.DEBUG or caminho not in _VERSAO_ESTATICOS:
+        absoluto = find(caminho)
+        _VERSAO_ESTATICOS[caminho] = int(os.path.getmtime(absoluto)) if absoluto else ''
+
+    versao = _VERSAO_ESTATICOS[caminho]
+    url = static(caminho)
+    return f'{url}?v={versao}' if versao else url

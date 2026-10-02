@@ -1,0 +1,130 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Gerar contrato — {{ empresa.nome_curto }}
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'terceiros:detalhe_empresa' empresa.id %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Gerar contrato
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ empresa.razao_social }} · {{ empresa.cnpj_formatado }} · responsável {{ responsavel.nome }}
+</p>
+
+<form method="post" data-loading-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="duas-colunas">
+        <div>
+            <div class="card">
+                <div class="card__header">
+                    <span class="card__title">O que muda em cada prestador</span>
+                </div>
+                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+                    Estes quatro campos entram em lugares fixos do contrato. O resto do texto vem da
+                    biblioteca de cláusulas, ao lado.
+                </p>
+
+                <label for="{{ form.objeto_servico.id_for_label }}">Objeto do serviço</label>
+                {{ form.objeto_servico }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                    O que a prestadora vai fazer. Uma linha por parágrafo.
+                </p>
+                {{ form.objeto_servico.errors }}
+
+                <label for="{{ form.composicao_equipe.id_for_label }}" style="margin-top: 16px;">Composição da equipe</label>
+                {{ form.composicao_equipe }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                    Quantas pessoas, quais funções, em que regime.
+                </p>
+                {{ form.composicao_equipe.errors }}
+
+                <label for="{{ form.condicoes_remuneracao.id_for_label }}" style="margin-top: 16px;">Condições de remuneração</label>
+                {{ form.condicoes_remuneracao }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                    Valor, forma e prazo de pagamento, reajuste, o que estiver combinado.
+                </p>
+                {{ form.condicoes_remuneracao.errors }}
+
+                <label for="{{ form.prazo_meses.id_for_label }}" style="margin-top: 16px;">Prazo (meses)</label>
+                {{ form.prazo_meses }}
+                {{ form.prazo_meses.errors }}
+            </div>
+
+            <div class="card">
+                <div class="card__header">
+                    <span class="card__title">Cláusulas avulsas</span>
+                </div>
+                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+                    Cláusulas específicas deste contrato, que não estão na biblioteca. Uma por linha —
+                    cada linha vira uma cláusula numerada no final do contrato.
+                </p>
+                {{ form.clausulas_avulsas }}
+                {{ form.clausulas_avulsas.errors }}
+
+                <label style="display: flex; align-items: center; gap: 8px; margin-top: 14px; font-weight: 400;">
+                    {{ form.salvar_avulsas_na_biblioteca }}
+                    <span style="font-size: 0.88rem;">Guardar na biblioteca para reaproveitar depois</span>
+                </label>
+                {{ form.salvar_avulsas_na_biblioteca.errors }}
+
+                <div style="margin-top: 12px;">
+                    <label for="{{ form.titulo_avulsas.id_for_label }}">Título para guardar na biblioteca</label>
+                    {{ form.titulo_avulsas }}
+                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                        Só é usado se você marcar a opção acima.
+                    </p>
+                    {{ form.titulo_avulsas.errors }}
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="card">
+                <div class="card__header">
+                    <span class="card__title">Cláusulas da biblioteca</span>
+                    <a href="{% url 'terceiros:listar_clausulas' %}" class="card__link" target="_blank">Editar biblioteca</a>
+                </div>
+                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+                    Vêm todas marcadas. Desmarque o que não se aplica a este prestador.
+                    A numeração do contrato é recalculada conforme a seleção.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem;">
+                    {{ form.clausulas_biblioteca }}
+                </div>
+                {{ form.clausulas_biblioteca.errors }}
+            </div>
+
+            <div class="card">
+                <div class="card__title" style="margin-bottom: 8px;">Marcadores aceitos no texto das cláusulas</div>
+                <div class="checklist-docs">
+                    {% for marcador, descricao in marcadores %}
+                    <div class="checklist-docs__item" style="color: var(--color-text-muted);">
+                        <code style="font-family: var(--font-mono);">{{ marcador }}</code> — {{ descricao }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="alert alert--aviso" style="margin: 0;">
+                    {% icon 'alert-triangle' %}
+                    <span>
+                        O Termo de Compromisso de Confidencialidade é anexado automaticamente ao final do PDF —
+                        não precisa (nem pode) ser selecionado aqui.
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 4px;">
+        <button type="submit" class="btn-primario">{% icon 'file' %} Gerar contrato em PDF</button>
+        <a href="{% url 'terceiros:detalhe_empresa' empresa.id %}" class="btn-outline">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

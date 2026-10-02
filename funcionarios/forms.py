@@ -1,5 +1,6 @@
 from django import forms
-from .models import Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento
+from .models import Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento, TermoComodato, ItemComodato, ItemCatalogoComodato
+from django.forms import BaseInlineFormSet, inlineformset_factory
 
 
 class MeuPerfilForm(forms.ModelForm):
@@ -117,6 +118,17 @@ class SolicitarFeriasForm(forms.ModelForm):
         model = SolicitacaoFerias
         fields = ['data_solicitada', 'dias_solicitados']
 
+    def clean_data_solicitada(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        data = self.cleaned_data['data_solicitada']
+        minimo = timezone.now().date() + timedelta(days=30)
+        if data < minimo:
+            raise forms.ValidationError(
+                'A data de início das férias deve ser pelo menos 30 dias após hoje.'
+            )
+        return data
+
 
 class ProporOutraDataForm(forms.Form):
     data_solicitada = forms.DateField(
@@ -125,6 +137,17 @@ class ProporOutraDataForm(forms.Form):
         label='Nova data desejada',
     )
     dias_solicitados = forms.IntegerField(min_value=1, label='Quantidade de dias')
+
+    def clean_data_solicitada(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        data = self.cleaned_data['data_solicitada']
+        minimo = timezone.now().date() + timedelta(days=30)
+        if data < minimo:
+            raise forms.ValidationError(
+                'A data de início das férias deve ser pelo menos 30 dias após hoje.'
+            )
+        return data
 
 
 class SugerirAlteracaoForm(forms.Form):
@@ -143,3 +166,95 @@ class AvisoFeriasForm(forms.Form):
         label='Data prevista para as férias',
     )
     mensagem = forms.CharField(widget=forms.Textarea, required=False, label='Mensagem (opcional)')
+    
+class TermoComodatoForm(forms.ModelForm):
+    data_emprestimo = forms.DateField(
+        widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'),
+        label='Data do empréstimo',
+    )
+
+    class Meta:
+        model = TermoComodato
+        fields = ['funcionario','modalidade','data_emprestimo']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['funcionario'].queryset = Funcionario.objects.exclude(status='inativo').order_by('nome')
+
+
+class ItemComodatoForm(forms.ModelForm):
+    numero_serie = forms.CharField(required=False, max_length=50, label='Nº de série / IMEI')
+    descricao = forms.CharField(
+        label='Detalhes (cor, modelo, etc.)',
+        required=False,
+        max_length=200,
+    )
+
+    class Meta:
+        model = ItemComodato
+        fields = ['item_catalogo', 'descricao', 'numero_serie', 'tamanho', 'quantidade', 'valor_unitario']
+        labels = {'item_catalogo': 'Item'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['item_catalogo'].queryset = ItemCatalogoComodato.objects.filter(ativo=True)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('DELETE'):
+            return cleaned_data
+
+        # Linhas extras intocadas nem chegam aqui (o formset as ignora); se a linha
+        # foi preenchida, o item do catálogo é obrigatório.
+        if not cleaned_data.get('item_catalogo'):
+            self.add_error('item_catalogo', 'Selecione o item.')
+        return cleaned_data
+
+
+class BaseItemComodatoFormSet(BaseInlineFormSet):
+    # A view define antes do is_valid(), a partir do form do cabeçalho.
+    modalidade = None
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+
+        linhas = [
+            f for f in self.forms
+            if f.has_changed() and not self._should_delete_form(f)
+        ]
+        if not linhas:
+            raise forms.ValidationError('Adicione pelo menos um item ao comodato.')
+
+        if not self.modalidade:
+            return
+
+        for f in linhas:
+            item = f.cleaned_data.get('item_catalogo')
+            if item and item.modalidade != self.modalidade:
+                f.add_error('item_catalogo', 'Este item não pertence à modalidade escolhida.')
+
+            # Tamanho só vale para uniforme e nº de série só para equipamento
+            # (valor vale para os dois): descarta o que não se aplica, mesmo que tenha vindo no POST.
+            if self.modalidade == 'uniforme':
+                f.cleaned_data['numero_serie'] = ''
+                f.instance.numero_serie = ''
+            else:
+                f.cleaned_data['tamanho'] = ''
+                f.instance.tamanho = ''
+
+                # Um nº de série identifica um único aparelho.
+                if f.cleaned_data.get('numero_serie') and f.cleaned_data.get('quantidade') != 1:
+                    f.add_error('quantidade', 'Com nº de série, a quantidade deve ser 1 (use uma linha por aparelho).')
+
+
+ItemComodatoFormSet = inlineformset_factory(
+        TermoComodato,
+        ItemComodato,
+        form=ItemComodatoForm,
+        formset=BaseItemComodatoFormSet,
+        fields=['item_catalogo', 'descricao', 'numero_serie', 'tamanho', 'quantidade', 'valor_unitario'],
+        extra=5,
+        can_delete=True,
+    )

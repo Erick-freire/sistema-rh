@@ -7,14 +7,6 @@
 {% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <div class="table-responsive desktop-only">
     <table>
         <thead>
@@ -44,7 +36,9 @@
                     <div style="display: flex; gap: 6px;">
                         <form method="post" action="{% url 'ponto:aprovar_ajuste' ajuste.id %}">
                             {% csrf_token %}
-                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
+                            <button type="submit" class="btn-outline btn-sm"
+                                    data-confirmar="Aprovar ajuste solicitado por {{ ajuste.funcionario.nome }} em {{ ajuste.data|date:'d/m/Y' }}?"
+                                    data-confirmar-titulo="Aprovar ajuste">Aprovar</button>
                         </form>
                         <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-{{ ajuste.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
                     </div>
@@ -52,7 +46,9 @@
                         <form method="post" action="{% url 'ponto:rejeitar_ajuste' ajuste.id %}">
                             {% csrf_token %}
                             {{ form_rejeicao.observacao_rh }}
-                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;">Confirmar rejeição</button>
+                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;"
+                                    data-confirmar="Rejeitar o ajuste solicitado por {{ ajuste.funcionario.nome }} em {{ ajuste.data|date:'d/m/Y' }}?"
+                                    data-confirmar-titulo="Rejeitar ajuste">Confirmar rejeição</button>
                         </form>
                     </div>
                 </td>
@@ -87,7 +83,9 @@
         <div style="display: flex; gap: 8px;">
             <form method="post" action="{% url 'ponto:aprovar_ajuste' ajuste.id %}" style="flex: 1;">
                 {% csrf_token %}
-                <button type="submit" class="btn-outline btn-bloco">Aprovar</button>
+                <button type="submit" class="btn-outline btn-bloco"
+                        data-confirmar="Aprovar ajuste solicitado por {{ ajuste.funcionario.nome }} em {{ ajuste.data|date:'d/m/Y' }}?"
+                        data-confirmar-titulo="Aprovar ajuste">Aprovar</button>
             </form>
             <button type="button" class="btn-outline btn-bloco" style="flex: 1;" data-toggle-alvo="rejeitar-mobile-{{ ajuste.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
         </div>
@@ -95,7 +93,9 @@
             <form method="post" action="{% url 'ponto:rejeitar_ajuste' ajuste.id %}">
                 {% csrf_token %}
                 {{ form_rejeicao.observacao_rh }}
-                <button type="submit" class="btn-outline btn-bloco" style="margin-top: 8px;">Confirmar rejeição</button>
+                <button type="submit" class="btn-outline btn-bloco" style="margin-top: 8px;"
+                        data-confirmar="Rejeitar o ajuste solicitado por {{ ajuste.funcionario.nome }} em {{ ajuste.data|date:'d/m/Y' }}?"
+                        data-confirmar-titulo="Rejeitar ajuste">Confirmar rejeição</button>
             </form>
         </div>
     </div>

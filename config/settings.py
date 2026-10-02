@@ -15,7 +15,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1,192.168.0.56',
+    default='localhost,127.0.0.1,192.168.0.228',
     cast=Csv(),
 )
 
@@ -24,15 +24,22 @@ ALLOWED_HOSTS = config(
 # CSRF_TRUSTED_ORIGINS=https://rh.sotrigo.com.br
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
-# Segurança de cookies e transporte — só entram em vigor quando DEBUG=False
-# (em produção, defina DEBUG=False no .env para ativar HTTPS/cookies seguros)
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+ATRAS_DE_PROXY = config('ATRAS_DE_PROXY', default=False, cast=bool)
+
+# Cookies com flag Secure só são aceitos pelo navegador em HTTPS -- em HTTP puro
+# (runserver/waitress direto no IP) o cookie de CSRF é descartado e todo login
+# falha com 403. Por isso dependem de ATRAS_DE_PROXY (HTTPS de verdade), não de DEBUG.
+SESSION_COOKIE_SECURE = ATRAS_DE_PROXY
+CSRF_COOKIE_SECURE = ATRAS_DE_PROXY
 CSRF_COOKIE_HTTPONLY = True
-SECURE_SSL_REDIRECT = not DEBUG
-SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# SECURE_SSL_REDIRECT e HSTS dependem de ATRAS_DE_PROXY (não de DEBUG), porque
+# testar DEBUG=False localmente sem um proxy HTTPS de verdade quebra o runserver
+# e o navegador passa a forçar HTTPS em localhost via HSTS até ser limpo manualmente.
+SECURE_SSL_REDIRECT = ATRAS_DE_PROXY
+SECURE_HSTS_SECONDS = 31536000 if ATRAS_DE_PROXY else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = ATRAS_DE_PROXY
 
 # Ativar no .env (ATRAS_DE_PROXY=True) só quando o Django estiver atrás de um
 # proxy reverso (IIS/nginx) que já termina o TLS com um certificado real e
@@ -41,7 +48,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 # e entra em loop de redirecionamento.
 # NUNCA ativar isso com o Django exposto direto (sem proxy na frente):
 # qualquer cliente poderia forjar esse header e enganar o redirect de HTTPS.
-if config('ATRAS_DE_PROXY', default=False, cast=bool):
+if ATRAS_DE_PROXY:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     USE_X_FORWARDED_HOST = True
 
@@ -58,10 +65,13 @@ INSTALLED_APPS = [
     'funcionarios',
     'integracao_gov',
     'ponto',
+    'terceiros',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Serve /static/ com DEBUG=False (o Django sozinho só serve estáticos em DEBUG)
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -144,6 +154,9 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+# Serve direto das pastas de origem (static/ e apps), sem precisar rodar
+# collectstatic a cada mudança -- basta reiniciar o servidor.
+WHITENOISE_USE_FINDERS = True
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 

@@ -10,7 +10,10 @@ from django.urls import reverse
 from datetime import date
 
 from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
-from .models import Atestado, Documento, Funcionario, Setor, TipoDocumento, Usuario
+from .models import (
+    Atestado, Documento, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, TermoComodato,
+    TipoDocumento, Usuario,
+)
 
 
 def _dados_cadastro(**kwargs):
@@ -462,3 +465,360 @@ class LancarAtestadoViewTests(TestCase):
         })
 
         self.assertFalse(Atestado.objects.filter(funcionario=self.funcionario).exists())
+
+class ServiceWorkerTests(TestCase):
+    """
+    O service worker só pode guardar arquivo estático.
+
+    Página HTML sai do servidor amarrada a quem pediu -- token CSRF do cookie
+    daquele momento e dados da sessão. Guardar e reservir uma cópia derrubava o
+    login com 403 ("CSRF token from POST incorrect") e, no aparelho
+    compartilhado, mostraria a tela de um usuário para o próximo.
+    """
+
+    def test_service_worker_e_servido_com_escopo_na_raiz(self):
+        resposta = self.client.get(reverse('service_worker'))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta['Service-Worker-Allowed'], '/')
+
+    def test_service_worker_nao_guarda_html_em_cache(self):
+        script = self.client.get(reverse('service_worker')).content.decode('utf-8')
+
+        # O único `cache.put` do script tem de estar dentro do ramo de
+        # /static/ e /media/, e não no caminho de navegação.
+        trecho_navegacao = script.split("url.pathname.startsWith('/static/')")[-1]
+        trecho_navegacao = trecho_navegacao.split('return;', 1)[-1]
+
+        self.assertNotIn('.put(', trecho_navegacao)
+        self.assertIn('PAGINA_OFFLINE', trecho_navegacao)
+
+
+class CriarComodatoViewTests(TestCase):
+    """RH cria um comodato (cabeçalho + itens) numa única submissão."""
+
+    def setUp(self):
+        setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=setor, status='ativo',
+        )
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+        self.client.force_login(self.user_rh)
+
+        self.camisa = ItemCatalogoComodato.objects.get(nome='Camisa Uniforme')
+        self.celular = ItemCatalogoComodato.objects.get(nome='Celular')
+
+    def _post(self, modalidade, linhas):
+        dados = {
+            'funcionario': self.funcionario.id, 'modalidade': modalidade, 'data_emprestimo': '2026-10-01',
+            'itens-TOTAL_FORMS': '5', 'itens-INITIAL_FORMS': '0',
+            'itens-MIN_NUM_FORMS': '0', 'itens-MAX_NUM_FORMS': '1000',
+        }
+        for i in range(5):
+            dados[f'itens-{i}-quantidade'] = '1'
+        for i, linha in enumerate(linhas):
+            for campo, valor in linha.items():
+                dados[f'itens-{i}-{campo}'] = valor
+        return self.client.post(reverse('criar_comodato'), dados)
+
+    def test_cria_comodato_de_uniforme_com_valor(self):
+        response = self._post('uniforme', [
+            {'item_catalogo': self.camisa.id, 'descricao': 'Azul', 'tamanho': 'G', 'quantidade': '2', 'valor_unitario': '50'},
+        ])
+
+        self.assertRedirects(response, reverse('listar_comodatos'))
+        termo = TermoComodato.objects.get(funcionario=self.funcionario)
+        self.assertEqual(termo.gerado_por, self.user_rh)
+        item = termo.itens.get()
+        self.assertEqual((item.item_catalogo, item.tamanho, item.quantidade), (self.camisa, 'G', 2))
+        self.assertEqual(str(item.valor_unitario), '50.00')
+
+    def test_equipamento_guarda_numero_de_serie_e_descarta_tamanho(self):
+        self._post('equipamento', [
+            {'item_catalogo': self.celular.id, 'numero_serie': '356938035643809', 'tamanho': 'G', 'valor_unitario': '1200.00'},
+        ])
+
+        item = ItemComodato.objects.get()
+        self.assertEqual(item.numero_serie, '356938035643809')
+        self.assertEqual(item.tamanho, '')
+        self.assertEqual(str(item.valor_unitario), '1200.00')
+
+    def test_uniforme_descarta_numero_de_serie(self):
+        self._post('uniforme', [{'item_catalogo': self.camisa.id, 'numero_serie': 'ABC123'}])
+
+        self.assertEqual(ItemComodato.objects.get().numero_serie, '')
+
+    def test_numero_de_serie_exige_quantidade_um(self):
+        response = self._post('equipamento', [
+            {'item_catalogo': self.celular.id, 'numero_serie': 'ABC123', 'quantidade': '2'},
+        ])
+
+        self.assertFalse(TermoComodato.objects.exists())
+        self.assertIn('quantidade', response.context['formset'].forms[0].errors)
+
+    def test_linha_preenchida_sem_item_do_catalogo_e_recusada(self):
+        response = self._post('uniforme', [{'descricao': 'Camisa azul'}])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TermoComodato.objects.exists())
+        self.assertIn('item_catalogo', response.context['formset'].forms[0].errors)
+
+    def test_item_de_outra_modalidade_e_recusado(self):
+        self._post('uniforme', [{'item_catalogo': self.celular.id}])
+
+        self.assertFalse(TermoComodato.objects.exists())
+
+    def test_comodato_sem_itens_e_recusado(self):
+        response = self._post('uniforme', [])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TermoComodato.objects.exists())
+        self.assertTrue(response.context['formset'].non_form_errors())
+
+    def test_linha_marcada_para_exclusao_nao_e_salva(self):
+        self._post('uniforme', [
+            {'item_catalogo': self.camisa.id},
+            {'descricao': 'Linha descartada', 'DELETE': 'on'},
+        ])
+
+        self.assertEqual(ItemComodato.objects.count(), 1)
+
+    def test_listagem_abre(self):
+        response = self.client.get(reverse('listar_comodatos'))
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_tela_de_criacao_traz_dados_da_busca_e_do_catalogo(self):
+        response = self.client.get(reverse('criar_comodato'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="dados-funcionarios"')
+        self.assertContains(response, 'Colaborador Teste')
+        self.assertContains(response, f'"{self.celular.id}": "equipamento"')
+
+    def test_contrato_de_uniforme_lista_modelo_tamanho_quantidade_e_valor(self):
+        from django.template.loader import render_to_string
+
+        termo = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme', data_emprestimo=date(2026, 10, 1),
+        )
+        ItemComodato.objects.create(
+            termo=termo, item_catalogo=self.camisa, descricao='Azul', tamanho='G',
+            quantidade=2, valor_unitario='1200.50',
+        )
+
+        html = render_to_string('funcionarios/contratos/comodato_uniforme.html', {'itens': termo.itens.all()})
+
+        self.assertNotIn('Código', html)
+        self.assertLess(html.index('Modelo'), html.index('Tamanho'))
+        self.assertLess(html.index('Tamanho'), html.index('Quantidade'))
+        self.assertLess(html.index('Quantidade'), html.index('Valor unitário'))
+        self.assertIn('R$ 1.200,50', html)
+
+
+class ValidarComodatoViewTests(TestCase):
+    """RH aprova ou rejeita o termo de comodato devolvido assinado pelo colaborador."""
+
+    def setUp(self):
+        setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=setor, status='ativo',
+        )
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+        self.user_colaborador = User.objects.create_user(username='12345678901', password='senha123')
+        Usuario.objects.create(user=self.user_colaborador, funcionario=self.funcionario, papel='colaborador')
+
+        self.comodato = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme',
+            data_emprestimo=date(2026, 10, 1), status='em_validacao',
+        )
+        self.url_detalhe = reverse('detalhe_funcionario', args=[self.funcionario.id])
+
+    def test_rh_aprova_comodato(self):
+        self.client.force_login(self.user_rh)
+
+        response = self.client.post(reverse('aprovar_comodato', args=[self.comodato.id]))
+
+        self.assertRedirects(response, self.url_detalhe, fetch_redirect_response=False)
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'ativo')
+        self.assertEqual(self.comodato.validado_por, self.user_rh)
+        self.assertIsNotNone(self.comodato.validado_em)
+
+    def test_validando_pela_lista_volta_para_a_fila(self):
+        self.client.force_login(self.user_rh)
+        fila = reverse('listar_comodatos') + '?pendentes=1'
+
+        response = self.client.post(reverse('aprovar_comodato', args=[self.comodato.id]), {'next': fila})
+
+        self.assertRedirects(response, fila, fetch_redirect_response=False)
+
+    def test_next_para_outro_site_e_ignorado(self):
+        self.client.force_login(self.user_rh)
+
+        response = self.client.post(
+            reverse('rejeitar_comodato', args=[self.comodato.id]),
+            {'motivo': 'Ilegível', 'next': 'https://site-malicioso.com/'},
+        )
+
+        self.assertRedirects(response, self.url_detalhe, fetch_redirect_response=False)
+
+    def test_lista_poe_pendentes_primeiro_e_badge_vira_atalho(self):
+        TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='equipamento',
+            data_emprestimo=date(2026, 10, 2), status='ativo',
+        )
+        self.client.force_login(self.user_rh)
+
+        response = self.client.get(reverse('listar_comodatos') + '?pendentes=1')
+
+        self.assertEqual(response.context['comodatos'][0], self.comodato)
+        self.assertContains(response, 'data-abrir-pendente="1"')
+        self.assertContains(response, 'href="%s?pendentes=1"' % reverse('listar_comodatos'))
+
+    def test_rh_rejeita_comodato_com_motivo_e_volta_para_assinatura(self):
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('rejeitar_comodato', args=[self.comodato.id]), {'motivo': 'Assinatura ilegível'})
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'aguardando_assinatura')
+        self.assertEqual(self.comodato.motivo_rejeicao, 'Assinatura ilegível')
+
+    def test_rejeicao_sem_motivo_nao_altera_status(self):
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('rejeitar_comodato', args=[self.comodato.id]), {'motivo': ''})
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'em_validacao')
+
+    def test_so_valida_comodato_em_validacao(self):
+        self.comodato.status = 'aguardando_assinatura'
+        self.comodato.save()
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('aprovar_comodato', args=[self.comodato.id]))
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'aguardando_assinatura')
+
+    def test_colaborador_nao_aprova_o_proprio_comodato(self):
+        self.client.force_login(self.user_colaborador)
+
+        self.client.post(reverse('aprovar_comodato', args=[self.comodato.id]))
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'em_validacao')
+
+    def test_reenvio_limpa_motivo_e_volta_para_validacao(self):
+        self.comodato.status = 'aguardando_assinatura'
+        self.comodato.motivo_rejeicao = 'Assinatura ilegível'
+        self.comodato.save()
+        self.client.force_login(self.user_colaborador)
+
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            self.client.post(reverse('reenviar_comodato_assinado', args=[self.comodato.id]), {
+                'arquivo_assinado': SimpleUploadedFile('termo.pdf', b'%PDF-1.4', content_type='application/pdf'),
+            })
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'em_validacao')
+        self.assertEqual(self.comodato.motivo_rejeicao, '')
+
+    def test_colaborador_nao_reenvia_termo_ja_validado(self):
+        self.comodato.status = 'ativo'
+        self.comodato.save()
+        self.client.force_login(self.user_colaborador)
+
+        self.client.post(reverse('reenviar_comodato_assinado', args=[self.comodato.id]), {
+            'arquivo_assinado': SimpleUploadedFile('termo.pdf', b'%PDF-1.4', content_type='application/pdf'),
+        })
+
+        self.comodato.refresh_from_db()
+        self.assertEqual(self.comodato.status, 'ativo')
+
+    def test_detalhe_mostra_bloco_de_comodatos_e_badge_na_sidebar(self):
+        self.client.force_login(self.user_rh)
+
+        response = self.client.get(self.url_detalhe)
+
+        self.assertContains(response, 'Comodato de Uniforme')
+        self.assertContains(response, reverse('aprovar_comodato', args=[self.comodato.id]))
+        self.assertEqual(response.context['badge_comodatos'], 1)
+
+
+class VerComodatoViewTests(TestCase):
+    """O termo de comodato só abre para o dono, o RH ou o gestor do setor."""
+
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        self.override = self.settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+        setor = Setor.objects.create(nome='Produção')
+        outro_setor = Setor.objects.create(nome='Expedição')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=setor, status='ativo',
+        )
+        self.user_dono = self._usuario('12345678901', self.funcionario, 'colaborador')
+
+        outro = Funcionario.objects.create(nome='Outro', cpf='11111111111', cargo='Analista', setor=setor, status='ativo')
+        self.user_outro = self._usuario('11111111111', outro, 'colaborador')
+
+        rh = Funcionario.objects.create(nome='RH', cpf='98765432100', cargo='RH', setor=outro_setor, status='ativo')
+        self.user_rh = self._usuario('98765432100', rh, 'rh')
+
+        gestor_fora = Funcionario.objects.create(nome='Gestor', cpf='22222222222', cargo='Gestor', setor=outro_setor, status='ativo')
+        self.user_gestor_fora = self._usuario('22222222222', gestor_fora, 'gestor')
+
+        self.comodato = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme', data_emprestimo=date(2026, 10, 1),
+        )
+        self.comodato.arquivo_assinado.save('termo.pdf', SimpleUploadedFile('termo.pdf', b'%PDF-1.4'), save=True)
+        self.url = reverse('ver_comodato', args=[self.comodato.id, 'assinado'])
+
+    def _usuario(self, cpf, funcionario, papel):
+        user = User.objects.create_user(username=cpf, password='senha123')
+        Usuario.objects.create(user=user, funcionario=funcionario, papel=papel)
+        return user
+
+    def _baixar(self, user, url=None):
+        self.client.force_login(user)
+        response = self.client.get(url or self.url)
+        if hasattr(response, 'streaming_content'):
+            b''.join(response.streaming_content)
+        return response
+
+    def test_dono_e_rh_abrem_o_termo(self):
+        for user in (self.user_dono, self.user_rh):
+            response = self._baixar(user)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_outro_colaborador_e_gestor_de_outro_setor_nao_abrem(self):
+        for user in (self.user_outro, self.user_gestor_fora):
+            response = self._baixar(user)
+            self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_termo_ainda_nao_gerado_da_404(self):
+        response = self._baixar(self.user_rh, reverse('ver_comodato', args=[self.comodato.id, 'gerado']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_versao_desconhecida_da_404(self):
+        response = self._baixar(self.user_rh, reverse('ver_comodato', args=[self.comodato.id, 'qualquer']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_rotas_de_acao_nao_sao_capturadas_pela_de_arquivo(self):
+        self.assertEqual(reverse('aprovar_comodato', args=[1]), '/comodatos/1/aprovar/')
+        from django.urls import resolve
+        self.assertEqual(resolve('/comodatos/1/aprovar/').url_name, 'aprovar_comodato')

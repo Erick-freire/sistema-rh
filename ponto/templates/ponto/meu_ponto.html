@@ -10,14 +10,6 @@
 </p>
 {% include 'ponto/_meu_ponto_tabs.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
         <a href="?data_inicio={{ periodo_anterior.data_inicio }}&data_fim={{ periodo_anterior.data_fim }}" class="pagina-link">{% icon 'arrow-left' %} Período anterior</a>

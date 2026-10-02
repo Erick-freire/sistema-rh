@@ -1,18 +1,35 @@
 from ponto.models import AjustePonto
+from terceiros.models import EmpresaTerceira
 
-from .models import AvisoFerias, SolicitacaoFerias, Usuario
+from .models import AvisoFerias, SolicitacaoFerias, TermoComodato, Usuario
+from .perfis import responsavel_terceiro_de
+
+# Rotas que a sidebar do Portal do Prestador acende sob "Funcionários" -- a
+# lista da equipe e tudo que se abre a partir dela. Fica aqui, e não no
+# template, porque o template do Django não monta lista literal.
+URLS_DA_EQUIPE_TERCEIRO = (
+    'funcionarios', 'detalhe_colaborador', 'cadastrar_colaborador', 'editar_colaborador',
+)
 
 
 def usuario_logado(request):
     if not request.user.is_authenticated:
-        return {'usuario_atual': None}
+        return {'usuario_atual': None, 'responsavel_atual': None}
 
     try:
         usuario = request.user.usuario
     except Usuario.DoesNotExist:
-        return {'usuario_atual': None}
+        # Pode ser uma conta de responsável de empresa terceira -- tipo de conta
+        # paralelo, sem `Usuario` (ver funcionarios/perfis.py). `responsavel_atual`
+        # é o equivalente de `usuario_atual` para o Portal do Prestador, e é o que
+        # o `terceiros/base_terceiro.html` usa para se identificar.
+        return {
+            'usuario_atual': None,
+            'responsavel_atual': responsavel_terceiro_de(request.user),
+            'urls_da_equipe': URLS_DA_EQUIPE_TERCEIRO,
+        }
 
-    contexto = {'usuario_atual': usuario}
+    contexto = {'usuario_atual': usuario, 'responsavel_atual': None}
 
     if usuario.papel == 'gestor':
         contexto['badge_ferias_gestor'] = SolicitacaoFerias.objects.filter(
@@ -37,6 +54,13 @@ def usuario_logado(request):
 
     if usuario.papel == 'rh' or usuario.acesso_rh:
         contexto['badge_ajustes_pendentes'] = AjustePonto.objects.filter(status='pendente').count()
+        # Empresas terceiras esperando uma ação do RH: gerar contrato ou validar
+        # a documentação enviada pela prestadora.
+        contexto['badge_terceiros'] = EmpresaTerceira.objects.filter(
+            status__in=('aguardando_contrato', 'em_validacao')
+        ).count()
+        # Termos de comodato que o colaborador já devolveu assinados.
+        contexto['badge_comodatos'] = TermoComodato.objects.filter(status='em_validacao').count()
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario

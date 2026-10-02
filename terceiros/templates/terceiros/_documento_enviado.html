@@ -1,0 +1,24 @@
+{% load rh_icons %}
+{# Uma linha de documento enviado, na visão do responsável. Espera `documento` e
+   `url_arquivo` (nome da rota que serve o arquivo com verificação de permissão). #}
+<div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+        <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+        <div class="item-card__corpo">
+            <div class="item-card__titulo">
+                {{ documento.get_tipo_display }}{% if documento.competencia_display %} · {{ documento.competencia_display }}{% endif %}
+            </div>
+            <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.enviado_em|date:"d/m/Y" }}</div>
+        </div>
+        <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
+        <span class="acoes-tabela">
+            <a href="{% url url_arquivo documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+        </span>
+    </div>
+    {% if documento.status == 'rejeitado' %}
+    <div style="font-size: 0.85rem; color: var(--color-error);">
+        {{ documento.motivo_rejeicao }}
+        <a href="?tipo={{ documento.tipo }}" style="margin-left: 6px;">Reenviar</a>
+    </div>
+    {% endif %}
+</div>

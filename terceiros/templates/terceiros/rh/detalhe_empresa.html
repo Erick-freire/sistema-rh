@@ -1,0 +1,296 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{{ empresa.nome_curto }}
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'terceiros:listar_empresas' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {{ empresa.nome_curto }}
+    <span class="badge-status badge-status--{{ empresa.status }}">{{ empresa.get_status_display }}</span>
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ empresa.razao_social }} · {{ empresa.cnpj_formatado }}</p>
+
+<div class="card">
+    <div class="card__title" style="margin-bottom: 4px;">Onde este cadastro está</div>
+    {% include 'terceiros/_status_stepper.html' %}
+    {% if empresa.status == 'ativo' or empresa.status == 'inativo' %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-top: 16px;">Cadastro completo. Nada pendente.</p>
+    {% endif %}
+</div>
+
+<div class="duas-colunas">
+    <div>
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Dados da empresa</div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Razão social</span>
+                <span class="linha-dado__valor">{{ empresa.razao_social }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Nome fantasia</span>
+                <span class="linha-dado__valor">{{ empresa.nome_fantasia|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">CNPJ</span>
+                <span class="linha-dado__valor">{{ empresa.cnpj_formatado }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Endereço</span>
+                <span class="linha-dado__valor">{{ empresa.endereco_completo }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Cadastrada em</span>
+                <span class="linha-dado__valor">{{ empresa.criado_em|date:"d/m/Y" }}</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Responsável legal</div>
+            {% if responsavel %}
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Nome</span>
+                <span class="linha-dado__valor">{{ responsavel.nome }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">CPF (login)</span>
+                <span class="linha-dado__valor">{{ responsavel.cpf_formatado }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">RG</span>
+                <span class="linha-dado__valor">{{ responsavel.rg|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Estado civil</span>
+                <span class="linha-dado__valor">{{ responsavel.get_estado_civil_display|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Profissão</span>
+                <span class="linha-dado__valor">{{ responsavel.profissao|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Endereço</span>
+                <span class="linha-dado__valor">{{ responsavel.endereco|default:"—" }}</span>
+            </div>
+
+            {% if not responsavel.dados_completos %}
+            <div class="alert alert--aviso" style="margin-top: 14px;">
+                {% icon 'alert-triangle' %}
+                <span>O responsável ainda não completou os dados dele. O contrato precisa deles para ser gerado.</span>
+            </div>
+            {% endif %}
+
+            {% if responsavel.senha_provisoria %}
+            <p style="color: var(--color-text-muted); font-size: 0.85rem; margin-top: 12px;">
+                Ainda está com a senha provisória — não acessou o sistema pela primeira vez.
+            </p>
+            {% endif %}
+
+            <form method="post" action="{% url 'terceiros:resetar_senha_responsavel' empresa.id %}" style="margin-top: 12px;">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline btn-sm"
+                        data-confirmar="Gerar uma nova senha provisória para {{ responsavel.nome }}?"
+                        data-confirmar-titulo="Gerar nova senha">{% icon 'key' %} Gerar nova senha</button>
+            </form>
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem;">Esta empresa não tem responsável cadastrado.</p>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Contrato</div>
+            {% if contrato %}
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Gerado em</span>
+                <span class="linha-dado__valor">{{ contrato.gerado_em|date:"d/m/Y H:i" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Gerado por</span>
+                <span class="linha-dado__valor">{{ contrato.gerado_por.username|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Prazo</span>
+                <span class="linha-dado__valor">{{ contrato.prazo_meses }} {% if contrato.prazo_meses == 1 %}mês{% else %}meses{% endif %}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Cláusulas da biblioteca</span>
+                <span class="linha-dado__valor">{{ contrato.clausulas_biblioteca.count }}</span>
+            </div>
+
+            {% if contrato.arquivo_gerado %}
+            <span class="acoes-tabela" style="margin-top: 12px; display: inline-flex;">
+                <a href="{% url 'terceiros:baixar_contrato' contrato.id %}" target="_blank" title="Visualizar">{% icon 'eye' %} Ver PDF</a>
+                <a href="{% url 'terceiros:baixar_contrato' contrato.id %}" download title="Baixar">{% icon 'download' %} Baixar</a>
+            </span>
+            {% endif %}
+
+            {% if empresa.status == 'aguardando_assinatura' %}
+            <p style="margin-top: 14px;">
+                <a href="{% url 'terceiros:gerar_contrato' empresa.id %}" class="btn-outline btn-sm">{% icon 'file' %} Gerar novo contrato</a>
+            </p>
+            {% endif %}
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+                Nenhum contrato gerado ainda. O PDF sai com o Termo de Confidencialidade anexado ao final.
+            </p>
+            {% if empresa.status == 'aguardando_contrato' %}
+            <a href="{% url 'terceiros:gerar_contrato' empresa.id %}" class="btn-primario btn-sm">{% icon 'file' %} Gerar contrato</a>
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.85rem;">
+                Disponível quando o responsável completar o cadastro dele.
+            </p>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        {% if empresa.status == 'ativo' or empresa.status == 'inativo' %}
+        <div class="card">
+            <div class="card__title" style="margin-bottom: 8px;">Situação do contrato</div>
+            <form method="post" action="{% url 'terceiros:alternar_status_empresa' empresa.id %}">
+                {% csrf_token %}
+                {% if empresa.status == 'ativo' %}
+                <button type="submit" class="btn-outline btn-sm"
+                        data-confirmar="Inativar {{ empresa.nome_curto }}? A prestadora perde o acesso às telas de envio."
+                        data-confirmar-titulo="Inativar empresa">Inativar empresa</button>
+                {% else %}
+                <button type="submit" class="btn-outline btn-sm">Reativar empresa</button>
+                {% endif %}
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Equipe da prestadora</span>
+                <span style="color: var(--color-text-muted); font-size: 0.85rem;">{{ colaboradores|length }} cadastrado{{ colaboradores|length|pluralize }}</span>
+            </div>
+
+            {% if empresa.status == 'em_validacao' %}
+            <form method="post" action="{% url 'terceiros:validar_empresa' empresa.id %}" style="margin-bottom: 16px;">
+                {% csrf_token %}
+                <button type="submit" class="btn-primario" {% if not pode_validar %}disabled title="Aprove todos os documentos de todos os colaboradores antes de validar."{% endif %}
+                        data-confirmar="Confirmar ativação de {{ empresa.nome_curto }}?"
+                        data-confirmar-titulo="Validar empresa">
+                    {% icon 'check-square' %} Validar empresa
+                </button>
+            </form>
+            {% endif %}
+
+            <div class="lista-cards">
+                {% for colaborador in colaboradores %}
+                <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <span class="avatar avatar--sm">{{ colaborador.iniciais }}</span>
+                        <div class="item-card__corpo">
+                            <div class="item-card__titulo">{{ colaborador.nome }}</div>
+                            <div class="item-card__subtitulo">
+                                {{ colaborador.cpf_formatado }}{% if colaborador.funcao %} · {{ colaborador.funcao }}{% endif %}
+                            </div>
+                        </div>
+                        {% if colaborador.documentos_todos_aprovados %}
+                        <span class="badge-status badge-status--aprovado">Aprovado</span>
+                        {% elif colaborador.documentacao_completa %}
+                        <span class="badge-status badge-status--pendente">Em análise</span>
+                        {% else %}
+                        <span class="badge-status badge-status--pendente">Incompleto</span>
+                        {% endif %}
+                    </div>
+
+                    {% for documento in colaborador.documentos_de_onboarding %}
+                    <div class="doc-linha">
+                        <span class="doc-linha__icone">{% icon 'file' %}</span>
+                        <div class="doc-linha__corpo">
+                            <div class="doc-linha__titulo">
+                                {{ documento.get_tipo_display }}{% if documento.competencia_display %} · {{ documento.competencia_display }}{% endif %}
+                            </div>
+                            <div class="doc-linha__sub" title="{{ documento.nome_arquivo }}">
+                                {{ documento.nome_arquivo }} · {{ documento.enviado_em|date:"d/m/Y" }}
+                            </div>
+                        </div>
+
+                        <div class="doc-linha__acoes">
+                            <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
+
+                            {% if pode_analisar_documentos and documento.status == 'pendente' %}
+                            <form method="post" action="{% url 'terceiros:aprovar_documento' documento.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-outline btn-sm">{% icon 'check-circle' %} Aprovar</button>
+                            </form>
+                            <form method="post" action="{% url 'terceiros:rejeitar_documento' documento.id %}">
+                                {% csrf_token %}
+                                {# Preenchido pelo modal de motivo antes do submit -- ver data-motivo em static/js/ui.js. #}
+                                <input type="hidden" name="motivo" value="">
+                                <button type="submit" class="btn-outline btn-sm"
+                                        data-motivo="Escreva o que a prestadora precisa corrigir. O texto aparece para ela no painel, junto do documento."
+                                        data-motivo-titulo="Reprovar {{ documento.get_tipo_display }} de {{ colaborador.nome }}"
+                                        data-motivo-placeholder="Ex.: foto ilegível, documento vencido, assinatura faltando...">
+                                    {% icon 'x' %} Reprovar
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <span class="acoes-tabela">
+                                <a href="{% url 'terceiros:ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                                <a href="{% url 'terceiros:ver_documento' documento.id %}" download title="Baixar">{% icon 'download' %}</a>
+                            </span>
+                        </div>
+
+                        {% if documento.status == 'rejeitado' %}
+                        <div class="doc-linha__motivo"><strong>Motivo:</strong> {{ documento.motivo_rejeicao }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+
+                    {% if colaborador.tipos_pendentes %}
+                    <div class="checklist-docs" style="border-top: 1px solid var(--color-border); padding-top: 10px;">
+                        {% for tipo, rotulo in colaborador.tipos_pendentes %}
+                        <div class="checklist-docs__item checklist-docs__item--pendente">
+                            {% icon 'alert-triangle' %} {{ rotulo }} não enviado
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+                    A prestadora ainda não cadastrou a equipe. Isso é feito pelo responsável, no painel dele,
+                    depois de o contrato ser gerado.
+                </p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Entregas mensais</span>
+            </div>
+            <p style="color: var(--color-text-muted); font-size: 0.82rem; margin-bottom: 14px;">
+                FGTS e DCTFWeb da prestadora e os holerites da equipe, por competência. São rotina
+                contínua de compliance e não entram no critério de validação inicial.
+            </p>
+
+            {% for competencia in competencias_mensais %}
+            <div style="border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 12px;">
+                <div class="card__title" style="font-size: 0.9rem; margin-bottom: 10px;">{{ competencia.rotulo }}</div>
+
+                {% for documento in competencia.documentos_empresa %}
+                {% include 'terceiros/rh/_linha_documento_mensal.html' with documento=documento rotulo=documento.get_tipo_display url_arquivo='terceiros:ver_documento_empresa' url_aprovar='terceiros:aprovar_documento_empresa' url_rejeitar='terceiros:rejeitar_documento_empresa' pode_analisar=pode_analisar_mensais %}
+                {% endfor %}
+
+                {% for documento in competencia.holerites %}
+                {% include 'terceiros/rh/_linha_documento_mensal.html' with documento=documento rotulo=documento.colaborador.nome|add:" — Holerite" url_arquivo='terceiros:ver_documento' url_aprovar='terceiros:aprovar_documento' url_rejeitar='terceiros:rejeitar_documento' pode_analisar=pode_analisar_mensais %}
+                {% endfor %}
+            </div>
+            {% empty %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+                Nenhuma entrega mensal registrada ainda.
+            </p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

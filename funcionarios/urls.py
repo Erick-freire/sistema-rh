@@ -41,4 +41,11 @@ urlpatterns = [
     path('rh/ferias/vencimento/', views.rh_vencimento_ferias_view, name='rh_vencimento_ferias'),
     path('rh/ferias/<int:funcionario_id>/avisar/', views.criar_aviso_ferias_view, name='criar_aviso_ferias'),
     path('rh/ferias/avisos/<int:aviso_id>/visualizar/', views.marcar_aviso_visualizado_view, name='marcar_aviso_visualizado'),
+    path('comodatos/', views.listar_comodatos_view, name='listar_comodatos'),
+    path('comodatos/novo/', views.criar_comodato_view, name='criar_comodato'),
+    path('comodatos/<int:comodato_id>/gerar-pdf/', views.gerar_pdf_comodato_view, name='gerar_pdf_comodato'),
+    path('comodatos/<int:comodato_id>/arquivo/<str:versao>/', views.ver_comodato_view, name='ver_comodato'),
+    path('comodatos/<int:comodato_id>/reenviar/', views.reenviar_comodato_assinado_view, name='reenviar_comodato_assinado'),
+    path('comodatos/<int:comodato_id>/aprovar/', views.aprovar_comodato_view, name='aprovar_comodato'),
+    path('comodatos/<int:comodato_id>/rejeitar/', views.rejeitar_comodato_view, name='rejeitar_comodato'),
 ]

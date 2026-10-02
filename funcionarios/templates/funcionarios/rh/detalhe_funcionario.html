@@ -13,12 +13,6 @@
 </h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ funcionario.cargo }} · {{ funcionario.setor }} · mat. {{ funcionario.matricula }}</p>
 
-{% if messages %}
-    {% for message in messages %}
-        <p class="message message-error">{{ message }}</p>
-    {% endfor %}
-{% endif %}
-
 <div class="card">
     <div class="card__title" style="margin-bottom: 4px;">Onde este cadastro está</div>
     {% include 'funcionarios/_status_stepper.html' %}
@@ -120,7 +114,9 @@
             </p>
             <form method="post" action="{% url 'gerar_acesso_funcionario' funcionario.id %}">
                 {% csrf_token %}
-                <button type="submit">{% icon 'user' %} Gerar acesso</button>
+                <button type="submit"
+                        data-confirmar="Gerar acesso e senha provisória para {{ funcionario.nome }}?"
+                        data-confirmar-titulo="Gerar acesso">{% icon 'user' %} Gerar acesso</button>
             </form>
             {% else %}
             <p style="color: var(--color-text-muted); font-size: 0.88rem;">Este funcionário já possui acesso ao sistema.</p>
@@ -243,7 +239,9 @@
             {% if funcionario.status == 'em_validacao' %}
             <form method="post" action="{% url 'validar_funcionario' funcionario.id %}" style="margin-top: 16px;">
                 {% csrf_token %}
-                <button type="submit" class="btn-primario" {% if not pode_validar %}disabled title="Aprove todos os documentos obrigatórios antes de validar."{% endif %}>
+                <button type="submit" class="btn-primario" {% if not pode_validar %}disabled title="Aprove todos os documentos obrigatórios antes de validar."{% endif %}
+                        data-confirmar="Confirmar ativação de {{ funcionario.nome }}?"
+                        data-confirmar-titulo="Validar funcionário">
                     {% icon 'check-square' %} Validar funcionário
                 </button>
             </form>
@@ -285,7 +283,9 @@
                         <form method="post" action="{% url 'rejeitar_documento' documento.id %}">
                             {% csrf_token %}
                             {{ form_rejeicao.motivo }}
-                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;">Confirmar rejeição</button>
+                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;"
+                                    data-confirmar="Tem certeza? O colaborador vai precisar reenviar este documento."
+                                    data-confirmar-titulo="Rejeitar documento">Confirmar rejeição</button>
                         </form>
                     </div>
                     {% endif %}
@@ -295,6 +295,63 @@
                 {% endfor %}
             </div>
         </div>
+
+        {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Comodatos</span>
+                <a href="{% url 'criar_comodato' %}" class="btn btn-sm btn-outline">{% icon 'plus' %} Novo</a>
+            </div>
+            <div class="lista-cards">
+                {% for comodato in comodatos %}
+                <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+                        <div class="item-card__corpo">
+                            <div class="item-card__titulo">Comodato de {{ comodato.get_modalidade_display }}</div>
+                            <div class="item-card__subtitulo">
+                                {{ comodato.data_emprestimo|date:"d/m/Y" }} ·
+                                {% for item in comodato.itens.all %}{{ item.item_catalogo.nome|default:item.descricao }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+                            </div>
+                        </div>
+                        <span class="badge-status badge-status--{{ comodato.status }}">{{ comodato.get_status_display }}</span>
+                        {% if comodato.status == 'em_validacao' %}
+                        <form method="post" action="{% url 'aprovar_comodato' comodato.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
+                        </form>
+                        <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-comodato-{{ comodato.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
+                        {% endif %}
+                        <span class="acoes-tabela">
+                            {% if comodato.arquivo_assinado %}
+                            <a href="{% url 'ver_comodato' comodato.id 'assinado' %}" target="_blank" title="Ver termo assinado">{% icon 'eye' %}</a>
+                            <a href="{% url 'ver_comodato' comodato.id 'assinado' %}" download title="Baixar termo assinado">{% icon 'download' %}</a>
+                            {% elif comodato.arquivo_gerado %}
+                            <a href="{% url 'ver_comodato' comodato.id 'gerado' %}" target="_blank" title="Ver termo gerado (sem assinatura)">{% icon 'eye' %}</a>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% if comodato.motivo_rejeicao and comodato.status == 'aguardando_assinatura' %}
+                    <div style="font-size: 0.85rem; color: var(--color-error);">Rejeitado: {{ comodato.motivo_rejeicao }}</div>
+                    {% endif %}
+                    {% if comodato.status == 'em_validacao' %}
+                    <div id="rejeitar-comodato-{{ comodato.id }}" style="display: none;">
+                        <form method="post" action="{% url 'rejeitar_comodato' comodato.id %}">
+                            {% csrf_token %}
+                            {{ form_rejeicao.motivo }}
+                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;"
+                                    data-confirmar="Tem certeza? O colaborador vai precisar reenviar o termo assinado."
+                                    data-confirmar-titulo="Rejeitar comodato">Confirmar rejeição</button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <p>Nenhum comodato registrado.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

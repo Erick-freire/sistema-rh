@@ -1,0 +1,130 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Biblioteca de cláusulas
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'terceiros:listar_empresas' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Biblioteca de cláusulas
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    Texto reaproveitado entre os contratos de prestação de serviço. As cláusulas ativas vêm marcadas
+    por padrão em cada contrato novo.
+</p>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Nova cláusula</span>
+    </div>
+    <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-nova-clausula" data-texto-alternativo="Cancelar">
+        {% icon 'plus' %} Adicionar cláusula
+    </button>
+
+    <div id="form-nova-clausula" style="display: {% if form.errors %}block{% else %}none{% endif %}; margin-top: 16px;">
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            <div class="form-grid">
+                <div class="span-2">
+                    <label for="{{ form.titulo.id_for_label }}">Título</label>
+                    {{ form.titulo }}
+                    {{ form.titulo.errors }}
+                </div>
+                <div class="span-2">
+                    <label for="{{ form.texto.id_for_label }}">Texto</label>
+                    {{ form.texto }}
+                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                        Uma linha por parágrafo. Não escreva o número da cláusula — a numeração é
+                        aplicada na geração do PDF, conforme a seleção de cada contrato.
+                    </p>
+                    {{ form.texto.errors }}
+                </div>
+                <div>
+                    <label for="{{ form.ordem_sugerida.id_for_label }}">Ordem</label>
+                    {{ form.ordem_sugerida }}
+                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                        As iniciais vão de 10 em 10 — use um valor intermediário para encaixar entre duas.
+                    </p>
+                    {{ form.ordem_sugerida.errors }}
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 24px;">
+                        {{ form.ativa }}
+                        <span style="font-size: 0.88rem;">Sugerir nos novos contratos</span>
+                    </label>
+                    {{ form.ativa.errors }}
+                </div>
+            </div>
+            <button type="submit" class="btn-primario btn-sm" style="margin-top: 14px;">Salvar cláusula</button>
+        </form>
+    </div>
+</div>
+
+<div class="lista-cards">
+    {% for clausula, form_clausula in clausulas %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ clausula.titulo }}</div>
+                <div class="item-card__subtitulo">
+                    ordem {{ clausula.ordem_sugerida }} · usada em {{ clausula.contratos.count }} contrato{{ clausula.contratos.count|pluralize }}
+                </div>
+            </div>
+            {% if clausula.ativa %}
+            <span class="badge-status badge-status--ativo">Ativa</span>
+            {% else %}
+            <span class="badge-status badge-status--inativo">Inativa</span>
+            {% endif %}
+            <form method="post" action="{% url 'terceiros:alternar_clausula' clausula.id %}" style="margin: 0;">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline btn-sm">{% if clausula.ativa %}Desativar{% else %}Ativar{% endif %}</button>
+            </form>
+            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="editar-{{ clausula.id }}" data-texto-alternativo="Cancelar">Editar</button>
+            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="texto-{{ clausula.id }}" data-texto-alternativo="Ocultar">Ver texto</button>
+        </div>
+        <div id="texto-{{ clausula.id }}" style="display: none; font-size: 0.88rem; white-space: pre-wrap; color: var(--color-text-muted); border-top: 1px solid var(--color-border); padding-top: 10px;">{{ clausula.texto }}</div>
+
+        <div id="editar-{{ clausula.id }}" style="display: {% if clausula.id == clausula_em_edicao_id %}block{% else %}none{% endif %}; border-top: 1px solid var(--color-border); padding-top: 12px;">
+            <form method="post" action="{% url 'terceiros:editar_clausula' clausula.id %}">
+                {% csrf_token %}
+                {{ form_clausula.non_field_errors }}
+                <div class="form-grid">
+                    <div class="span-2">
+                        <label for="{{ form_clausula.titulo.id_for_label }}">Título</label>
+                        {{ form_clausula.titulo }}
+                        {{ form_clausula.titulo.errors }}
+                    </div>
+                    <div class="span-2">
+                        <label for="{{ form_clausula.texto.id_for_label }}">Texto</label>
+                        {{ form_clausula.texto }}
+                        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                            A alteração vale para os próximos contratos — os PDFs já gerados continuam
+                            com o texto que tinham na época.
+                        </p>
+                        {{ form_clausula.texto.errors }}
+                    </div>
+                    <div>
+                        <label for="{{ form_clausula.ordem_sugerida.id_for_label }}">Ordem</label>
+                        {{ form_clausula.ordem_sugerida }}
+                        {{ form_clausula.ordem_sugerida.errors }}
+                    </div>
+                    <div>
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 24px;">
+                            {{ form_clausula.ativa }}
+                            <span style="font-size: 0.88rem;">Sugerir nos novos contratos</span>
+                        </label>
+                        {{ form_clausula.ativa.errors }}
+                    </div>
+                </div>
+                <button type="submit" class="btn-primario btn-sm" style="margin-top: 14px;">Salvar alterações</button>
+            </form>
+        </div>
+    </div>
+    {% empty %}
+    <p>A biblioteca está vazia.</p>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends 'terceiros/base_terceiro.html' %}
+{% load rh_icons %}
+
+{#
+"Início" do Portal do Prestador: orienta e aponta para as três abas, sem repetir
+o conteúdo delas. O que é edição ou lista vive em Minha Empresa, Documentação
+Mensal e Funcionários -- aqui fica só o estado do cadastro e o que fazer agora.
+#}
+
+{% block titulo %}
+Portal do Prestador
+{% endblock %}
+
+{% block conteudo_terceiro %}
+<h1>Olá, {{ responsavel.primeiro_nome }}</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ empresa.razao_social }} · {{ empresa.cnpj_formatado }}
+    <span class="badge-status badge-status--{{ empresa.status }}">{{ empresa.get_status_display }}</span>
+</p>
+
+{% if documentos_rejeitados or documentos_empresa_rejeitados %}
+<div class="alert alert--erro">
+    {% icon 'alert-triangle' %}
+    <span>
+        Há documento reprovado pelo RH. Reenvie para seguir:
+        {% for documento in documentos_rejeitados %}
+        <br><strong>{{ documento.colaborador.nome }} — {{ documento.get_tipo_display }}{% if documento.competencia_display %} ({{ documento.competencia_display }}){% endif %}:</strong>
+        {{ documento.motivo_rejeicao }}
+        <a href="{% url 'terceiros:detalhe_colaborador' documento.colaborador.id %}?tipo={{ documento.tipo }}">Reenviar</a>
+        {% endfor %}
+        {% for documento in documentos_empresa_rejeitados %}
+        <br><strong>{{ documento.get_tipo_display }} ({{ documento.competencia_display }}):</strong>
+        {{ documento.motivo_rejeicao }}
+        <a href="{% url 'terceiros:documentacao_mensal' %}?tipo={{ documento.tipo }}">Reenviar</a>
+        {% endfor %}
+    </span>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card__title" style="margin-bottom: 4px;">Onde o seu cadastro está</div>
+    {% include 'terceiros/_status_stepper.html' %}
+</div>
+
+<div class="passos">
+    <div class="passo">
+        <span class="passo__num" style="{% if dados_completos %}background-color: var(--color-primary); color: #fff;{% endif %}">
+            {% if dados_completos %}✓{% else %}1{% endif %}
+        </span>
+        <div>
+            <div class="passo__titulo">Complete os seus dados</div>
+            <div class="passo__sub">
+                {% if dados_completos %}
+                    Dados do representante legal preenchidos.
+                {% else %}
+                    RG, estado civil, profissão e endereço — o contrato precisa desses dados.
+                    <a href="{% url 'terceiros:minha_empresa' %}">Preencher agora</a>.
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="passo">
+        <span class="passo__num" style="{% if contrato %}background-color: var(--color-primary); color: #fff;{% endif %}">
+            {% if contrato %}✓{% else %}2{% endif %}
+        </span>
+        <div>
+            <div class="passo__titulo">Baixe o contrato</div>
+            <div class="passo__sub">
+                {% if contrato %}
+                    Contrato disponível desde {{ contrato.gerado_em|date:"d/m/Y" }}. Colha as assinaturas fora do sistema.
+                {% else %}
+                    O RH da Sotrigo gera o contrato depois de você completar os seus dados.
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="passo">
+        <span class="passo__num" style="{% if total_colaboradores %}background-color: var(--color-primary); color: #fff;{% endif %}">
+            {% if total_colaboradores %}✓{% else %}3{% endif %}
+        </span>
+        <div>
+            <div class="passo__titulo">Cadastre a equipe e envie os documentos</div>
+            <div class="passo__sub">
+                Para cada pessoa: contrato assinado, documento pessoal, selfie, ASO, comprovante de EPI
+                e ao menos uma ordem de serviço assinada.
+            </div>
+        </div>
+    </div>
+
+    <div class="passo">
+        <span class="passo__num" style="{% if empresa.status == 'em_validacao' or empresa.status == 'ativo' %}background-color: var(--color-primary); color: #fff;{% endif %}">
+            {% if empresa.status == 'em_validacao' or empresa.status == 'ativo' %}✓{% else %}4{% endif %}
+        </span>
+        <div>
+            <div class="passo__titulo">Envie para validação do RH</div>
+            <div class="passo__sub">O RH revisa cada documento e libera a prestadora.</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Minha Empresa</span>
+        <a href="{% url 'terceiros:minha_empresa' %}" class="card__link">Abrir</a>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+        Dados cadastrais da prestadora, os seus dados de representante legal e o contrato em PDF.
+        {% if not dados_completos %}<strong>Há dados do representante legal em falta.</strong>{% endif %}
+    </p>
+</div>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Documentação Mensal</span>
+        <a href="{% url 'terceiros:documentacao_mensal' %}" class="card__link">Abrir</a>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+        FGTS e DCTFWeb da empresa, mês a mês, junto com os holerites já entregues pela equipe.
+    </p>
+</div>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Funcionários</span>
+        <a href="{% url 'terceiros:funcionarios' %}" class="card__link">Abrir</a>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+        {{ total_colaboradores }} pessoa{{ total_colaboradores|pluralize }} na equipe.
+        {% if colaboradores_incompletos %}
+        <strong>{{ colaboradores_incompletos }} com documentação de cadastro incompleta.</strong>
+        {% elif total_colaboradores %}
+        Documentação de cadastro completa.
+        {% endif %}
+    </p>
+</div>
+{% endblock %}

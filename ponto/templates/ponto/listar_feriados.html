@@ -7,14 +7,6 @@
 <h1>Feriados</h1>
 {% include 'ponto/_subnav.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <a href="{% url 'ponto:cadastrar_feriado' %}" class="btn btn-novo">{% icon 'plus' %} Novo feriado</a>
 
 <div class="table-responsive desktop-only">

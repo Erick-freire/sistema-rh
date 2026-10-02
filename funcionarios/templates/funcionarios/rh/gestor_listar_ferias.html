@@ -9,12 +9,6 @@ Aprovação de Férias
 {% include 'funcionarios/_ferias_header.html' %}
 {% include 'funcionarios/_ferias_tabs.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 {% if solicitacoes %}
 <div class="alert alert--aviso">
     {% icon 'alert-triangle' %}
@@ -49,7 +43,9 @@ Aprovação de Férias
                     <span class="acoes-tabela" style="gap: 10px;">
                         <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}" style="display: inline;">
                             {% csrf_token %}
-                            <button type="submit" class="btn-primario btn-sm">Aprovar</button>
+                            <button type="submit" class="btn-primario btn-sm"
+                                    data-confirmar="Aprovar férias de {{ s.funcionario.nome }} em {{ s.data_solicitada|date:'d/m/Y' }}?"
+                                    data-confirmar-titulo="Aprovar férias">Aprovar</button>
                         </form>
                         <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn-outline btn-sm">Sugerir data</a>
                     </span>
@@ -81,7 +77,9 @@ Aprovação de Férias
         </div>
         <form method="post" action="{% url 'gestor_aprovar_ferias' s.id %}">
             {% csrf_token %}
-            <button type="submit" class="btn-primario btn-bloco">Aprovar e enviar ao RH</button>
+            <button type="submit" class="btn-primario btn-bloco"
+                    data-confirmar="Aprovar férias de {{ s.funcionario.nome }} em {{ s.data_solicitada|date:'d/m/Y' }}?"
+                    data-confirmar-titulo="Aprovar férias">Aprovar e enviar ao RH</button>
         </form>
         <a href="{% url 'gestor_sugerir_ferias' s.id %}" class="btn-outline btn-bloco">Sugerir outra data</a>
     </div>

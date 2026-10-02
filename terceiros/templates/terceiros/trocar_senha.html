@@ -1,0 +1,16 @@
+{% extends 'terceiros/base_terceiro.html' %}
+
+{#
+Troca de senha do responsável de empresa terceira. Mesma view e mesmo corpo de
+formulário do colaborador CLT -- só o shell muda, porque o
+`funcionarios/base.html` só monta a sidebar quando existe `usuario_atual`, e um
+responsável terceiro não tem `Usuario`.
+#}
+
+{% block titulo %}
+{% if senha_provisoria %}Primeiro acesso{% else %}Trocar senha{% endif %}
+{% endblock %}
+
+{% block conteudo_terceiro %}
+{% include 'funcionarios/_trocar_senha_form.html' %}
+{% endblock %}

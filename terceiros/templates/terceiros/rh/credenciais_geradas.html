@@ -1,0 +1,42 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{% if reset_senha %}Senha redefinida{% else %}Empresa cadastrada{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<div class="card" style="max-width: 440px; margin: 0 auto; text-align: center;">
+    <span class="avatar avatar--lg" style="background-color: var(--color-success-bg); color: var(--color-success); margin: 0 auto 16px;">
+        {% icon 'check-circle' %}
+    </span>
+    <h1 style="font-size: 1.2rem;">{% if reset_senha %}Senha redefinida{% else %}Empresa cadastrada{% endif %}</h1>
+    <p style="color: var(--color-text-muted); margin-top: 4px;">{{ empresa.razao_social }}</p>
+
+    <div class="painel-credenciais" style="text-align: left;">
+        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted);">Usuário</div>
+        <div style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;">{{ username }}</div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--color-border); padding-top: 12px;">
+            <div>
+                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted);">Senha provisória</div>
+                <div id="senha-provisoria" style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700;">{{ senha_gerada }}</div>
+            </div>
+            <button type="button" class="btn-sm btn-outline" data-copy="senha-provisoria">{% icon 'copy' %} Copiar</button>
+        </div>
+    </div>
+
+    <div class="alert alert--erro" style="text-align: left;">
+        {% icon 'alert-triangle' %}
+        <span>Anote ou copie esta senha agora — ela não poderá ser exibida novamente. Repasse ao responsável da empresa para o {% if reset_senha %}próximo{% else %}primeiro{% endif %} acesso.</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+        <a href="{% url 'terceiros:detalhe_empresa' empresa.id %}" class="btn">Ver a empresa</a>
+        {% if not reset_senha %}
+        <a href="{% url 'terceiros:cadastrar_empresa' %}" class="btn-outline">Cadastrar outra</a>
+        {% endif %}
+        <a href="{% url 'terceiros:listar_empresas' %}" class="btn-outline">Voltar para Terceiros</a>
+    </div>
+</div>
+{% endblock %}

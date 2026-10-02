@@ -8,12 +8,6 @@ Meu Perfil
 {% block conteudo %}
 <h1>Meu Perfil</h1>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 <div class="duas-colunas">
     <form method="post" enctype="multipart/form-data" action="{% url 'atualizar_foto' %}">
         {% csrf_token %}

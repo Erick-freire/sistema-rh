@@ -7,14 +7,6 @@
 {% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <h2 style="margin-top: 4px;">Horários</h2>
 <a href="{% url 'ponto:cadastrar_horario' %}" class="btn btn-novo">{% icon 'plus' %} Novo horário</a>
 

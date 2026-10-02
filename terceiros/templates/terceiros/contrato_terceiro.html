@@ -1,0 +1,118 @@
+{% load terceiros_extras %}
+<!--
+Template autocontido (não estende base.html) pelo mesmo motivo do
+`funcionarios/contratos/contrato_experiencia.html`: o xhtml2pdf não suporta o CSS
+do design system do sistema (flexbox/grid/variáveis).
+
+A qualificação da CONTRATANTE (Sotrigo e o sócio administrador) é fixa e está
+escrita aqui, não vem de cadastro -- mesma decisão já tomada no contrato de CLT.
+O texto é cópia do modelo em papel em uso. Se trocar o sócio administrador, é
+este arquivo que muda (e o bloco de assinaturas no fim).
+
+A numeração das cláusulas é sequencial e calculada na renderização, então o
+documento fica internamente consistente qualquer que seja a seleção de cláusulas
+da biblioteca. Ela NÃO reproduz a numeração fixa do modelo em papel (onde o
+objeto é a 3ª, a equipe a 5ª etc.), porque as cláusulas específicas do prestador
+saem depois das da biblioteca -- ver `montar_clausulas` em `terceiros/views.py`.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page { size: A4; margin: 2.2cm 2cm; }
+    body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.45; color: #000; text-align: justify; }
+    h1 { font-size: 13pt; text-align: center; margin-bottom: 20px; }
+    h2 { font-size: 11pt; text-align: center; margin-top: 16px; margin-bottom: 6px; text-decoration: underline; }
+    p { margin: 6px 0; }
+    table.assinaturas, table.testemunhas { width: 100%; margin-top: 40px; }
+    table.assinaturas td, table.testemunhas td { text-align: center; vertical-align: top; }
+    .linha-assinatura { border-top: 1px solid #000; padding-top: 4px; margin-top: 50px; }
+    .quebra { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
+
+<p>
+    <strong>CONTRATANTE: SOTRIGO SOCIEDADE TRITÍCOLA DE GOIÁS LTDA</strong>, nome fantasia
+    SOTRIGO, pessoa jurídica de direito privado inscrita no CNPJ sob o n. 04.577.125/0001-30,
+    com sede na Rua 5, Quadra 11-B, Módulos 01 a 06, Distrito Agroindustrial de Anápolis –
+    DAIA, Anápolis/GO, CEP 75.132-160, neste ato representada por seu sócio administrador,
+    Sr. <strong>RICARDO ARAÚJO MOURA</strong>, brasileiro, casado, empresário, portador da
+    cédula de identidade n. 3251758 SSP/GO, inscrito no CPF sob o n. 261.279.508-13, residente
+    e domiciliado na cidade de Anápolis/GO; e
+</p>
+
+<p>
+    <strong>CONTRATADA: {{ empresa.razao_social }}</strong>,
+    {% if empresa.nome_fantasia %}nome fantasia {{ empresa.nome_fantasia }}, {% endif %}pessoa
+    jurídica de direito privado inscrita no CNPJ sob o n. {{ empresa.cnpj_formatado }}, com
+    sede na {{ empresa.endereco_completo }}, neste ato representada por
+    <strong>{{ responsavel.nome }}</strong>, brasileiro(a),
+    {{ responsavel.get_estado_civil_display|lower }}, {{ responsavel.profissao|lower }},
+    portador(a) da cédula de identidade n. {{ responsavel.rg }}, inscrito(a) no CPF sob o
+    n. {{ responsavel.cpf_formatado }}, residente e domiciliado(a) {{ responsavel.endereco }};
+</p>
+
+<p>
+    têm entre si justo e contratado o presente CONTRATO DE PRESTAÇÃO DE SERVIÇOS, que se regerá
+    pelas cláusulas e condições a seguir estabelecidas, às quais as partes se obrigam mútua e
+    reciprocamente.
+</p>
+
+{% for clausula in clausulas %}
+    {% if clausula.titulo %}<h2>{{ clausula.titulo|upper }}</h2>{% endif %}
+    {% for paragrafo in clausula.paragrafos %}
+        {% if forloop.first %}
+        <p>Cláusula {{ forloop.parentloop.counter|ordinal_clausula }}: {{ paragrafo }}</p>
+        {% else %}
+        <p>{{ paragrafo }}</p>
+        {% endif %}
+    {% endfor %}
+{% endfor %}
+
+<p>
+    E por estarem assim justas e contratadas, as partes firmam o presente instrumento em 02
+    (duas) vias de igual teor e forma, na presença das testemunhas abaixo.
+</p>
+
+<p style="margin-top: 24px;">Anápolis, {{ data_extenso }}.</p>
+
+<table class="assinaturas">
+    <tr>
+        <td width="46%">
+            <div class="linha-assinatura">
+                CONTRATANTE<br>SOTRIGO SOCIEDADE TRITÍCOLA DE GOIÁS LTDA<br>RICARDO ARAÚJO MOURA
+            </div>
+        </td>
+        <td width="8%"></td>
+        <td width="46%">
+            <div class="linha-assinatura">
+                CONTRATADA<br>{{ empresa.razao_social }}<br>{{ responsavel.nome }}
+            </div>
+        </td>
+    </tr>
+</table>
+
+<table class="testemunhas">
+    <tr>
+        <td width="46%">
+            TESTEMUNHA 01<br><br>
+            NOME: ________________________________<br><br>
+            CPF: ________________________________
+        </td>
+        <td width="8%"></td>
+        <td width="46%">
+            TESTEMUNHA 02<br><br>
+            NOME: ________________________________<br><br>
+            CPF: ________________________________
+        </td>
+    </tr>
+</table>
+
+{# Bloco fixo: acompanha todo contrato gerado, não é cláusula opcional da biblioteca. #}
+{% include 'terceiros/termo_confidencialidade.html' %}
+
+</body>
+</html>

@@ -9,12 +9,6 @@ Meus Documentos
 <h1>Meus documentos</h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">O que falta aparece primeiro. O resto fica guardado abaixo.</p>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 {% if contrato_documento %}
 <div class="card" style="border-left: 3px solid var(--color-accent);">
     <div class="card__header">
@@ -29,6 +23,37 @@ Meus Documentos
                 <label for="arquivo-contrato" class="btn btn-sm">{% icon 'upload' %} Enviar</label>
             </form>
         </div>
+    </div>
+</div>
+{% endif %}
+
+{% if comodatos %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <div class="card__title" style="margin-bottom: 12px;">Comodatos</div>
+    <div class="lista-cards">
+        {% for comodato in comodatos %}
+        <div class="item-card">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">Comodato de {{ comodato.get_modalidade_display }}</div>
+                <div class="item-card__subtitulo">{{ comodato.data_emprestimo|date:"d/m/Y" }}</div>
+                {% if comodato.motivo_rejeicao and comodato.status == 'aguardando_assinatura' %}
+                <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pelo RH: {{ comodato.motivo_rejeicao }}. Envie o termo assinado novamente.</div>
+                {% endif %}
+            </div>
+            <span class="badge-status badge-status--{{ comodato.status }}">{{ comodato.get_status_display }}</span>
+
+            {% if comodato.status == 'aguardando_assinatura' and comodato.arquivo_gerado %}
+            <a href="{% url 'ver_comodato' comodato.id 'gerado' %}" target="_blank" class="btn btn-sm">{% icon 'download' %} Baixar</a>
+            <form method="post" action="{% url 'reenviar_comodato_assinado' comodato.id %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="file" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-comodato-{{ comodato.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+            {% elif comodato.arquivo_assinado %}
+            <a href="{% url 'ver_comodato' comodato.id 'assinado' %}" target="_blank" title="Ver termo assinado" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endif %}

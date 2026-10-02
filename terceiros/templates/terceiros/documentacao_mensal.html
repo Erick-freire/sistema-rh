@@ -1,0 +1,144 @@
+{% extends 'terceiros/base_terceiro.html' %}
+{% load rh_icons %}
+
+{#
+Aba "Documentação Mensal": envio de FGTS/DCTFWeb e o histórico do que já foi
+entregue, competência a competência.
+
+O histórico mostra junto os holerites da equipe -- na leitura do responsável a
+competência é um bloco só. O envio do holerite em si é por pessoa, na aba
+Funcionários, porque ele pertence ao colaborador e não à empresa.
+#}
+
+{% block titulo %}
+Documentação Mensal
+{% endblock %}
+
+{% block conteudo_terceiro %}
+<h1>Documentação Mensal</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ empresa.razao_social }} · {{ empresa.cnpj_formatado }}
+</p>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Enviar FGTS ou DCTFWeb</span>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.82rem; margin-bottom: 14px;">
+        São documentos da prestadora, não de uma pessoa da equipe, e valem para um mês específico.
+        Entregas mensais são rotina contínua: não bloqueiam a validação do cadastro.
+    </p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <label for="{{ form.tipo.id_for_label }}">Tipo de documento</label>
+        {{ form.tipo }}
+        {{ form.tipo.errors }}
+
+        <label style="margin-top: 16px;">Competência</label>
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 2;">
+                {{ form.competencia_mes }}
+                {{ form.competencia_mes.errors }}
+            </div>
+            <div style="flex: 1;">
+                {{ form.competencia_ano }}
+                {{ form.competencia_ano.errors }}
+            </div>
+        </div>
+
+        <label style="margin-top: 16px;">Arquivo</label>
+        <label for="{{ form.arquivo.id_for_label }}" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--color-border); border-radius: var(--radius); padding: 28px 16px; cursor: pointer; color: var(--color-text-muted); text-align: center;">
+            {% icon 'upload' %}
+            <strong style="color: var(--color-text);">Toque para escolher</strong>
+            <span style="font-size: 0.8rem;">PDF, JPG ou PNG até 10 MB</span>
+        </label>
+        <div style="display: none;">{{ form.arquivo }}</div>
+        {{ form.arquivo.errors }}
+
+        <div id="arquivo-selecionado" class="item-card" style="display: none; margin-top: 12px;">
+            <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo" id="arquivo-nome"></div>
+            </div>
+            <button type="button" id="arquivo-remover" style="background: transparent; color: var(--color-text-muted); padding: 4px;">{% icon 'x' %}</button>
+        </div>
+
+        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 12px;">
+            Reenviar a mesma competência substitui o arquivo daquele mês e devolve o documento para análise.
+            Uma competência nova cria um registro novo.
+        </p>
+
+        <button type="submit" class="btn-primario btn-bloco" style="margin-top: 16px;">Enviar</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Histórico por competência</span>
+    </div>
+
+    {% for competencia in competencias %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 12px;">
+        <div class="card__title" style="font-size: 0.9rem; margin-bottom: 10px;">{{ competencia.rotulo }}</div>
+
+        <div class="lista-cards">
+            {% for documento in competencia.documentos_empresa %}
+            {% include 'terceiros/_documento_enviado.html' with documento=documento url_arquivo='terceiros:ver_documento_empresa' %}
+            {% endfor %}
+
+            {% for documento in competencia.holerites %}
+            <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                    <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+                    <div class="item-card__corpo">
+                        <div class="item-card__titulo">Holerite · {{ documento.colaborador.nome }}</div>
+                        <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.enviado_em|date:"d/m/Y" }}</div>
+                    </div>
+                    <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
+                    <span class="acoes-tabela">
+                        <a href="{% url 'terceiros:ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                    </span>
+                </div>
+                {% if documento.status == 'rejeitado' %}
+                <div style="font-size: 0.85rem; color: var(--color-error);">
+                    {{ documento.motivo_rejeicao }}
+                    <a href="{% url 'terceiros:detalhe_colaborador' documento.colaborador.id %}?tipo=holerite" style="margin-left: 6px;">Reenviar</a>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% empty %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+        Nenhuma entrega mensal registrada ainda.
+    </p>
+    {% endfor %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var input = document.getElementById('{{ form.arquivo.id_for_label }}');
+    var selecionado = document.getElementById('arquivo-selecionado');
+    var nomeEl = document.getElementById('arquivo-nome');
+    var remover = document.getElementById('arquivo-remover');
+    if (!input) return;
+
+    input.addEventListener('change', function () {
+        if (input.files && input.files.length > 0) {
+            nomeEl.textContent = input.files[0].name;
+            selecionado.style.display = 'flex';
+        } else {
+            selecionado.style.display = 'none';
+        }
+    });
+
+    remover.addEventListener('click', function () {
+        input.value = '';
+        selecionado.style.display = 'none';
+    });
+});
+</script>
+{% endblock %}

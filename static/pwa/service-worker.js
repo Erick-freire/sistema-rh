@@ -1,5 +1,4 @@
-const CACHE_ESTATICO = 'sistema-rh-estatico-v1';
-const CACHE_DINAMICO = 'sistema-rh-dinamico-v1';
+const CACHE_ESTATICO = 'sistema-rh-estatico-v2';
 const PAGINA_OFFLINE = '/offline/';
 
 const RECURSOS_ESTATICOS = [
@@ -21,7 +20,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((chaves) =>
       Promise.all(
         chaves
-          .filter((k) => k !== CACHE_ESTATICO && k !== CACHE_DINAMICO)
+          .filter((k) => k !== CACHE_ESTATICO)
           .map((k) => caches.delete(k))
       )
     )
@@ -38,26 +37,30 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== location.origin) return;
 
   if (url.pathname.startsWith('/static/') || url.pathname.startsWith('/media/')) {
+    // Rede primeiro, cache só como reserva. Servir do cache primeiro fazia toda
+    // mudança de CSS/JS aparecer apenas no carregamento seguinte: a tela vinha
+    // com o estilo antigo e parecia quebrada. O arquivo não tem hash no nome
+    // (`{% static %}` puro), então o cache não teria como saber que envelheceu.
     event.respondWith(
-      caches.match(req).then((cached) => {
-        const rede = fetch(req).then((resp) => {
-          caches.open(CACHE_ESTATICO).then((c) => c.put(req, resp.clone()));
+      fetch(req)
+        .then((resp) => {
+          if (resp.ok) {
+            const copia = resp.clone();
+            caches.open(CACHE_ESTATICO).then((c) => c.put(req, copia));
+          }
           return resp;
-        });
-        return cached || rede;
-      })
+        })
+        // `ignoreSearch` porque a URL carrega ?v=<mtime>: sem isso a reserva
+        // offline nunca casaria com o que foi guardado no install.
+        .catch(() => caches.match(req, { ignoreSearch: true }))
     );
     return;
   }
 
-  event.respondWith(
-    fetch(req)
-      .then((resp) => {
-        caches.open(CACHE_DINAMICO).then((c) => c.put(req, resp.clone()));
-        return resp;
-      })
-      .catch(() =>
-        caches.match(req).then((cached) => cached || caches.match(PAGINA_OFFLINE))
-      )
-  );
+  // Página HTML nunca vai para o cache. Ela sai do servidor amarrada a quem
+  // pediu: traz o token CSRF do cookie daquele momento (devolver uma cópia
+  // velha derruba o POST seguinte com 403 "CSRF token incorrect") e traz os
+  // dados de quem estava logado (no aparelho compartilhado, a tela de um
+  // apareceria para o próximo). Sem rede, mostra a página offline.
+  event.respondWith(fetch(req).catch(() => caches.match(PAGINA_OFFLINE)));
 });

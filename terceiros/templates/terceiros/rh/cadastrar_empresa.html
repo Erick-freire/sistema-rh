@@ -1,0 +1,101 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Nova empresa terceira
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'terceiros:listar_empresas' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Nova empresa terceira
+</h1>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Dados da empresa prestadora</span>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        O responsável completa os dados dele (RG, estado civil, profissão e endereço) no primeiro acesso.
+        O cadastro fica <strong>aguardando o responsável</strong> até isso ser feito — só depois o contrato
+        pode ser gerado.
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <div class="form-grid">
+            <div class="span-2">
+                <label for="{{ form.razao_social.id_for_label }}">Razão social</label>
+                {{ form.razao_social }}
+                {{ form.razao_social.errors }}
+            </div>
+            <div>
+                <label for="{{ form.nome_fantasia.id_for_label }}">Nome fantasia (opcional)</label>
+                {{ form.nome_fantasia }}
+                {{ form.nome_fantasia.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cnpj.id_for_label }}">CNPJ</label>
+                {{ form.cnpj }}
+                {{ form.cnpj.errors }}
+            </div>
+        </div>
+
+        <h2 style="font-size: 0.95rem; margin-top: 24px;">Endereço</h2>
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.logradouro.id_for_label }}">Logradouro</label>
+                {{ form.logradouro }}
+                {{ form.logradouro.errors }}
+            </div>
+            <div>
+                <label for="{{ form.numero.id_for_label }}">Número</label>
+                {{ form.numero }}
+                {{ form.numero.errors }}
+            </div>
+            <div>
+                <label for="{{ form.bairro.id_for_label }}">Bairro</label>
+                {{ form.bairro }}
+                {{ form.bairro.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cidade.id_for_label }}">Cidade</label>
+                {{ form.cidade }}
+                {{ form.cidade.errors }}
+            </div>
+            <div>
+                <label for="{{ form.estado.id_for_label }}">UF</label>
+                {{ form.estado }}
+                {{ form.estado.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cep.id_for_label }}">CEP</label>
+                {{ form.cep }}
+                {{ form.cep.errors }}
+            </div>
+        </div>
+
+        <h2 style="font-size: 0.95rem; margin-top: 24px;">Responsável pela empresa</h2>
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.responsavel_nome.id_for_label }}">Nome completo</label>
+                {{ form.responsavel_nome }}
+                {{ form.responsavel_nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.responsavel_cpf.id_for_label }}">CPF</label>
+                {{ form.responsavel_cpf }}
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">Será usado como login do responsável.</p>
+                {{ form.responsavel_cpf.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Cadastrar e gerar acesso</button>
+            <a href="{% url 'terceiros:listar_empresas' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

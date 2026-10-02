@@ -247,6 +247,22 @@ class Funcionario(models.Model):
         periodo = self._periodo_ferias_atual()
         return periodo['concessivo_fim'] if periodo else None
 
+    def pode_solicitar_ferias(self):
+        if self.data_admissao is None:
+            return False
+        hoje = timezone.now().date()
+        um_ano_depois = self._somar_anos(self.data_admissao, 1)
+        return hoje >= um_ano_depois
+
+    def dias_ate_direito_ferias(self):
+        if self.data_admissao is None:
+            return None
+        hoje = timezone.now().date()
+        um_ano_depois = self._somar_anos(self.data_admissao, 1)
+        if hoje >= um_ano_depois:
+            return 0
+        return (um_ano_depois - hoje).days
+
     def dias_para_vencer_ferias(self):
         periodo = self._periodo_ferias_atual()
         if periodo is None:
@@ -486,3 +502,71 @@ class AvisoFerias(models.Model):
     @property
     def foi_atendido(self):
         return self.solicitacoes_geradas.exists()
+    
+class TermoComodato(models.Model):
+    MODALIDADE_CHOICES = [
+        ('uniforme', 'Uniforme'),
+        ('equipamento', 'Equipamento / Aparelho'),
+    ]
+
+    STATUS_CHOICES = [
+        ('aguardando_assinatura', 'Aguardando assinatura'),
+        ('em_validacao', 'Assinado, aguardando validação do RH'),
+        ('ativo', 'Ativo (item(ns) emprestado(s))'),
+        ('devolvido_total', 'Devolvido integralmente'),
+        ('devolvido_parcial', 'Devolvido parcialmente'),
+        ('extraviado', 'Extraviado / Danificado'),
+    ]
+
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='comodatos')
+    modalidade = models.CharField(max_length=15, choices=MODALIDADE_CHOICES)
+
+    data_emprestimo = models.DateField()
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='aguardando_assinatura')
+
+    data_devolucao = models.DateField(null=True, blank=True)
+    observacoes_devolucao = models.TextField(blank=True)
+    arquivo_gerado = models.FileField(upload_to='comodatos/', null=True, blank=True)
+    arquivo_assinado = models.FileField(upload_to='comodatos/assinados/', null=True, blank=True)
+
+    validado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='comodatos_validados'
+    )
+    validado_em = models.DateTimeField(null=True, blank=True)
+    motivo_rejeicao = models.TextField(blank=True)
+
+    gerado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='comodatos_gerados')
+    gerado_em = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Comodato ({self.get_modalidade_display()}) — {self.funcionario.nome}'
+    
+class ItemCatalogoComodato(models.Model):
+    nome = models.CharField(max_length=100)
+    modalidade = models.CharField(max_length=15, choices=TermoComodato.MODALIDADE_CHOICES)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['nome']
+
+    def __str__(self):
+        return self.nome
+
+class ItemComodato(models.Model):
+    termo = models.ForeignKey(TermoComodato, on_delete=models.CASCADE, related_name='itens')
+
+    # Opcional no banco só para não quebrar itens antigos; o form exige.
+    item_catalogo = models.ForeignKey(
+        ItemCatalogoComodato, on_delete=models.PROTECT, null=True, blank=True, related_name='itens',
+    )
+    # Só em equipamento: identifica qual aparelho foi entregue (nº de série / IMEI).
+    numero_serie = models.CharField(max_length=50, blank=True)
+    descricao = models.CharField(max_length=200, blank=True)
+    tamanho = models.CharField(max_length=10, blank=True)
+    quantidade = models.PositiveIntegerField(default=1)
+    valor_unitario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    devolvido = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'{self.descricao} ({self.quantidade}x)'

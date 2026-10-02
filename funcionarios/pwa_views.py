@@ -10,7 +10,7 @@ from django.views.decorators.cache import never_cache
 def service_worker_view(request):
     caminho = os.path.join(settings.BASE_DIR, 'static', 'pwa', 'service-worker.js')
     with open(caminho, 'rb') as arquivo:
-        resposta = HttpResponse(arquivo.read(), content_type='application/javascript')
+        resposta = HttpResponse(arquivo.read(), content_type='application/javascript; charset=utf-8')
     resposta['Service-Worker-Allowed'] = '/'
     return resposta
 

@@ -1,0 +1,169 @@
+{% extends 'terceiros/base_terceiro.html' %}
+{% load rh_icons %}
+
+{#
+Aba "Minha Empresa": os dados da prestadora e os do representante legal, no
+mesmo formulário e com um botão só -- são os dois lados do que o contrato
+precisa, e quem responde pelos dois é o responsável.
+
+CNPJ e CPF não entram como campos editáveis depois do cadastro inicial: o
+contrato já foi emitido com eles, e o CPF ainda é o login. A trava do CNPJ é do
+formulário (`disabled`), não só do HTML.
+#}
+
+{% block titulo %}
+Minha Empresa
+{% endblock %}
+
+{% block conteudo_terceiro %}
+<h1>Minha Empresa</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ empresa.razao_social }} · {{ empresa.cnpj_formatado }}
+    <span class="badge-status badge-status--{{ empresa.status }}">{{ empresa.get_status_display }}</span>
+</p>
+
+{% if empresa.status == 'pendente_cadastro' %}
+<div class="alert alert--aviso">
+    {% icon 'alert-triangle' %}
+    <span>
+        Confira os dados da empresa e preencha os seus como representante legal.
+        O RH da Sotrigo só consegue gerar o contrato depois disso.
+    </span>
+</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">Dados da empresa</span>
+        </div>
+        {{ form_empresa.non_field_errors }}
+
+        <div class="form-grid">
+            <div class="span-2">
+                <label for="{{ form_empresa.razao_social.id_for_label }}">Razão social</label>
+                {{ form_empresa.razao_social }}
+                {{ form_empresa.razao_social.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form_empresa.nome_fantasia.id_for_label }}">Nome fantasia (opcional)</label>
+                {{ form_empresa.nome_fantasia }}
+                {{ form_empresa.nome_fantasia.errors }}
+            </div>
+            <div>
+                <label for="{{ form_empresa.cnpj.id_for_label }}">CNPJ</label>
+                {% if form_empresa.cnpj_travado %}
+                <p class="linha-dado__valor" style="text-align: left; padding: 8px 0;">{{ empresa.cnpj_formatado }}</p>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted);">
+                    O contrato já foi emitido com este CNPJ. Para corrigir, fale com o RH da Sotrigo.
+                </p>
+                {% else %}
+                {{ form_empresa.cnpj }}
+                {{ form_empresa.cnpj.errors }}
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form_empresa.cep.id_for_label }}">CEP</label>
+                {{ form_empresa.cep }}
+                {{ form_empresa.cep.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form_empresa.logradouro.id_for_label }}">Logradouro</label>
+                {{ form_empresa.logradouro }}
+                {{ form_empresa.logradouro.errors }}
+            </div>
+            <div>
+                <label for="{{ form_empresa.numero.id_for_label }}">Número</label>
+                {{ form_empresa.numero }}
+                {{ form_empresa.numero.errors }}
+            </div>
+            <div>
+                <label for="{{ form_empresa.bairro.id_for_label }}">Bairro</label>
+                {{ form_empresa.bairro }}
+                {{ form_empresa.bairro.errors }}
+            </div>
+            <div>
+                <label for="{{ form_empresa.cidade.id_for_label }}">Cidade</label>
+                {{ form_empresa.cidade }}
+                {{ form_empresa.cidade.errors }}
+            </div>
+            <div>
+                <label for="{{ form_empresa.estado.id_for_label }}">Estado</label>
+                {{ form_empresa.estado }}
+                {{ form_empresa.estado.errors }}
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card__header">
+            <span class="card__title">Representante legal</span>
+        </div>
+        <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+            São os seus dados como signatário do contrato de prestação de serviços.
+        </p>
+        {{ form_responsavel.non_field_errors }}
+
+        <div class="form-grid">
+            <div class="span-2">
+                <label for="{{ form_responsavel.nome.id_for_label }}">Nome completo</label>
+                {{ form_responsavel.nome }}
+                {{ form_responsavel.nome.errors }}
+            </div>
+            <div>
+                <label>CPF</label>
+                <p class="linha-dado__valor" style="text-align: left; padding: 8px 0;">{{ responsavel.cpf_formatado }}</p>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted);">
+                    É o seu login. Para corrigir, fale com o RH da Sotrigo.
+                </p>
+            </div>
+            <div>
+                <label for="{{ form_responsavel.rg.id_for_label }}">RG</label>
+                {{ form_responsavel.rg }}
+                {{ form_responsavel.rg.errors }}
+            </div>
+            <div>
+                <label for="{{ form_responsavel.estado_civil.id_for_label }}">Estado civil</label>
+                {{ form_responsavel.estado_civil }}
+                {{ form_responsavel.estado_civil.errors }}
+            </div>
+            <div>
+                <label for="{{ form_responsavel.profissao.id_for_label }}">Profissão</label>
+                {{ form_responsavel.profissao }}
+                {{ form_responsavel.profissao.errors }}
+            </div>
+            <div class="span-2">
+                <label for="{{ form_responsavel.endereco.id_for_label }}">Endereço completo</label>
+                {{ form_responsavel.endereco }}
+                {{ form_responsavel.endereco.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <a href="{% url 'terceiros:painel' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Contrato</span>
+    </div>
+    {% if contrato and contrato.arquivo_gerado %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">
+        Gerado em {{ contrato.gerado_em|date:"d/m/Y" }}. Baixe, colha as assinaturas e envie os
+        documentos assinados na aba Funcionários. O PDF já inclui o Termo de Confidencialidade.
+    </p>
+    <a href="{% url 'terceiros:baixar_contrato' contrato.id %}" class="btn-primario btn-sm" download>
+        {% icon 'download' %} Baixar contrato em PDF
+    </a>
+    {% else %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+        Nenhum contrato disponível ainda. O RH da Sotrigo gera assim que o cadastro estiver completo.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

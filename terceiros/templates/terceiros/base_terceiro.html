@@ -1,0 +1,85 @@
+{% extends 'funcionarios/base.html' %}
+{% load static %}
+{% load rh_icons %}
+
+{#
+Shell do responsável de empresa terceira: mesmo esqueleto do sistema principal
+(toasts, modais, CSS, PWA, gaveta no mobile), sidebar própria.
+
+Sobrescreve só `menu`, `topbar` e `barra_inferior` do `funcionarios/base.html`.
+A sidebar do RH/gestor/colaborador nunca aparece aqui: o responsável é um tipo
+de conta paralelo, sem `Usuario` e fora do sistema de papéis, e as telas dele
+não têm nada em comum com as de CLT.
+
+A identificação sai de `responsavel_atual`, do context processor
+`funcionarios.context_processors.usuario_logado` -- o equivalente de
+`usuario_atual` para este portal. Assim o shell não depende de cada view mandar
+`responsavel` no contexto, nem do decorator `responsavel_required` (a tela de
+troca de senha, por exemplo, é servida por uma view do app `funcionarios`).
+#}
+
+{% block menu %}
+<div class="sidebar__brand sidebar__brand--compacto">
+    <span class="sidebar__brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
+    Portal do Prestador
+    <label for="menu-toggle" class="sidebar__close" aria-label="Fechar menu">{% icon 'x' %}</label>
+</div>
+
+<div class="sidebar__user">
+    <span class="avatar avatar--sm avatar--brand">{{ responsavel_atual.iniciais }}</span>
+    <div>
+        <div class="sidebar__user-name">{{ responsavel_atual.nome }}</div>
+        <div class="sidebar__user-role">{{ responsavel_atual.empresa.nome_curto }}</div>
+    </div>
+</div>
+
+<nav class="sidebar__nav">
+    <ul>
+        <li class="{% if request.resolver_match.url_name == 'painel' %}active{% endif %}">
+            <a href="{% url 'terceiros:painel' %}">{% icon 'home' %} Início</a>
+        </li>
+        <li class="{% if request.resolver_match.url_name == 'minha_empresa' %}active{% endif %}">
+            <a href="{% url 'terceiros:minha_empresa' %}">{% icon 'briefcase' %} Minha Empresa</a>
+        </li>
+        <li class="{% if request.resolver_match.url_name == 'documentacao_mensal' %}active{% endif %}">
+            <a href="{% url 'terceiros:documentacao_mensal' %}">{% icon 'folder' %} Documentação Mensal</a>
+        </li>
+        <li class="{% if request.resolver_match.url_name in urls_da_equipe %}active{% endif %}">
+            <a href="{% url 'terceiros:funcionarios' %}">{% icon 'users' %} Funcionários</a>
+        </li>
+    </ul>
+</nav>
+
+<ul>
+    <li class="sair"><a href="{% url 'logout' %}">{% icon 'log-out' %} Sair</a></li>
+</ul>
+{% endblock %}
+
+{% block topbar %}
+<div class="topbar__user">
+    <span class="avatar avatar--brand">{{ responsavel_atual.iniciais }}</span>
+    <div class="topbar__user-info">
+        <div class="topbar__user-name">{{ responsavel_atual.nome }}</div>
+        <div class="topbar__user-role">{{ responsavel_atual.empresa.nome_curto }}</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block barra_inferior %}
+<nav class="bottom-nav">
+    <a href="{% url 'terceiros:painel' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'painel' %} active{% endif %}">
+        {% icon 'home' %} Início
+    </a>
+    <a href="{% url 'terceiros:minha_empresa' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'minha_empresa' %} active{% endif %}">
+        {% icon 'briefcase' %} Empresa
+    </a>
+    <a href="{% url 'terceiros:documentacao_mensal' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'documentacao_mensal' %} active{% endif %}">
+        {% icon 'folder' %} Mensal
+    </a>
+    <a href="{% url 'terceiros:funcionarios' %}" class="bottom-nav__item{% if request.resolver_match.url_name in urls_da_equipe %} active{% endif %}">
+        {% icon 'users' %} Equipe
+    </a>
+</nav>
+{% endblock %}
+
+{% block conteudo %}{% block conteudo_terceiro %}{% endblock %}{% endblock %}

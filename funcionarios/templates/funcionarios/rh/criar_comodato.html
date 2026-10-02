@@ -1,0 +1,256 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Novo Comodato
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_comodatos' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Novo Comodato
+</h1>
+
+<form method="post" id="form-comodato" data-loading-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="card">
+        <h2 style="margin-top: 0;">1. Funcionário e modalidade</h2>
+
+        <div class="form-grid form-grid--3">
+            <div class="busca-funcionario">
+                <label for="busca-funcionario-input">{{ form.funcionario.label }}</label>
+                <input type="text" id="busca-funcionario-input" autocomplete="off"
+                       placeholder="Digite nome, matrícula ou CPF"
+                       role="combobox" aria-expanded="false" aria-controls="busca-funcionario-lista">
+                <ul class="busca-funcionario__lista" id="busca-funcionario-lista" role="listbox" hidden></ul>
+                <div hidden>{{ form.funcionario }}</div>
+                {{ form.funcionario.errors }}
+            </div>
+
+            <div>
+                <label for="{{ form.modalidade.id_for_label }}">{{ form.modalidade.label }}</label>
+                {{ form.modalidade }}
+                {{ form.modalidade.errors }}
+            </div>
+
+            <div>
+                <label for="{{ form.data_emprestimo.id_for_label }}">{{ form.data_emprestimo.label }}</label>
+                {{ form.data_emprestimo }}
+                {{ form.data_emprestimo.errors }}
+            </div>
+        </div>
+    </div>
+
+    <div class="card" id="etapa-itens">
+        <h2 style="margin-top: 0;">2. Itens</h2>
+        {{ formset.management_form }}
+        {{ formset.non_form_errors }}
+
+        <div class="table-responsive">
+            <table class="tabela-itens-comodato">
+                <thead>
+                    <tr>
+                        <th class="col-excluir" aria-label="Excluir"></th>
+                        <th>Item</th>
+                        <th>Detalhes (cor, modelo, etc.)</th>
+                        <th class="coluna-equipamento">Nº de série / IMEI</th>
+                        <th class="coluna-uniforme">Tamanho</th>
+                        <th>Quantidade</th>
+                        <th>Valor unitário</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item_form in formset %}
+                    <tr class="{% if item_form.DELETE.value %}linha-marcada-exclusao{% endif %}">
+                        <td class="col-excluir">
+                           <button type="button" class="btn-excluir-linha{% if item_form.DELETE.value %} btn-excluir-linha--marcado{% endif %}" aria-label="{% if item_form.DELETE.value %}Desfazer remoção{% else %}Remover linha{% endif %}" title="{% if item_form.DELETE.value %}Desfazer remoção{% else %}Remover linha{% endif %}">{% if item_form.DELETE.value %}+{% else %}−{% endif %}</button>
+                            <span hidden>{{ item_form.DELETE }}</span>
+                            {{ item_form.id }}
+                        </td>
+                        <td>{{ item_form.item_catalogo }}{{ item_form.item_catalogo.errors }}</td>
+                        <td>{{ item_form.descricao }}{{ item_form.descricao.errors }}</td>
+                        <td class="coluna-equipamento">{{ item_form.numero_serie }}{{ item_form.numero_serie.errors }}</td>
+                        <td class="coluna-uniforme">{{ item_form.tamanho }}{{ item_form.tamanho.errors }}</td>
+                        <td>{{ item_form.quantidade }}{{ item_form.quantidade.errors }}</td>
+                        <td>{{ item_form.valor_unitario }}{{ item_form.valor_unitario.errors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <button type="submit" class="btn-primario" style="margin-top: 20px;">Salvar comodato</button>
+    </div>
+
+    <p id="aviso-etapa-itens" style="color: var(--color-text-muted); font-size: 0.9rem;">Escolha o funcionário e a modalidade para preencher os itens.</p>
+</form>
+
+{{ funcionarios_busca|json_script:"dados-funcionarios" }}
+{{ catalogo_modalidades|json_script:"dados-catalogo" }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('form-comodato');
+    var selectFuncionario = document.getElementById('{{ form.funcionario.id_for_label }}');
+    var selectModalidade = document.getElementById('{{ form.modalidade.id_for_label }}');
+    var etapaItens = document.getElementById('etapa-itens');
+    var avisoEtapaItens = document.getElementById('aviso-etapa-itens');
+    var catalogo = JSON.parse(document.getElementById('dados-catalogo').textContent);
+
+    // ---------- Busca de funcionário ----------
+    var funcionarios = JSON.parse(document.getElementById('dados-funcionarios').textContent);
+    var inputBusca = document.getElementById('busca-funcionario-input');
+    var lista = document.getElementById('busca-funcionario-lista');
+    var LIMITE_RESULTADOS = 8;
+    var destacado = -1;
+
+    function normalizar(texto) {
+        return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    function rotulo(f) {
+        return f.matricula ? f.nome + ' — ' + f.matricula : f.nome;
+    }
+
+    funcionarios.forEach(function (f) {
+        f._busca = normalizar(f.nome + ' ' + f.matricula);
+    });
+
+    function fecharLista() {
+        lista.hidden = true;
+        inputBusca.setAttribute('aria-expanded', 'false');
+        destacado = -1;
+    }
+
+    function escolher(f) {
+        selectFuncionario.value = String(f.id);
+        inputBusca.value = rotulo(f);
+        fecharLista();
+        atualizarEtapas();
+    }
+
+    function destacar(indice) {
+        var itens = lista.querySelectorAll('li[data-id]');
+        if (!itens.length) return;
+        destacado = (indice + itens.length) % itens.length;
+        itens.forEach(function (li, i) { li.classList.toggle('ativo', i === destacado); });
+        itens[destacado].scrollIntoView({ block: 'nearest' });
+    }
+
+    function buscar() {
+        var termo = normalizar(inputBusca.value.trim());
+        var digitos = inputBusca.value.replace(/\D/g, '');
+        lista.innerHTML = '';
+        if (!termo) { fecharLista(); return; }
+
+        var encontrados = funcionarios.filter(function (f) {
+            return f._busca.indexOf(termo) !== -1 || (digitos.length >= 3 && f.cpf.indexOf(digitos) !== -1);
+        }).slice(0, LIMITE_RESULTADOS);
+
+        if (!encontrados.length) {
+            var vazio = document.createElement('li');
+            vazio.className = 'vazio';
+            vazio.textContent = 'Nenhum funcionário encontrado.';
+            lista.appendChild(vazio);
+        }
+        encontrados.forEach(function (f) {
+            var li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.dataset.id = f.id;
+            li.textContent = rotulo(f);
+            li.addEventListener('mousedown', function (evento) {
+                evento.preventDefault();
+                escolher(f);
+            });
+            lista.appendChild(li);
+        });
+        lista.hidden = false;
+        inputBusca.setAttribute('aria-expanded', 'true');
+        destacado = -1;
+    }
+
+    inputBusca.addEventListener('input', function () {
+        // Texto alterado depois de escolher: deixa de valer a escolha anterior.
+        selectFuncionario.value = '';
+        atualizarEtapas();
+        buscar();
+    });
+
+    inputBusca.addEventListener('keydown', function (evento) {
+        if (evento.key === 'Enter') evento.preventDefault();
+        if (lista.hidden) return;
+        if (evento.key === 'ArrowDown') { evento.preventDefault(); destacar(destacado + 1); }
+        else if (evento.key === 'ArrowUp') { evento.preventDefault(); destacar(destacado - 1); }
+        else if (evento.key === 'Escape') { fecharLista(); }
+        else if (evento.key === 'Enter') {
+            var itens = lista.querySelectorAll('li[data-id]');
+            var alvo = itens[destacado >= 0 ? destacado : 0];
+            if (alvo) {
+                var f = funcionarios.find(function (x) { return String(x.id) === alvo.dataset.id; });
+                if (f) escolher(f);
+            }
+        }
+    });
+
+    inputBusca.addEventListener('blur', fecharLista);
+
+    // Reexibição após erro de validação: mostra o funcionário já escolhido.
+    if (selectFuncionario.value) {
+        var atual = funcionarios.find(function (f) { return String(f.id) === selectFuncionario.value; });
+        if (atual) inputBusca.value = rotulo(atual);
+    }
+
+    // ---------- Colunas e itens conforme a modalidade ----------
+    function atualizarColunas() {
+        var ehUniforme = selectModalidade.value === 'uniforme';
+        document.querySelectorAll('.coluna-uniforme').forEach(function (el) { el.style.display = ehUniforme ? '' : 'none'; });
+        document.querySelectorAll('.coluna-equipamento').forEach(function (el) { el.style.display = ehUniforme ? 'none' : ''; });
+
+        document.querySelectorAll('select[name$="-item_catalogo"]').forEach(function (select) {
+            Array.prototype.forEach.call(select.options, function (opcao) {
+                if (!opcao.value) return;
+                opcao.hidden = catalogo[opcao.value] !== selectModalidade.value;
+            });
+            if (select.selectedOptions[0] && select.selectedOptions[0].hidden) select.value = '';
+        });
+    }
+
+    function atualizarEtapas() {
+        var pronto = Boolean(selectFuncionario.value && selectModalidade.value);
+        etapaItens.hidden = !pronto;
+        avisoEtapaItens.hidden = pronto;
+    }
+
+    selectModalidade.addEventListener('change', function () {
+        atualizarColunas();
+        atualizarEtapas();
+    });
+    atualizarColunas();
+    atualizarEtapas();
+
+    // ---------- Remover linha ----------
+    document.querySelectorAll('.btn-excluir-linha').forEach(function (botao) {
+        var linha = botao.closest('tr');
+        var checkbox = linha.querySelector('input[name$="-DELETE"]');
+        botao.addEventListener('click', function () {
+            checkbox.checked = !checkbox.checked;
+            linha.classList.toggle('linha-marcada-exclusao', checkbox.checked);
+            botao.classList.toggle('btn-excluir-linha--marcado', checkbox.checked);
+            botao.textContent = checkbox.checked ? '+' : '−';
+            botao.setAttribute('aria-label', checkbox.checked ? 'Desfazer remoção' : 'Remover linha');
+            botao.title = botao.getAttribute('aria-label');
+        });
+    });
+
+    // Não envia o que foi digitado nas colunas que não se aplicam à modalidade.
+    form.addEventListener('submit', function () {
+        var camposOcultos = selectModalidade.value === 'uniforme' ? ['-numero_serie'] : ['-tamanho'];
+        camposOcultos.forEach(function (sufixo) {
+            form.querySelectorAll('input[name$="' + sufixo + '"]').forEach(function (input) { input.value = ''; });
+        });
+    });
+});
+</script>
+{% endblock %}

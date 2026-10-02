@@ -1,0 +1,62 @@
+{% extends 'terceiros/base_terceiro.html' %}
+{% load rh_icons %}
+
+{#
+Serve o cadastro e a edição de uma pessoa da equipe -- mesmos três campos, mesma
+validação de CPF. O que muda é o texto e para onde o POST vai (a action fica
+vazia de propósito: volta para a URL que renderizou a tela).
+#}
+
+{% block titulo %}
+{% if colaborador %}Editar {{ colaborador.nome }}{% else %}Adicionar pessoa à equipe{% endif %}
+{% endblock %}
+
+{% block conteudo_terceiro %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'terceiros:funcionarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {% if colaborador %}Editar pessoa da equipe{% else %}Adicionar pessoa à equipe{% endif %}
+</h1>
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Dados da pessoa</span>
+    </div>
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        {% if colaborador %}
+        Corrija o nome, o CPF ou a função. Os documentos já enviados continuam onde estão.
+        {% else %}
+        Depois de salvar, você envia os três documentos dela: contrato assinado, documento pessoal e selfie.
+        {% endif %}
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <div class="form-grid">
+            <div class="span-2">
+                <label for="{{ form.nome.id_for_label }}">Nome completo</label>
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.cpf.id_for_label }}">CPF</label>
+                {{ form.cpf }}
+                {{ form.cpf.errors }}
+            </div>
+            <div>
+                <label for="{{ form.funcao.id_for_label }}">Função (opcional)</label>
+                {{ form.funcao }}
+                {{ form.funcao.errors }}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn-primario">
+                {% if colaborador %}Salvar alterações{% else %}Salvar e enviar documentos{% endif %}
+            </button>
+            <a href="{% url 'terceiros:funcionarios' %}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

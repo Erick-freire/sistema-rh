@@ -8,12 +8,6 @@ Minhas Férias
 {% block conteudo %}
 <h1>Minhas férias</h1>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 {% if aviso_pendente %}
 <div class="alert alert--aviso">
     {% if tem_ativa %}
@@ -46,12 +40,16 @@ Minhas Férias
     <div style="display: flex; flex-direction: column; gap: 10px;">
         <form method="post" action="{% url 'aceitar_sugestao_ferias' solicitacao_ativa.id %}">
             {% csrf_token %}
-            <button type="submit" class="btn-primario btn-bloco">Aceitar {{ solicitacao_ativa.data_sugerida|date:"d/m/Y" }}</button>
+            <button type="submit" class="btn-primario btn-bloco"
+                    data-confirmar="Aceitar a data proposta pelo gestor ({{ solicitacao_ativa.data_sugerida|date:"d/m/Y" }})?"
+                    data-confirmar-titulo="Aceitar sugestão">Aceitar {{ solicitacao_ativa.data_sugerida|date:"d/m/Y" }}</button>
         </form>
         <a href="{% url 'propor_outra_data_ferias' solicitacao_ativa.id %}" class="btn-outline btn-bloco">Propor outra data</a>
         <form method="post" action="{% url 'adiar_ferias' solicitacao_ativa.id %}">
             {% csrf_token %}
-            <button type="submit" class="btn-outline btn-bloco">Adiar solicitação</button>
+            <button type="submit" class="btn-outline btn-bloco"
+                    data-confirmar="Adiar suas férias? Uma nova solicitação será necessária depois."
+                    data-confirmar-titulo="Adiar solicitação">Adiar solicitação</button>
         </form>
     </div>
 </div>
@@ -64,10 +62,17 @@ Minhas Férias
     </p>
 </div>
 
+{% elif not pode_solicitar %}
+<div class="card">
+    <div class="alert alert--erro">
+        {% icon 'alert-triangle' %} <span>Você ainda não completou 12 meses desde sua admissão. Faltam {{ dias_ate_direito }} dia(s) para adquirir o direito a férias.</span>
+    </div>
+</div>
+
 {% else %}
 <div class="card">
     <div class="card__header"><span class="card__title">Nova solicitação</span></div>
-    <p class="item-card__subtitulo" style="margin: -8px 0 16px;">Escolha quando quer começar e quantos dias. O gestor analisa e o RH conclui.</p>
+    <p class="item-card__subtitulo" style="margin: -8px 0 16px;">Escolha quando quer começar e quantos dias. O gestor analisa e o RH conclui. A data de início deve ser pelo menos 30 dias após hoje.</p>
     <form method="post">
         {% csrf_token %}
         <label for="{{ form.data_solicitada.id_for_label }}">Primeiro dia de férias</label>

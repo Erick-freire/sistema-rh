@@ -1,0 +1,89 @@
+<html>
+<head>
+<style>
+    @page { size: A4; margin: 1.5cm; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #222; }
+    .logo { width: 100px; margin-bottom: 10px; }
+    h1 { text-align: center; font-size: 12pt; text-transform: uppercase; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #999; padding: 4px 7px; font-size: 9pt; text-align: left; }
+    th { background-color: #eee; text-transform: uppercase; font-size: 8pt; }
+    .dados-cabecalho { margin-bottom: 10px; }
+    .dados-cabecalho p { margin-bottom: 2px; }
+    .negrito { font-weight: bold; }
+    p { text-align: justify; line-height: 1.3; margin-bottom: 6px; }
+    .aviso { font-size: 8.5pt; margin-top: 6px; }
+    .assinatura { margin-top: 30px; page-break-inside: avoid; }
+    .linha-assinatura { width: 320px; margin-left: 0; margin-bottom: 3px; border: none; border-top: 1px solid #000; }
+</style>
+</head>
+<body>
+
+<img class="logo" src="{{ caminho_logo }}">
+
+<h1>Contrato de Comodato</h1>
+
+<div class="dados-cabecalho">
+    <p><span class="negrito">EMPRESA:</span> SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA</p>
+    <p><span class="negrito">CNPJ:</span> 04.577.125/0001-30</p>
+    <p><span class="negrito">COLABORADOR:</span> {{ funcionario.nome }}</p>
+    <p><span class="negrito">CPF:</span> {{ cpf_formatado }}</p>
+</div>
+
+<p>
+    A empresa supracitada exige o uso do uniforme, é cedido ao empregado, sem ônus, sob comodato,
+    ou seja, trate-se de mero empréstimo de uso gratuito. O empregado se compromete a cuidar do
+    uniforme, mantendo-o sempre limpo e em bom estado, somente o usando no trabalho e para o trabalho.
+    A empresa efetuará a troca do uniforme, com observância de tempo de uso e estado de conservação.
+    O uniforme deverá ser devolvido à empresa quando de sua troca por outro ou quando da rescisão do
+    contrato de trabalho, sob pena de ser descontado de sua remuneração o valor correspondente.
+</p>
+
+<p>
+    O empregado deverá apresentar-se para o trabalho sempre de uniforme, que deve estar limpo, sob
+    pena de não ser-lhe permitido adentrar ao seu local de trabalho, computando-se o dia como falta.
+</p>
+
+<p>Declaro estar ciente do referido termo e de receber o(s) seguinte(s) item(ns):</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Modelo</th>
+            <th>Tamanho</th>
+            <th>Quantidade</th>
+            <th>Valor unitário</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in itens %}
+        <tr>
+            <td>{{ item.item_catalogo.nome }}{% if item.descricao %}, {{ item.descricao }}{% endif %}</td>
+            <td>{{ item.tamanho|default:"-" }}</td>
+            <td>{{ item.quantidade }}</td>
+            <td>{% if item.valor_unitario is not None %}R$ {{ item.valor_unitario|floatformat:"2g" }}{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p class="aviso">
+    É obrigatório o uso do uniforme durante a jornada de trabalho, sob pena de advertência e demais
+    consequências previstas em lei, salvo liberação prévia da diretoria da empresa, esta devendo ser
+    registrada no Departamento de Recursos Humanos.
+</p>
+
+<p>Ciente em: {{ data_extenso }}</p>
+
+<div class="assinatura">
+    <hr class="linha-assinatura">
+    <p class="negrito">{{ funcionario.nome }}</p>
+</div>
+
+<div class="assinatura">
+    <hr class="linha-assinatura">
+    <p class="negrito">DEPARTAMENTO DE RH</p>
+</div>
+
+</body>
+</html>

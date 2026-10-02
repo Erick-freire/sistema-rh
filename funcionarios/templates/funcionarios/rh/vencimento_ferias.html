@@ -9,12 +9,6 @@ Vencimento de Férias
 {% include 'funcionarios/_ferias_header.html' %}
 {% include 'funcionarios/_ferias_tabs.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert--sucesso">{% icon 'check-circle' %} {{ message }}</div>
-    {% endfor %}
-{% endif %}
-
 <div class="table-responsive desktop-only">
     <table>
         <thead>

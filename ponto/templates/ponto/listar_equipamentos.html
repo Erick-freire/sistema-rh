@@ -7,14 +7,6 @@
 {% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <div style="display: flex; gap: 12px; margin-bottom: 16px;">
     <a href="{% url 'ponto:cadastrar_equipamento' %}" class="btn btn-novo">{% icon 'plus' %} Novo equipamento</a>
     <a href="#sincronizar-todos" class="btn-primario btn-novo">{% icon 'check-square' %} Sincronizar todos</a>

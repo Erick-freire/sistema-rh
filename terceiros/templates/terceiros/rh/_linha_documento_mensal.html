@@ -1,0 +1,43 @@
+{% load rh_icons %}
+{# Uma linha de documento mensal na visão do RH, com aprovar/reprovar.
+   Espera: documento, rotulo, url_arquivo, url_aprovar, url_rejeitar, pode_analisar. #}
+<div class="doc-linha">
+    <span class="doc-linha__icone">{% icon 'file' %}</span>
+    <div class="doc-linha__corpo">
+        <div class="doc-linha__titulo">{{ rotulo }}</div>
+        <div class="doc-linha__sub" title="{{ documento.nome_arquivo }}">
+            {{ documento.nome_arquivo }} · {{ documento.enviado_em|date:"d/m/Y" }}
+        </div>
+    </div>
+
+    <div class="doc-linha__acoes">
+        <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
+
+        {% if pode_analisar and documento.status == 'pendente' %}
+        <form method="post" action="{% url url_aprovar documento.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-sm">{% icon 'check-circle' %} Aprovar</button>
+        </form>
+        <form method="post" action="{% url url_rejeitar documento.id %}">
+            {% csrf_token %}
+            {# Preenchido pelo modal de motivo antes do submit -- ver data-motivo em static/js/ui.js. #}
+            <input type="hidden" name="motivo" value="">
+            <button type="submit" class="btn-outline btn-sm"
+                    data-motivo="Escreva o que a prestadora precisa corrigir. O texto aparece para ela no painel, junto do documento."
+                    data-motivo-titulo="Reprovar {{ rotulo }} de {{ documento.competencia_display }}"
+                    data-motivo-placeholder="Ex.: guia ilegível, competência errada, valor divergente...">
+                {% icon 'x' %} Reprovar
+            </button>
+        </form>
+        {% endif %}
+
+        <span class="acoes-tabela">
+            <a href="{% url url_arquivo documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+            <a href="{% url url_arquivo documento.id %}" download title="Baixar">{% icon 'download' %}</a>
+        </span>
+    </div>
+
+    {% if documento.status == 'rejeitado' %}
+    <div class="doc-linha__motivo"><strong>Motivo:</strong> {{ documento.motivo_rejeicao }}</div>
+    {% endif %}
+</div>

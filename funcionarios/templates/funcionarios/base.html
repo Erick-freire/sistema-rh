@@ -10,25 +10,61 @@
     <link rel="manifest" href="{% static 'pwa/manifest.json' %}">
     <meta name="theme-color" content="#325A3D">
     <link rel="apple-touch-icon" href="{% static 'pwa/icon-192.png' %}">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static_v 'css/style.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <script src="{% static 'js/ui.js' %}" defer></script>
+    <script src="{% static_v 'js/ui.js' %}" defer></script>
 </head>
 <body>
+
+{% if messages %}
+<div class="toast-container" id="toast-container">
+    {% for message in messages %}
+    <div class="toast toast--{{ message.tags|default:'info' }}" role="status">
+        <span>{{ message }}</span>
+        <button type="button" class="toast__close" onclick="this.parentElement.remove()" aria-label="Fechar">×</button>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="modal-backdrop" id="modal-confirmacao" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+        <h2 class="modal__title" id="modal-titulo">Confirmar</h2>
+        <p class="modal__mensagem" id="modal-mensagem"></p>
+        <div class="modal__footer">
+            <button type="button" class="btn-outline" id="modal-cancelar">Cancelar</button>
+            <button type="button" class="btn-perigo" id="modal-confirmar">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-backdrop" id="modal-motivo" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-motivo-titulo">
+        <h2 class="modal__title" id="modal-motivo-titulo">Motivo</h2>
+        <p class="modal__mensagem" id="modal-motivo-mensagem"></p>
+        <textarea class="modal__campo" id="modal-motivo-texto" rows="4"></textarea>
+        <p class="modal__erro" id="modal-motivo-erro" hidden>Escreva o motivo para continuar.</p>
+        <div class="modal__footer">
+            <button type="button" class="btn-outline" id="modal-motivo-cancelar">Cancelar</button>
+            <button type="button" class="btn-perigo" id="modal-motivo-confirmar">Confirmar</button>
+        </div>
+    </div>
+</div>
 
 <div class="overlay-carregando" id="overlay-carregando">
     <div class="overlay-carregando__spinner"></div>
     <div class="overlay-carregando__texto" id="overlay-carregando-texto">Processando...</div>
 </div>
 
-{% if usuario_atual %}
+{% if usuario_atual or responsavel_atual %}
 <input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
 <label for="menu-toggle" class="menu-toggle-label" aria-label="Abrir menu">{% icon 'menu' %}</label>
 <label for="menu-toggle" class="sidebar-overlay" aria-label="Fechar menu"></label>
 
 <div class="app-shell">
     <aside class="sidebar">
+        {% block menu %}
         <div class="sidebar__brand">
             <span class="sidebar__brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
             Sotrigo RH
@@ -70,6 +106,18 @@
                         {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
                     </a>
                 </li>
+                <li class="{% if request.resolver_match.app_name == 'terceiros' %}active{% endif %}">
+                    <a href="{% url 'terceiros:listar_empresas' %}">
+                        {% icon 'briefcase' %} Terceiros
+                        {% if badge_terceiros %}<span class="nav-badge">{{ badge_terceiros }}</span>{% endif %}
+                    </a>
+                </li>
+                <li class="{% if request.resolver_match.url_name == 'listar_comodatos' or request.resolver_match.url_name == 'criar_comodato' %}active{% endif %}">
+                    <a href="{% url 'listar_comodatos' %}{% if badge_comodatos %}?pendentes=1{% endif %}">
+                        {% icon 'file' %} Comodatos
+                        {% if badge_comodatos %}<span class="nav-badge">{{ badge_comodatos }}</span>{% endif %}
+                    </a>
+                </li>
                 {% endif %}
             </ul>
             <div class="sidebar__section">Meu espaço</div>
@@ -107,10 +155,12 @@
         <ul>
             <li class="sair"><a href="{% url 'logout' %}">{% icon 'log-out' %} Sair</a></li>
         </ul>
+        {% endblock %}
     </aside>
 
     <main class="content">
         <div class="topbar">
+            {% block topbar %}
             <div class="topbar__user">
                 {% if usuario_atual.funcionario.foto %}
                 <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--brand" style="object-fit: cover;">
@@ -122,6 +172,7 @@
                     <div class="topbar__user-role">{{ usuario_atual.get_papel_display }}</div>
                 </div>
             </div>
+            {% endblock %}
         </div>
 
         <div class="content__body">
@@ -131,6 +182,7 @@
     </main>
 </div>
 
+{% block barra_inferior %}
 {% if usuario_atual.papel == 'colaborador' %}
 <nav class="bottom-nav">
     <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
@@ -152,6 +204,7 @@
     </a>
 </nav>
 {% endif %}
+{% endblock %}
 
 {% else %}
 {% block conteudo_sem_login %}

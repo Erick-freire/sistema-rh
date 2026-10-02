@@ -10,14 +10,6 @@
 </p>
 {% include 'ponto/_meu_ponto_tabs.html' %}
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'error' %}alert--erro{% else %}alert--sucesso{% endif %}">
-            {% icon 'check-circle' %} {{ message }}
-        </div>
-    {% endfor %}
-{% endif %}
-
 <div class="card">
     <div class="lista-cards">
         {% for ajuste in ajustes %}

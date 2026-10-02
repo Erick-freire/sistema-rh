@@ -1,4 +1,5 @@
 import io
+import os
 import secrets
 from datetime import timedelta
 
@@ -11,21 +12,28 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib import messages
 from django.core.cache import cache
-from django.db.models import Q, Count
+from django.db import transaction
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.core.paginator import Paginator
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.http import HttpResponse, FileResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.core.files.base import ContentFile
 from xhtml2pdf import pisa
 
 from .decorators import papel_required
-from .models import Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias
+from .models import (
+    Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias,
+    TermoComodato, ItemCatalogoComodato,
+)
+from .perfis import TIPO_TERCEIRO, perfil_de_acesso
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
     DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
-    RejeitarDocumentoForm, AtestadoForm,
+    RejeitarDocumentoForm, AtestadoForm, TermoComodatoForm, ItemComodatoFormSet
 )
 from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso, data_curta_por_extenso
 
@@ -127,27 +135,36 @@ def logout_view(request):
 
 @login_required
 def trocar_senha_view(request):
-    try:
-        usuario = request.user.usuario
-    except Usuario.DoesNotExist:
+    # Serve os dois tipos de conta (colaborador CLT e responsável de empresa
+    # terceira) -- os dois têm `senha_provisoria`. Ver `funcionarios/perfis.py`.
+    tipo, perfil = perfil_de_acesso(request.user)
+    if perfil is None:
         return redirect('dashboard')
+
+    # O corpo do formulário é o mesmo para os dois; só o shell muda, porque o
+    # `base.html` só monta a sidebar quando existe `usuario_atual` e um
+    # responsável terceiro não tem `Usuario` -- sem isso a tela sai em branco.
+    template = (
+        'terceiros/trocar_senha.html' if tipo == TIPO_TERCEIRO
+        else 'funcionarios/trocar_senha.html'
+    )
 
     if request.method == 'POST':
         form = SetPasswordForm(request.user, request.POST)
         if form.is_valid():
             form.save()
-            if usuario.senha_provisoria:
-                usuario.senha_provisoria = False
-                usuario.save()
+            if perfil.senha_provisoria:
+                perfil.senha_provisoria = False
+                perfil.save()
             update_session_auth_hash(request, request.user)
             messages.success(request, 'Senha alterada com sucesso.')
             return redirect('dashboard')
     else:
         form = SetPasswordForm(request.user)
 
-    return render(request, 'funcionarios/trocar_senha.html', {
+    return render(request, template, {
         'form': form,
-        'senha_provisoria': usuario.senha_provisoria,
+        'senha_provisoria': perfil.senha_provisoria,
     })
 
 
@@ -155,13 +172,19 @@ def trocar_senha_view(request):
 
 @login_required
 def dashboard_view(request):
-    try:
-        usuario = request.user.usuario
-    except Usuario.DoesNotExist:
-        usuario = None
+    # Porta de entrada única do sistema: o `login_view` e todo `redirect('dashboard')`
+    # espalhado pelo código caem aqui, então é aqui que a conta de responsável de
+    # empresa terceira é desviada para o painel dela -- em vez de espalhar a
+    # checagem de tipo de conta pelo fluxo de login.
+    tipo, perfil = perfil_de_acesso(request.user)
 
-    if usuario is None:
+    if tipo == TIPO_TERCEIRO:
+        return redirect('terceiros:painel')
+
+    if perfil is None:
         return render(request, 'funcionarios/sem_perfil.html')
+
+    usuario = perfil
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario
@@ -442,6 +465,7 @@ def meus_documentos_view(request):
 
     documentos = funcionario.documentos.exclude(tipo_documento__eh_contrato=True).order_by('-data_upload')
     contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
+    comodatos = funcionario.comodatos.exclude(status='aguardando_contrato').order_by('-gerado_em')
 
     tipos_obrigatorios = funcionario.tipos_documentos_iniciais()
     tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
@@ -457,6 +481,7 @@ def meus_documentos_view(request):
         'contrato_documento': contrato_documento,
         'tipos_opcionais': tipos_opcionais,
         'funcionario': funcionario,
+        'comodatos':comodatos,
     })
 
 
@@ -493,6 +518,35 @@ def ver_documento_view(request, documento_id):
         return redirect('dashboard')
 
     return FileResponse(documento.arquivo.open('rb'), filename=documento.nome_arquivo)
+
+
+@login_required
+@xframe_options_sameorigin  # a tela de comodatos exibe o termo num iframe, dentro do próprio sistema
+def ver_comodato_view(request, comodato_id, versao):
+    """Serve o termo de comodato (gerado ou assinado) só para quem pode vê-lo."""
+    if versao not in ('gerado', 'assinado'):
+        raise Http404
+    comodato = get_object_or_404(TermoComodato.objects.select_related('funcionario'), id=comodato_id)
+
+    try:
+        usuario = request.user.usuario
+    except Usuario.DoesNotExist:
+        messages.error(request, 'Você não tem permissão para acessar este termo.')
+        return redirect('dashboard')
+
+    eh_dono = usuario.funcionario_id == comodato.funcionario_id
+    eh_rh = usuario.papel == 'rh' or usuario.acesso_rh
+    eh_gestor_do_setor = usuario.papel == 'gestor' and comodato.funcionario.setor_id == usuario.funcionario.setor_id
+
+    if not (eh_dono or eh_rh or eh_gestor_do_setor):
+        messages.error(request, 'Você não tem permissão para acessar este termo.')
+        return redirect('dashboard')
+
+    arquivo = comodato.arquivo_assinado if versao == 'assinado' else comodato.arquivo_gerado
+    if not arquivo:
+        raise Http404('Termo não disponível.')
+
+    return FileResponse(arquivo.open('rb'), filename=os.path.basename(arquivo.name))
 
 
 # ---------- Funcionários (RH / Gestor) ----------
@@ -640,6 +694,7 @@ def detalhe_funcionario_view(request, funcionario_id):
         'dados_form': DadosCadastraisForm(instance=funcionario),
         'atestados': funcionario.atestados.all()[:10],
         'atestado_form': AtestadoForm(),
+        'comodatos': funcionario.comodatos.prefetch_related('itens__item_catalogo').order_by('-gerado_em'),
     })
 
 
@@ -957,8 +1012,10 @@ def solicitar_ferias_view(request):
     aviso_pendente = funcionario.aviso_ferias_pendente_acao()
     hoje_ferias = timezone.now().date()
     historico = [_resumo_historico_ferias(s, hoje_ferias) for s in solicitacoes]
+    pode_solicitar = funcionario.pode_solicitar_ferias()
+    dias_ate_direito = funcionario.dias_ate_direito_ferias()
 
-    if request.method == 'POST' and not tem_ativa:
+    if request.method == 'POST' and not tem_ativa and pode_solicitar:
         form = SolicitarFeriasForm(request.POST)
         if form.is_valid():
             solicitacao = form.save(commit=False)
@@ -986,6 +1043,8 @@ def solicitar_ferias_view(request):
         'aviso_pendente': aviso_pendente,
         'saldo_dias': funcionario.dias_pendentes_ferias() or 0,
         'hoje': hoje_ferias,
+        'pode_solicitar': pode_solicitar,
+        'dias_ate_direito': dias_ate_direito,
     })
 
 
@@ -1261,3 +1320,164 @@ def marcar_aviso_visualizado_view(request, aviso_id):
         aviso.save()
 
     return redirect('concluir_ferias')
+
+@login_required
+@papel_required('rh')
+def criar_comodato_view(request):
+    if request.method == 'POST':
+        form = TermoComodatoForm(request.POST)
+        formset = ItemComodatoFormSet(request.POST)
+
+        form_valido = form.is_valid()
+        formset.modalidade = form.cleaned_data.get('modalidade')
+
+        if form_valido and formset.is_valid():
+            with transaction.atomic():
+                termo = form.save(commit=False)
+                termo.gerado_por = request.user
+                termo.save()
+                formset.instance = termo
+                formset.save()
+
+            messages.success(request, 'Termo de comodato criado com sucesso.')
+            return redirect('listar_comodatos')
+    else:
+        form = TermoComodatoForm()
+        formset = ItemComodatoFormSet()
+
+    funcionarios_busca = [
+        {'id': f.id, 'nome': f.nome, 'matricula': f.matricula or '', 'cpf': f.cpf or ''}
+        for f in form.fields['funcionario'].queryset.only('id', 'nome', 'matricula', 'cpf')
+    ]
+    catalogo_modalidades = {
+        str(item.id): item.modalidade
+        for item in ItemCatalogoComodato.objects.filter(ativo=True)
+    }
+
+    return render(request, 'funcionarios/rh/criar_comodato.html', {
+        'form': form,
+        'formset': formset,
+        'funcionarios_busca': funcionarios_busca,
+        'catalogo_modalidades': catalogo_modalidades,
+    })
+
+@login_required
+@papel_required('rh')
+def listar_comodatos_view(request):
+    # Os que esperam validação do RH vêm primeiro: é a fila de trabalho.
+    comodatos = TermoComodato.objects.select_related('funcionario').annotate(
+        aguardando_rh=Case(When(status='em_validacao', then=Value(0)), default=Value(1), output_field=IntegerField()),
+    ).order_by('aguardando_rh', '-gerado_em')
+
+    return render(request, 'funcionarios/rh/listar_comodatos.html', {
+        'comodatos': comodatos,
+        'abrir_pendente': request.GET.get('pendentes') == '1',
+    })
+
+@login_required
+@papel_required('rh')
+def gerar_pdf_comodato_view(request, comodato_id):
+    comodato = get_object_or_404(TermoComodato, id=comodato_id)
+
+    caminho_logo = os.path.join(settings.BASE_DIR, 'static', 'img', 'logo-sotrigo.png')
+
+    contexto = {
+        'funcionario': comodato.funcionario,
+        'cpf_formatado': formatar_cpf(comodato.funcionario.cpf),
+        'itens': comodato.itens.all(),
+        'data_extenso': data_por_extenso(comodato.data_emprestimo),
+        'caminho_logo': caminho_logo,
+    }
+
+    template_nome = (
+        'funcionarios/contratos/comodato_equipamento.html'
+        if comodato.modalidade == 'equipamento'
+        else 'funcionarios/contratos/comodato_uniforme.html'
+    )
+    html = render_to_string(template_nome, contexto)
+
+    buffer = io.BytesIO()
+    pisa_status = pisa.CreatePDF(html, dest=buffer)
+    if pisa_status.err:
+        messages.error(request, 'Não foi possível gerar o termo. Tente novamente.')
+        return redirect('listar_comodatos')
+
+    pdf_bytes = buffer.getvalue()
+    nome_arquivo = f'comodato_{comodato.id}_{comodato.funcionario.cpf}.pdf'
+
+    comodato.arquivo_gerado.save(nome_arquivo, ContentFile(pdf_bytes), save=False)
+    comodato.status = 'aguardando_assinatura'
+    comodato.save()
+
+    messages.success(request, 'Termo de comodato gerado e disponibilizado ao colaborador.')
+    return redirect('listar_comodatos')
+
+@login_required
+def reenviar_comodato_assinado_view(request, comodato_id):
+    funcionario = request.user.usuario.funcionario
+    comodato = get_object_or_404(TermoComodato, id=comodato_id, funcionario=funcionario)
+
+    if comodato.status != 'aguardando_assinatura':
+        messages.error(request, 'Este termo não está aguardando assinatura.')
+        return redirect('meus_documentos')
+
+    if request.method == 'POST' and request.FILES.get('arquivo_assinado'):
+        comodato.arquivo_assinado = request.FILES['arquivo_assinado']
+        comodato.status = 'em_validacao'
+        comodato.motivo_rejeicao = ''
+        comodato.save()
+        messages.success(request, 'Termo assinado enviado. Aguarde a validação do RH.')
+
+    return redirect('meus_documentos')
+
+
+def _voltar_apos_validar_comodato(request, comodato):
+    # Quem valida pela lista de comodatos volta para ela (e já abre o próximo
+    # pendente); quem valida pelo detalhe do funcionário volta para o detalhe.
+    destino = request.POST.get('next', '')
+    if url_has_allowed_host_and_scheme(destino, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(destino)
+    return redirect('detalhe_funcionario', funcionario_id=comodato.funcionario_id)
+
+
+@login_required
+@papel_required('rh')
+def aprovar_comodato_view(request, comodato_id):
+    comodato = get_object_or_404(TermoComodato, id=comodato_id)
+
+    if request.method != 'POST' or comodato.status != 'em_validacao':
+        messages.error(request, 'Este termo não está aguardando validação.')
+        return _voltar_apos_validar_comodato(request, comodato)
+
+    comodato.status = 'ativo'
+    comodato.motivo_rejeicao = ''
+    comodato.validado_por = request.user
+    comodato.validado_em = timezone.now()
+    comodato.save()
+
+    messages.success(request, f'Comodato de {comodato.get_modalidade_display().lower()} validado.')
+    return _voltar_apos_validar_comodato(request, comodato)
+
+
+@login_required
+@papel_required('rh')
+def rejeitar_comodato_view(request, comodato_id):
+    comodato = get_object_or_404(TermoComodato, id=comodato_id)
+
+    if request.method != 'POST' or comodato.status != 'em_validacao':
+        messages.error(request, 'Este termo não está aguardando validação.')
+        return _voltar_apos_validar_comodato(request, comodato)
+
+    form = RejeitarDocumentoForm(request.POST)
+    if form.is_valid():
+        # Volta para o colaborador assinar de novo; o termo gerado continua o mesmo.
+        comodato.status = 'aguardando_assinatura'
+        comodato.motivo_rejeicao = form.cleaned_data['motivo']
+        comodato.validado_por = request.user
+        comodato.validado_em = timezone.now()
+        comodato.save()
+        messages.success(request, 'Termo rejeitado. O colaborador poderá reenviar.')
+    else:
+        messages.error(request, 'Informe o motivo da rejeição.')
+
+    return _voltar_apos_validar_comodato(request, comodato)
