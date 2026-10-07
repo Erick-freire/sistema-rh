@@ -1,0 +1,17 @@
+{% load rh_icons %}
+<div class="acoes-linha">
+    <h1 style="margin: 0;">Fichas de EPI</h1>
+    <span class="acoes-linha__espaco"></span>
+    <a href="{% url 'criar_ficha_epi' %}" class="btn">{% icon 'plus' %} Nova Ficha</a>
+</div>
+
+<div class="tabs">
+    <a href="{% url 'listar_fichas_epi' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_fichas_epi' %} is-ativo{% endif %}">
+        Fichas
+        {% if badge_fichas_epi %}<span class="tabs__badge">{{ badge_fichas_epi }}</span>{% endif %}
+    </a>
+    <a href="{% url 'listar_epis_vencendo' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_epis_vencendo' %} is-ativo{% endif %}">
+        Troca e devolução
+        {% if total_pendencias_epi %}<span class="tabs__badge">{{ total_pendencias_epi }}</span>{% endif %}
+    </a>
+</div>

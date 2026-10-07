@@ -4,9 +4,24 @@
 Login
 {% endblock %}
 
+{% block head_extra %}
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+{% endblock %}
+
 {% load static %}
+{% load rh_icons %}
 {% block conteudo_sem_login %}
 <div class="login-shell">
+    {# Cabeçalho verde que só aparece no celular #}
+    <div class="login-topo">
+        <svg class="login-topo__curva" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+            <path d="M330 40C230 -10 60 10 70 90c10 80 260 90 260 190 0 80-150 110-330 70" stroke="currentColor" stroke-width="44" stroke-linecap="round"/>
+        </svg>
+        <span class="login-topo__logo"><img src="{% static 'img/logo-s.png' %}" alt="Sotrigo"></span>
+        <h1>Portal do Colaborador</h1>
+        <p>RH · Sotrigo Alimentos</p>
+    </div>
+
     <div class="login-split">
         <div class="login-painel login-painel--marca">
             <div class="login-brand">
@@ -15,15 +30,18 @@ Login
             </div>
             <div>
                 <h1>Seus documentos, férias e ponto num só lugar.</h1>
-                <p>Entre com o seu CPF. No primeiro acesso, use a senha provisória entregue pelo RH.</p>
+                <p>Entre com o seu CPF (gestores também pelo usuário). No primeiro acesso, use a senha provisória entregue pelo RH.</p>
             </div>
-            <div class="login-ajuda">Precisa de ajuda? Fale com o RH pelo ramal 218.</div>
+            <div></div>
         </div>
 
         <div class="login-painel login-painel--form">
             <div class="login-card">
-                <h2>Entrar</h2>
-                <p>Bem-vindo de volta.</p>
+                <h2>
+                    <span class="so-desktop">Entrar</span>
+                    <span class="so-mobile">Acesse sua conta</span>
+                </h2>
+                <p class="login-card__subtitulo">Bem-vindo de volta.</p>
 
                 <form method="post">
                     {% csrf_token %}
@@ -33,12 +51,19 @@ Login
                     {% endif %}
 
                     <p>
-                        <label for="username">CPF</label>
-                        <input type="text" id="username" name="username" placeholder="000.000.000-00" autofocus>
+                        <label for="username">CPF ou usuário</label>
+                        <span class="login-campo">
+                            {% icon 'id-card' 'login-campo__icone' %}
+                            <input type="text" id="username" name="username" placeholder="Digite seu CPF ou usuário" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+                        </span>
                     </p>
                     <p>
                         <label for="password">Senha</label>
-                        <input type="password" id="password" name="password" placeholder="Senha">
+                        <span class="login-campo">
+                            {% icon 'lock' 'login-campo__icone' %}
+                            <input type="password" id="password" name="password" placeholder="Sua senha" autocomplete="current-password">
+                            <button type="button" class="login-campo__olho" data-toggle-senha="password" aria-label="Mostrar senha">{% icon 'eye' %}</button>
+                        </span>
                     </p>
 
                     {% if recaptcha_site_key %}
@@ -47,10 +72,19 @@ Login
                     </p>
                     {% endif %}
 
-                    <button type="submit" class="btn-primario btn-bloco">Entrar</button>
+                    <button type="submit" class="btn-primario btn-bloco login-card__entrar">Entrar</button>
                 </form>
 
-                <p class="login-card__aviso">Esqueceu a senha? O RH pode gerar uma nova.</p>
+                <p class="login-card__aviso">Esqueceu a senha? <a href="{% url 'recuperar_acesso' %}">Recuperar acesso</a></p>
+            </div>
+
+            {# Mascote com o balão de ajuda -- só no celular #}
+            <div class="login-mascote">
+                <img class="login-mascote__img" src="{% static 'img/mascote-sotrigo.png' %}" alt="" onerror="this.remove()">
+                <div class="login-mascote__balao">
+                    <p>Esqueceu a senha? Eu te ajudo!</p>
+                    <a class="login-mascote__link" href="{% url 'recuperar_acesso' %}">Recuperar acesso →</a>
+                </div>
             </div>
         </div>
     </div>

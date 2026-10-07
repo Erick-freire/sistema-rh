@@ -1,0 +1,68 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Não Conformidades
+{% endblock %}
+
+{% block conteudo %}
+<div class="acoes-linha">
+    <h1 style="margin: 0;">Não Conformidades</h1>
+    <span class="acoes-linha__espaco"></span>
+    <a href="{% url 'criar_ocorrencia_epi' %}" class="btn">{% icon 'plus' %} Registrar</a>
+</div>
+
+<form method="get" class="card form-grid form-grid--3" style="align-items: end;">
+    <div>
+        <label for="filtro-busca">Funcionário</label>
+        <input type="text" name="busca" id="filtro-busca" value="{{ busca }}" placeholder="Nome do funcionário">
+    </div>
+    <div>
+        <label for="filtro-de">De</label>
+        <input type="date" name="de" id="filtro-de" value="{{ de }}">
+    </div>
+    <div>
+        <label for="filtro-ate">Até</label>
+        <input type="date" name="ate" id="filtro-ate" value="{{ ate }}">
+    </div>
+    <div>
+        <button type="submit" class="btn">{% icon 'search' %} Filtrar</button>
+        {% if busca or de or ate %}<a href="{% url 'listar_ocorrencias_epi' %}" class="btn-outline btn-sm">Limpar</a>{% endif %}
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Funcionário</th>
+                <th>EPI</th>
+                <th>Descrição</th>
+                <th>Registrado por</th>
+                <th>Foto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ocorrencia in ocorrencias %}
+            <tr>
+                <td>{{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</td>
+                <td>{{ ocorrencia.funcionario.nome }}</td>
+                <td>{{ ocorrencia.item_catalogo.nome|default:"—" }}</td>
+                <td style="white-space: pre-line;">{{ ocorrencia.descricao }}</td>
+                <td>{{ ocorrencia.tecnico.usuario.funcionario.nome|default:ocorrencia.tecnico.username|default:"—" }}</td>
+                <td>
+                    {% if ocorrencia.foto %}
+                    <a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank" title="Ver foto">{% icon 'camera' %}</a>
+                    {% else %}—{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhuma não conformidade registrada{% if busca or de or ate %} com esses filtros{% endif %}.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

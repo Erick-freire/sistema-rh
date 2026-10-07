@@ -27,7 +27,7 @@ from xhtml2pdf import pisa
 from .decorators import papel_required
 from .models import (
     Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias,
-    TermoComodato, ItemCatalogoComodato,
+    TermoComodato, ItemCatalogoComodato, SolicitacaoSenha,
 )
 from .perfis import TIPO_TERCEIRO, perfil_de_acesso
 from .forms import (
@@ -128,6 +128,56 @@ def login_view(request):
     return render(request, 'funcionarios/login.html', contexto)
 
 
+LIMITE_PEDIDOS_SENHA_IP = 5
+MENSAGEM_PEDIDO_SENHA_ENVIADO = (
+    'Pedido enviado. Se o CPF estiver cadastrado, o RH vai gerar uma nova senha '
+    'provisória e entregar a você.'
+)
+
+
+def recuperar_acesso_view(request):
+    """Tela pública do "Recuperar acesso": registra o pedido para o RH/DP.
+
+    A resposta é a mesma exista o CPF ou não -- a tela não pode servir para
+    descobrir quem tem cadastro.
+    """
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+
+    contexto = {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY}
+
+    if request.method == 'POST':
+        ip = request.META.get('REMOTE_ADDR', 'desconhecido')
+        chave_ip = f'pedido_senha:ip:{ip}'
+
+        if cache.get(chave_ip, 0) >= LIMITE_PEDIDOS_SENHA_IP:
+            contexto['erro'] = 'Muitos pedidos seguidos. Tente novamente em alguns minutos.'
+            return render(request, 'funcionarios/recuperar_acesso.html', contexto)
+
+        if not _recaptcha_valido(request):
+            contexto['erro'] = MENSAGEM_RECAPTCHA_INVALIDO
+            return render(request, 'funcionarios/recuperar_acesso.html', contexto)
+
+        cache.set(chave_ip, cache.get(chave_ip, 0) + 1, JANELA_BLOQUEIO_LOGIN)
+
+        cpf = ''.join(filter(str.isdigit, request.POST.get('cpf', '')))
+        usuario = Usuario.objects.filter(user__username=cpf).first() if cpf else None
+        if usuario and not SolicitacaoSenha.pendentes().filter(usuario=usuario).exists():
+            SolicitacaoSenha.objects.create(usuario=usuario)
+
+        contexto['enviado'] = True
+        contexto['mensagem'] = MENSAGEM_PEDIDO_SENHA_ENVIADO
+
+    return render(request, 'funcionarios/recuperar_acesso.html', contexto)
+
+
+@login_required
+@papel_required('rh', 'dp')
+def pedidos_senha_view(request):
+    pedidos = SolicitacaoSenha.pendentes().select_related('usuario__funcionario__setor')
+    return render(request, 'funcionarios/rh/pedidos_senha.html', {'pedidos': pedidos})
+
+
 def logout_view(request):
     logout(request)
     return redirect('login')
@@ -217,16 +267,20 @@ def dashboard_view(request):
             'ultimos_dias_ponto': resultado_ponto['dias'],
         })
 
+    # Segurança do Trabalho não tem painel de RH: a tela inicial é a fila de fichas.
+    if usuario.papel == 'seguranca_trabalho':
+        return redirect('listar_fichas_epi')
+
     return dashboard_rh_view(request)
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def dashboard_rh_view(request):
     usuario = request.user.usuario
     funcionario_atual = usuario.funcionario
 
-    if usuario.papel == 'rh' or usuario.acesso_rh:
+    if usuario.eh_dp_ou_rh():
         funcionarios_do_escopo = Funcionario.objects.all()
     else:
         funcionarios_do_escopo = Funcionario.objects.filter(setor=usuario.funcionario.setor)
@@ -466,6 +520,8 @@ def meus_documentos_view(request):
     documentos = funcionario.documentos.exclude(tipo_documento__eh_contrato=True).order_by('-data_upload')
     contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
     comodatos = funcionario.comodatos.exclude(status='aguardando_contrato').order_by('-gerado_em')
+    # Só aparece para o colaborador depois que o PDF foi gerado.
+    fichas_epi = funcionario.fichas_epi.exclude(arquivo_gerado='').exclude(arquivo_gerado__isnull=True).order_by('-gerado_em')
 
     tipos_obrigatorios = funcionario.tipos_documentos_iniciais()
     tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
@@ -482,6 +538,7 @@ def meus_documentos_view(request):
         'tipos_opcionais': tipos_opcionais,
         'funcionario': funcionario,
         'comodatos':comodatos,
+        'fichas_epi': fichas_epi,
     })
 
 
@@ -500,6 +557,7 @@ def assinatura_gov_view(request):
 
 
 @login_required
+@xframe_options_sameorigin  # o detalhe do funcionário exibe o documento num popup (iframe), dentro do próprio sistema
 def ver_documento_view(request, documento_id):
     documento = get_object_or_404(Documento, id=documento_id)
 
@@ -510,7 +568,7 @@ def ver_documento_view(request, documento_id):
         return redirect('dashboard')
 
     eh_dono = usuario.funcionario_id == documento.funcionario_id
-    eh_rh = usuario.papel == 'rh' or usuario.acesso_rh
+    eh_rh = usuario.eh_dp_ou_rh()
     eh_gestor_do_setor = usuario.papel == 'gestor' and documento.funcionario.setor_id == usuario.funcionario.setor_id
 
     if not (eh_dono or eh_rh or eh_gestor_do_setor):
@@ -535,7 +593,7 @@ def ver_comodato_view(request, comodato_id, versao):
         return redirect('dashboard')
 
     eh_dono = usuario.funcionario_id == comodato.funcionario_id
-    eh_rh = usuario.papel == 'rh' or usuario.acesso_rh
+    eh_rh = usuario.eh_dp_ou_rh()
     eh_gestor_do_setor = usuario.papel == 'gestor' and comodato.funcionario.setor_id == usuario.funcionario.setor_id
 
     if not (eh_dono or eh_rh or eh_gestor_do_setor):
@@ -552,10 +610,10 @@ def ver_comodato_view(request, comodato_id, versao):
 # ---------- Funcionários (RH / Gestor) ----------
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def listar_funcionarios_view(request):
     usuario = request.user.usuario
-    tem_acesso_total = usuario.papel == 'rh' or usuario.acesso_rh
+    tem_acesso_total = usuario.eh_dp_ou_rh()
     escopo = request.GET.get('escopo', 'todos') if tem_acesso_total else 'meu_setor'
     status_filtro = request.GET.get('status', 'ativo')
     busca = request.GET.get('busca', '').strip()
@@ -603,7 +661,7 @@ def listar_funcionarios_view(request):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def cadastrar_funcionario_view(request):
     if request.method == 'POST':
         form = PreCadastroFuncionarioForm(request.POST)
@@ -651,7 +709,7 @@ def cadastrar_funcionario_view(request):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def detalhe_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -688,23 +746,26 @@ def detalhe_funcionario_view(request, funcionario_id):
         'total_obrigatorios': total_obrigatorios,
         'total_enviados_obrigatorios': total_enviados_obrigatorios,
         'pode_validar': pode_validar,
-        'form_rejeicao': RejeitarDocumentoForm(),
         'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
         'jornada_form': FuncionarioJornadaForm(),
         'dados_form': DadosCadastraisForm(instance=funcionario),
         'atestados': funcionario.atestados.all()[:10],
         'atestado_form': AtestadoForm(),
-        'comodatos': funcionario.comodatos.prefetch_related('itens__item_catalogo').order_by('-gerado_em'),
+        # Só termos já devolvidos assinados. Rejeitado volta a aguardar assinatura e sai
+        # daqui até o colaborador reenviar; o acompanhamento completo fica na lista de comodatos.
+        'comodatos': funcionario.comodatos.exclude(arquivo_assinado='').exclude(arquivo_assinado__isnull=True)
+            .exclude(status='aguardando_assinatura')
+            .prefetch_related('itens__item_catalogo').order_by('-gerado_em'),
     })
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def editar_dados_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+    if not usuario.eh_dp_ou_rh():
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
@@ -720,12 +781,12 @@ def editar_dados_funcionario_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def lancar_atestado_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+    if not usuario.eh_dp_ou_rh():
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
@@ -743,7 +804,7 @@ def lancar_atestado_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def gerar_acesso_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -760,7 +821,7 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
         messages.error(request, 'Este funcionário não tem CPF cadastrado. Preencha o CPF antes de gerar o acesso.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
-    senha_gerada = settings.SENHA_PADRAO_ACESSO
+    senha_gerada = secrets.token_urlsafe(9)
 
     user = User.objects.create_user(
         username=funcionario.cpf,
@@ -782,7 +843,7 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def resetar_senha_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -800,6 +861,9 @@ def resetar_senha_funcionario_view(request, funcionario_id):
     funcionario.usuario.user.save()
     funcionario.usuario.senha_provisoria = True
     funcionario.usuario.save()
+    SolicitacaoSenha.pendentes().filter(usuario=funcionario.usuario).update(
+        atendida_em=timezone.now(), atendida_por=request.user,
+    )
 
     return render(request, 'funcionarios/rh/senha_gerada.html', {
         'funcionario': funcionario,
@@ -810,7 +874,7 @@ def resetar_senha_funcionario_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh')  # conceder acesso_rh é exclusivo de RH: o DP não se promove sozinho
 def alternar_acesso_rh_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -831,7 +895,7 @@ def alternar_acesso_rh_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def gerar_contrato_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -882,17 +946,22 @@ def gerar_contrato_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def aprovar_documento_view(request, documento_id):
     usuario = request.user.usuario
     documento = get_object_or_404(Documento, id=documento_id)
 
-    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+    if not usuario.eh_dp_ou_rh():
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
 
-    if documento.funcionario.status != 'em_validacao':
-        messages.error(request, 'Este documento só pode ser revisado quando o funcionário estiver em validação.')
+    if request.method != 'POST':
+        return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
+
+    # Vale também para funcionário já ativo: documentos enviados depois da
+    # ativação (ex.: certidão de filho) chegam pendentes e precisam de revisão.
+    if documento.status != 'pendente':
+        messages.error(request, 'Este documento já foi analisado.')
         return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
 
     documento.status = 'aprovado'
@@ -906,17 +975,19 @@ def aprovar_documento_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def rejeitar_documento_view(request, documento_id):
     usuario = request.user.usuario
     documento = get_object_or_404(Documento, id=documento_id)
 
-    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+    if not usuario.eh_dp_ou_rh():
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
 
-    if documento.funcionario.status != 'em_validacao':
-        messages.error(request, 'Este documento só pode ser revisado quando o funcionário estiver em validação.')
+    # Vale também para funcionário já ativo: documentos enviados depois da
+    # ativação (ex.: certidão de filho) chegam pendentes e precisam de revisão.
+    if documento.status != 'pendente':
+        messages.error(request, 'Este documento já foi analisado.')
         return redirect('detalhe_funcionario', funcionario_id=documento.funcionario_id)
 
     form = RejeitarDocumentoForm(request.POST)
@@ -934,12 +1005,12 @@ def rejeitar_documento_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh', 'gestor')
+@papel_required('rh', 'dp', 'gestor')
 def validar_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if not (usuario.papel == 'rh' or usuario.acesso_rh):
+    if not usuario.eh_dp_ou_rh():
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
@@ -1125,7 +1196,7 @@ def adiar_ferias_view(request, solicitacao_id):
 # ---------- Férias — Gestor ----------
 
 @login_required
-@papel_required('gestor', 'rh')
+@papel_required('gestor', 'rh', 'dp')
 def gestor_listar_ferias_view(request):
     usuario = request.user.usuario
 
@@ -1141,7 +1212,7 @@ def gestor_listar_ferias_view(request):
 
 
 @login_required
-@papel_required('gestor', 'rh')
+@papel_required('gestor', 'rh', 'dp')
 def gestor_aprovar_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
@@ -1164,7 +1235,7 @@ def gestor_aprovar_ferias_view(request, solicitacao_id):
 
 
 @login_required
-@papel_required('gestor', 'rh')
+@papel_required('gestor', 'rh', 'dp')
 def gestor_sugerir_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
@@ -1200,7 +1271,7 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
 # ---------- Férias — Concluir (RH) e Avisos (gestor) ----------
 
 @login_required
-@papel_required('gestor', 'rh')
+@papel_required('gestor', 'rh', 'dp')
 def concluir_ferias_view(request):
     usuario = request.user.usuario
 
@@ -1209,7 +1280,7 @@ def concluir_ferias_view(request):
         avisos = avisos.filter(funcionario__setor__gestor=usuario.funcionario)
     avisos = avisos.order_by('visualizado', '-criado_em')
 
-    pode_concluir = usuario.papel == 'rh' or usuario.acesso_rh
+    pode_concluir = usuario.eh_dp_ou_rh()
     solicitacoes = (
         SolicitacaoFerias.objects.filter(status='pendente_rh').order_by('criado_em')
         if pode_concluir else SolicitacaoFerias.objects.none()
@@ -1235,7 +1306,7 @@ def concluir_ferias_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rh_concluir_ferias_view(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
@@ -1251,7 +1322,7 @@ def rh_concluir_ferias_view(request, solicitacao_id):
 # ---------- Vencimento de Férias e Avisos ----------
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rh_vencimento_ferias_view(request):
     funcionarios = Funcionario.objects.filter(status='ativo', data_admissao__isnull=False)
 
@@ -1276,7 +1347,7 @@ def rh_vencimento_ferias_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def criar_aviso_ferias_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -1305,7 +1376,7 @@ def criar_aviso_ferias_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('gestor', 'rh')
+@papel_required('gestor', 'rh', 'dp')
 def marcar_aviso_visualizado_view(request, aviso_id):
     usuario = request.user.usuario
     aviso = get_object_or_404(AvisoFerias, id=aviso_id)
@@ -1322,7 +1393,7 @@ def marcar_aviso_visualizado_view(request, aviso_id):
     return redirect('concluir_ferias')
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def criar_comodato_view(request):
     if request.method == 'POST':
         form = TermoComodatoForm(request.POST)
@@ -1362,7 +1433,7 @@ def criar_comodato_view(request):
     })
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_comodatos_view(request):
     # Os que esperam validação do RH vêm primeiro: é a fila de trabalho.
     comodatos = TermoComodato.objects.select_related('funcionario').annotate(
@@ -1375,7 +1446,7 @@ def listar_comodatos_view(request):
     })
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def gerar_pdf_comodato_view(request, comodato_id):
     comodato = get_object_or_404(TermoComodato, id=comodato_id)
 
@@ -1441,7 +1512,7 @@ def _voltar_apos_validar_comodato(request, comodato):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def aprovar_comodato_view(request, comodato_id):
     comodato = get_object_or_404(TermoComodato, id=comodato_id)
 
@@ -1460,7 +1531,7 @@ def aprovar_comodato_view(request, comodato_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rejeitar_comodato_view(request, comodato_id):
     comodato = get_object_or_404(TermoComodato, id=comodato_id)
 

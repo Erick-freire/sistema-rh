@@ -1,0 +1,148 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Nova Ficha de EPI
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_fichas_epi' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Nova Ficha de EPI
+</h1>
+
+<form method="post" id="form-ficha-epi" data-loading-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="card">
+        <h2 style="margin-top: 0;">1. Funcionário e data</h2>
+
+        <div class="form-grid form-grid--3">
+            {% include 'funcionarios/epi/_busca_funcionario.html' with campo=form.funcionario %}
+
+            <div>
+                <label for="{{ form.data_entrega.id_for_label }}">{{ form.data_entrega.label }}</label>
+                {{ form.data_entrega }}
+                {{ form.data_entrega.errors }}
+            </div>
+        </div>
+        <p id="aviso-matriz" style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 0;" hidden></p>
+    </div>
+
+    <div class="card" id="etapa-itens">
+        <h2 style="margin-top: 0;">2. EPIs entregues</h2>
+        {{ formset.management_form }}
+        {{ formset.non_form_errors }}
+
+        <div class="table-responsive">
+            <table class="tabela-itens-comodato">
+                <thead>
+                    <tr>
+                        <th class="col-excluir" aria-label="Excluir"></th>
+                        <th>EPI</th>
+                        <th>Quantidade</th>
+                        <th>Trocar em (opcional)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item_form in formset %}
+                    <tr class="linha-item{% if item_form.DELETE.value %} linha-marcada-exclusao{% endif %}">
+                        <td class="col-excluir">
+                            <button type="button" class="btn-excluir-linha{% if item_form.DELETE.value %} btn-excluir-linha--marcado{% endif %}" aria-label="{% if item_form.DELETE.value %}Desfazer remoção{% else %}Remover linha{% endif %}" title="{% if item_form.DELETE.value %}Desfazer remoção{% else %}Remover linha{% endif %}">{% if item_form.DELETE.value %}+{% else %}−{% endif %}</button>
+                            <span hidden>{{ item_form.DELETE }}</span>
+                            {{ item_form.id }}
+                        </td>
+                        <td>{{ item_form.item_catalogo }}{{ item_form.item_catalogo.errors }}</td>
+                        <td>{{ item_form.quantidade }}{{ item_form.quantidade.errors }}</td>
+                        <td>{{ item_form.data_vencimento }}{{ item_form.data_vencimento.errors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <button type="submit" class="btn-primario" style="margin-top: 20px;">Salvar ficha</button>
+    </div>
+
+    <p id="aviso-etapa-itens" style="color: var(--color-text-muted); font-size: 0.9rem;">Escolha o funcionário para preencher os EPIs.</p>
+</form>
+
+{{ matriz_por_setor|json_script:"dados-matriz" }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var selectFuncionario = document.getElementById('{{ form.funcionario.id_for_label }}');
+    var etapaItens = document.getElementById('etapa-itens');
+    var avisoEtapaItens = document.getElementById('aviso-etapa-itens');
+    var avisoMatriz = document.getElementById('aviso-matriz');
+    var funcionarios = JSON.parse(document.getElementById('dados-funcionarios').textContent);
+    var matriz = JSON.parse(document.getElementById('dados-matriz').textContent);
+    var linhas = Array.prototype.slice.call(document.querySelectorAll('tr.linha-item'));
+
+    function campo(linha, sufixo) {
+        return linha.querySelector('[name$="' + sufixo + '"]');
+    }
+
+    function linhasVazias() {
+        return linhas.every(function (linha) { return !campo(linha, '-item_catalogo').value; });
+    }
+
+    // A matriz só sugere o ponto de partida: o técnico continua livre para
+    // trocar, remover ou acrescentar qualquer linha antes de salvar.
+    function aplicarMatriz(funcionario) {
+        var setor = funcionario.setor;
+        var itens = matriz[String(funcionario.setor_id)] || [];
+        avisoMatriz.hidden = false;
+        if (!itens.length) {
+            avisoMatriz.textContent = setor
+                ? 'Nenhum EPI cadastrado na matriz para o setor "' + setor + '". Preencha os itens manualmente.'
+                : 'Este funcionário não tem setor cadastrado. Preencha os itens manualmente.';
+            return;
+        }
+        if (!linhasVazias() && !window.confirm('Substituir os EPIs já preenchidos pelos obrigatórios do setor "' + setor + '"?')) {
+            avisoMatriz.hidden = true;
+            return;
+        }
+        linhas.forEach(function (linha, i) {
+            var sugestao = itens[i];
+            campo(linha, '-item_catalogo').value = sugestao ? sugestao.item : '';
+            campo(linha, '-quantidade').value = sugestao ? sugestao.quantidade : 1;
+            campo(linha, '-data_vencimento').value = '';
+            var excluir = campo(linha, '-DELETE');
+            if (excluir.checked) linha.querySelector('.btn-excluir-linha').click();
+        });
+        avisoMatriz.textContent = itens.length + ' EPI(s) pré-preenchido(s) pela matriz do setor "' + setor + '". Ajuste o que precisar.';
+    }
+
+    function atualizarEtapas() {
+        var pronto = Boolean(selectFuncionario.value);
+        etapaItens.hidden = !pronto;
+        avisoEtapaItens.hidden = pronto;
+        if (!pronto) avisoMatriz.hidden = true;
+    }
+
+    selectFuncionario.addEventListener('change', function () {
+        atualizarEtapas();
+        if (!selectFuncionario.value) return;
+        var f = funcionarios.find(function (x) { return String(x.id) === selectFuncionario.value; });
+        if (f) aplicarMatriz(f);
+    });
+    atualizarEtapas();
+
+    // ---------- Remover linha ----------
+    document.querySelectorAll('.btn-excluir-linha').forEach(function (botao) {
+        var linha = botao.closest('tr');
+        var checkbox = linha.querySelector('input[name$="-DELETE"]');
+        botao.addEventListener('click', function () {
+            checkbox.checked = !checkbox.checked;
+            linha.classList.toggle('linha-marcada-exclusao', checkbox.checked);
+            botao.classList.toggle('btn-excluir-linha--marcado', checkbox.checked);
+            botao.textContent = checkbox.checked ? '+' : '−';
+            botao.setAttribute('aria-label', checkbox.checked ? 'Desfazer remoção' : 'Remover linha');
+            botao.title = botao.getAttribute('aria-label');
+        });
+    });
+});
+</script>
+{% endblock %}

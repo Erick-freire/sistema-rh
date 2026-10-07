@@ -13,13 +13,13 @@
 </h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ empresa.razao_social }} · {{ empresa.cnpj_formatado }}</p>
 
+{# O acompanhamento só interessa enquanto o cadastro está em andamento; depois de validado, o badge do título basta. #}
+{% if empresa.status != 'ativo' and empresa.status != 'inativo' %}
 <div class="card">
     <div class="card__title" style="margin-bottom: 4px;">Onde este cadastro está</div>
     {% include 'terceiros/_status_stepper.html' %}
-    {% if empresa.status == 'ativo' or empresa.status == 'inativo' %}
-    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-top: 16px;">Cadastro completo. Nada pendente.</p>
-    {% endif %}
 </div>
+{% endif %}
 
 <div class="duas-colunas">
     <div>
@@ -121,7 +121,9 @@
 
             {% if contrato.arquivo_gerado %}
             <span class="acoes-tabela" style="margin-top: 12px; display: inline-flex;">
-                <a href="{% url 'terceiros:baixar_contrato' contrato.id %}" target="_blank" title="Visualizar">{% icon 'eye' %} Ver PDF</a>
+                <button type="button" class="btn-icone" title="Visualizar" data-abrir-termo
+                        data-pdf="{% url 'terceiros:baixar_contrato' contrato.id %}"
+                        data-titulo="Contrato — {{ empresa.nome_curto }}">{% icon 'eye' %}&nbsp;Ver PDF</button>
                 <a href="{% url 'terceiros:baixar_contrato' contrato.id %}" download title="Baixar">{% icon 'download' %} Baixar</a>
             </span>
             {% endif %}
@@ -215,26 +217,16 @@
                         <div class="doc-linha__acoes">
                             <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
 
-                            {% if pode_analisar_documentos and documento.status == 'pendente' %}
-                            <form method="post" action="{% url 'terceiros:aprovar_documento' documento.id %}">
-                                {% csrf_token %}
-                                <button type="submit" class="btn-outline btn-sm">{% icon 'check-circle' %} Aprovar</button>
-                            </form>
-                            <form method="post" action="{% url 'terceiros:rejeitar_documento' documento.id %}">
-                                {% csrf_token %}
-                                {# Preenchido pelo modal de motivo antes do submit -- ver data-motivo em static/js/ui.js. #}
-                                <input type="hidden" name="motivo" value="">
-                                <button type="submit" class="btn-outline btn-sm"
-                                        data-motivo="Escreva o que a prestadora precisa corrigir. O texto aparece para ela no painel, junto do documento."
-                                        data-motivo-titulo="Reprovar {{ documento.get_tipo_display }} de {{ colaborador.nome }}"
-                                        data-motivo-placeholder="Ex.: foto ilegível, documento vencido, assinatura faltando...">
-                                    {% icon 'x' %} Reprovar
-                                </button>
-                            </form>
-                            {% endif %}
-
                             <span class="acoes-tabela">
-                                <a href="{% url 'terceiros:ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                                {# A análise fica no popup: pendente abre com Validar/Rejeitar; analisado abre só para ver. #}
+                                <button type="button" class="btn-icone" title="Visualizar" aria-label="Visualizar" data-abrir-termo
+                                        data-pdf="{% url 'terceiros:ver_documento' documento.id %}"
+                                        data-titulo="{{ documento.get_tipo_display }} — {{ colaborador.nome }}"
+                                        {% if pode_analisar_documentos and documento.status == 'pendente' %}data-aprovar="{% url 'terceiros:aprovar_documento' documento.id %}"
+                                        data-rejeitar="{% url 'terceiros:rejeitar_documento' documento.id %}"
+                                        data-rejeitar-titulo="Reprovar {{ documento.get_tipo_display }} de {{ colaborador.nome }}"
+                                        data-rejeitar-mensagem="Escreva o que a prestadora precisa corrigir. O texto aparece para ela no painel, junto do documento."
+                                        data-rejeitar-placeholder="Ex.: foto ilegível, documento vencido, assinatura faltando..."{% endif %}>{% icon 'eye' %}</button>
                                 <a href="{% url 'terceiros:ver_documento' documento.id %}" download title="Baixar">{% icon 'download' %}</a>
                             </span>
                         </div>
@@ -293,4 +285,6 @@
         </div>
     </div>
 </div>
+
+{% include 'funcionarios/_modal_validar_arquivo.html' %}
 {% endblock %}

@@ -1,7 +1,7 @@
 from ponto.models import AjustePonto
 from terceiros.models import EmpresaTerceira
 
-from .models import AvisoFerias, SolicitacaoFerias, TermoComodato, Usuario
+from .models import AvisoFerias, FichaEPI, SolicitacaoFerias, SolicitacaoSenha, TermoComodato, Usuario
 from .perfis import responsavel_terceiro_de
 
 # Rotas que a sidebar do Portal do Prestador acende sob "Funcionários" -- a
@@ -37,9 +37,9 @@ def usuario_logado(request):
             funcionario__setor=usuario.funcionario.setor,
         ).count()
 
-    if usuario.papel in ('gestor', 'rh') or usuario.acesso_rh:
+    if usuario.papel == 'gestor' or usuario.eh_dp_ou_rh():
         badge_concluir_ferias = 0
-        if usuario.papel == 'rh' or usuario.acesso_rh:
+        if usuario.eh_dp_ou_rh():
             badge_concluir_ferias += SolicitacaoFerias.objects.filter(status='pendente_rh').count()
 
         avisos_pendentes = AvisoFerias.objects.filter(visualizado=False)
@@ -52,7 +52,7 @@ def usuario_logado(request):
     if 'badge_ferias_gestor' in contexto or 'badge_ferias_rh' in contexto:
         contexto['badge_ferias_total'] = contexto.get('badge_ferias_gestor', 0) + contexto.get('badge_ferias_rh', 0)
 
-    if usuario.papel == 'rh' or usuario.acesso_rh:
+    if usuario.eh_dp_ou_rh():
         contexto['badge_ajustes_pendentes'] = AjustePonto.objects.filter(status='pendente').count()
         # Empresas terceiras esperando uma ação do RH: gerar contrato ou validar
         # a documentação enviada pela prestadora.
@@ -61,6 +61,14 @@ def usuario_logado(request):
         ).count()
         # Termos de comodato que o colaborador já devolveu assinados.
         contexto['badge_comodatos'] = TermoComodato.objects.filter(status='em_validacao').count()
+        # Pedidos de nova senha feitos pela tela de login.
+        contexto['badge_pedidos_senha'] = SolicitacaoSenha.pendentes().count()
+
+    if usuario.eh_seguranca_ou_rh():
+        # Fichas de EPI que o colaborador já devolveu assinadas.
+        contexto['badge_fichas_epi'] = FichaEPI.objects.filter(status='em_validacao').count()
+        # Colaboradores desligados que ainda estão com EPI.
+        contexto['badge_devolucoes_epi'] = FichaEPI.com_devolucao_pendente().count()
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario

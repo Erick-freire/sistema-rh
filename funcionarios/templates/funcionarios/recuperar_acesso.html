@@ -1,0 +1,80 @@
+{% extends 'funcionarios/base.html' %}
+
+{% block titulo %}
+Recuperar acesso
+{% endblock %}
+
+{% block head_extra %}
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% load static %}
+{% load rh_icons %}
+{% block conteudo_sem_login %}
+<div class="login-shell">
+    <div class="login-topo">
+        <svg class="login-topo__curva" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+            <path d="M330 40C230 -10 60 10 70 90c10 80 260 90 260 190 0 80-150 110-330 70" stroke="currentColor" stroke-width="44" stroke-linecap="round"/>
+        </svg>
+        <span class="login-topo__logo"><img src="{% static 'img/logo-s.png' %}" alt="Sotrigo"></span>
+        <h1>Portal do Colaborador</h1>
+        <p>RH · Sotrigo Alimentos</p>
+    </div>
+
+    <div class="login-split">
+        <div class="login-painel login-painel--marca">
+            <div class="login-brand">
+                <span class="login-brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
+                Sotrigo RH
+            </div>
+            <div>
+                <h1>Esqueceu a senha?</h1>
+                <p>Informe o seu CPF e o RH recebe o pedido para gerar uma nova senha provisória.</p>
+            </div>
+            <div></div>
+        </div>
+
+        <div class="login-painel login-painel--form">
+            <div class="login-card">
+                <h2>Recuperar acesso</h2>
+
+                {% if enviado %}
+                    <p class="message message-success">{{ mensagem }}</p>
+                    <a href="{% url 'login' %}" class="btn btn-bloco login-card__entrar">Voltar para o login</a>
+                {% else %}
+                    <p class="login-card__texto">Informe o seu CPF. O RH vai receber o pedido e gerar uma nova senha provisória para você.</p>
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        {% if erro %}
+                            <p class="message message-error">{{ erro }}</p>
+                        {% endif %}
+
+                        <p>
+                            <label for="cpf">CPF</label>
+                            <span class="login-campo">
+                                {% icon 'id-card' 'login-campo__icone' %}
+                                <input type="text" id="cpf" name="cpf" placeholder="Digite seu CPF" inputmode="numeric" autocomplete="username" required autofocus>
+                            </span>
+                        </p>
+
+                        {% if recaptcha_site_key %}
+                        <p>
+                            <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+                        </p>
+                        {% endif %}
+
+                        <button type="submit" class="btn-primario btn-bloco login-card__entrar">Enviar pedido ao RH</button>
+                    </form>
+
+                    <p class="login-card__voltar"><a href="{% url 'login' %}">← Voltar para o login</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% if recaptcha_site_key and not enviado %}
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endif %}
+{% endblock %}

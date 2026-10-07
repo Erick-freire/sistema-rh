@@ -1,7 +1,9 @@
+import io
 import tempfile
 
 import openpyxl
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
@@ -11,9 +13,10 @@ from datetime import date
 
 from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
 from .models import (
-    Atestado, Documento, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, TermoComodato,
-    TipoDocumento, Usuario,
+    Atestado, Documento, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, SolicitacaoSenha,
+    TermoComodato, TipoDocumento, Usuario,
 )
+from . import views
 
 
 def _dados_cadastro(**kwargs):
@@ -276,6 +279,87 @@ class OnboardingDocumentosTests(TestCase):
         self.funcionario.refresh_from_db()
         self.assertEqual(self.funcionario.status, 'ativo')
 
+    def _documento_em_validacao(self):
+        self.funcionario.status = 'em_validacao'
+        self.funcionario.save()
+        return Documento.objects.create(
+            funcionario=self.funcionario, tipo_documento=self.tipo_doc, arquivo=self._arquivo(), status='pendente',
+        )
+
+    def test_detalhe_abre_documento_no_popup_com_validar_e_rejeitar(self):
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento = self._documento_em_validacao()
+            self.client.force_login(self.user_rh)
+
+            response = self.client.get(reverse('detalhe_funcionario', args=[self.funcionario.id]))
+            self.assertContains(response, 'id="modal-termo"')
+            self.assertContains(response, f'data-aprovar="{reverse("aprovar_documento", args=[documento.id])}"')
+            self.assertContains(response, f'data-rejeitar="{reverse("rejeitar_documento", args=[documento.id])}"')
+
+            # O popup carrega o arquivo num iframe: a view precisa permitir isso na mesma origem.
+            arquivo = self.client.get(reverse('ver_documento', args=[documento.id]))
+            self.assertEqual(arquivo['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_rejeitar_pelo_popup_volta_ao_detalhe_com_motivo(self):
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento = self._documento_em_validacao()
+            self.client.force_login(self.user_rh)
+            detalhe = reverse('detalhe_funcionario', args=[self.funcionario.id])
+
+            response = self.client.post(
+                reverse('rejeitar_documento', args=[documento.id]), {'motivo': 'Ilegível', 'next': detalhe},
+            )
+
+            self.assertRedirects(response, detalhe, fetch_redirect_response=False)
+            documento.refresh_from_db()
+            self.assertEqual(documento.status, 'rejeitado')
+            self.assertEqual(documento.motivo_rejeicao, 'Ilegível')
+
+    def test_documento_enviado_depois_da_ativacao_pode_ser_validado(self):
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento = self._documento_em_validacao()
+            self.funcionario.status = 'ativo'
+            self.funcionario.save()
+            self.client.force_login(self.user_rh)
+
+            response = self.client.get(reverse('detalhe_funcionario', args=[self.funcionario.id]))
+            # Só o ícone de olho abre o popup com as ações; não há botão Validar na linha.
+            self.assertContains(response, f'data-aprovar="{reverse("aprovar_documento", args=[documento.id])}"', count=1)
+            self.assertNotContains(response, 'class="btn-primario btn-sm" data-abrir-termo')
+
+            self.client.post(reverse('aprovar_documento', args=[documento.id]))
+            documento.refresh_from_db()
+            self.assertEqual(documento.status, 'aprovado')
+            self.funcionario.refresh_from_db()
+            self.assertEqual(self.funcionario.status, 'ativo')
+
+    def test_documento_ja_analisado_nao_e_revisado_de_novo(self):
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento = self._documento_em_validacao()
+            documento.status = 'aprovado'
+            documento.save()
+            self.client.force_login(self.user_rh)
+
+            self.client.post(reverse('rejeitar_documento', args=[documento.id]), {'motivo': 'x'})
+            documento.refresh_from_db()
+            self.assertEqual(documento.status, 'aprovado')
+
+            response = self.client.get(reverse('detalhe_funcionario', args=[self.funcionario.id]))
+            self.assertNotContains(response, reverse('aprovar_documento', args=[documento.id]))
+
+    def test_aprovar_documento_exige_post(self):
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento = self._documento_em_validacao()
+            self.client.force_login(self.user_rh)
+
+            self.client.get(reverse('aprovar_documento', args=[documento.id]))
+            documento.refresh_from_db()
+            self.assertEqual(documento.status, 'pendente')
+
+            self.client.post(reverse('aprovar_documento', args=[documento.id]))
+            documento.refresh_from_db()
+            self.assertEqual(documento.status, 'aprovado')
+
 
 class ResetarSenhaFuncionarioViewTests(TestCase):
     """RH/gestor gera uma nova senha aleatória pra um funcionário que já tem acesso."""
@@ -350,6 +434,212 @@ class ResetarSenhaFuncionarioViewTests(TestCase):
         self.assertRedirects(response, reverse('listar_funcionarios'))
         self.user_colaborador.refresh_from_db()
         self.assertEqual(self.user_colaborador.password, senha_antiga)
+
+
+class GerarAcessoFuncionarioViewTests(TestCase):
+    """Primeiro acesso de quem já está cadastrado: RH/DP ou o gestor do setor geram, com senha aleatória."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Sem Acesso', cpf='11111111111', cargo='Operador', setor=self.setor, status='ativo',
+        )
+        gestor = Funcionario.objects.create(
+            nome='Gestor Teste', cpf='22222222222', cargo='Gestor', setor=self.setor, status='ativo',
+        )
+        self.user_gestor = User.objects.create_user(username='22222222222', password='senha123')
+        Usuario.objects.create(user=self.user_gestor, funcionario=gestor, papel='gestor')
+
+    def test_gestor_do_setor_gera_acesso_com_senha_aleatoria(self):
+        self.client.force_login(self.user_gestor)
+
+        response = self.client.post(reverse('gerar_acesso_funcionario', args=[self.funcionario.id]))
+
+        senha_gerada = response.context['senha_gerada']
+        user = User.objects.get(username='11111111111')
+        self.assertTrue(user.check_password(senha_gerada))
+        self.assertTrue(user.usuario.senha_provisoria)
+
+    def test_cada_acesso_recebe_uma_senha_diferente(self):
+        outro = Funcionario.objects.create(
+            nome='Outro Sem Acesso', cpf='33333333333', cargo='Operador', setor=self.setor, status='ativo',
+        )
+        self.client.force_login(self.user_gestor)
+
+        senha_1 = self.client.post(reverse('gerar_acesso_funcionario', args=[self.funcionario.id])).context['senha_gerada']
+        senha_2 = self.client.post(reverse('gerar_acesso_funcionario', args=[outro.id])).context['senha_gerada']
+
+        self.assertNotEqual(senha_1, senha_2)
+
+    def test_gestor_de_outro_setor_nao_gera(self):
+        outro_setor = Setor.objects.create(nome='Outro Setor')
+        de_fora = Funcionario.objects.create(
+            nome='De Fora', cpf='44444444444', cargo='Operador', setor=outro_setor, status='ativo',
+        )
+        self.client.force_login(self.user_gestor)
+
+        response = self.client.post(reverse('gerar_acesso_funcionario', args=[de_fora.id]))
+
+        self.assertRedirects(response, reverse('listar_funcionarios'))
+        self.assertFalse(User.objects.filter(username='44444444444').exists())
+
+
+class LoginGestorPorNomeTests(TestCase):
+    """Gestor entra pelo primeiro nome (ou CPF); o resto só pelo CPF."""
+
+    def setUp(self):
+        cache.clear()
+        self.setor = Setor.objects.create(nome='Produção')
+
+    def _usuario(self, nome, cpf, papel):
+        funcionario = Funcionario.objects.create(nome=nome, cpf=cpf, cargo='X', setor=self.setor, status='ativo')
+        user = User.objects.create_user(username=cpf, password='Senha!123')
+        return Usuario.objects.create(user=user, funcionario=funcionario, papel=papel)
+
+    def _entrar(self, login):
+        return self.client.post(reverse('login'), {'username': login, 'password': 'Senha!123'})
+
+    def test_gestor_recebe_primeiro_nome_sem_acento(self):
+        gestor = self._usuario('ANÁLIA ANDRESSA RODRIGUES', '11111111111', 'gestor')
+
+        self.assertEqual(gestor.login_gestor, 'analia')
+
+    def test_nome_repetido_ganha_numero(self):
+        primeiro = self._usuario('DANIEL SOUSA', '11111111111', 'gestor')
+        segundo = self._usuario('Daniel Pereira', '22222222222', 'gestor')
+
+        self.assertEqual(primeiro.login_gestor, 'daniel')
+        self.assertEqual(segundo.login_gestor, 'daniel2')
+
+    def test_gestor_entra_pelo_nome_sem_diferenciar_maiusculas(self):
+        self._usuario('Romario Ribeiro', '11111111111', 'gestor')
+
+        self.assertRedirects(self._entrar(' Romario '), reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_gestor_continua_entrando_pelo_cpf(self):
+        self._usuario('Romario Ribeiro', '11111111111', 'gestor')
+
+        self.assertRedirects(self._entrar('11111111111'), reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_colaborador_nao_tem_login_por_nome(self):
+        colaborador = self._usuario('Maria Silva', '11111111111', 'colaborador')
+
+        self.assertIsNone(colaborador.login_gestor)
+        self.assertContains(self._entrar('maria'), 'inválidos')
+
+    def test_deixar_de_ser_gestor_inativa_o_login_por_nome(self):
+        gestor = self._usuario('Romario Ribeiro', '11111111111', 'gestor')
+
+        gestor.papel = 'colaborador'
+        gestor.save()
+
+        gestor.refresh_from_db()
+        self.assertIsNone(gestor.login_gestor)
+        self.assertContains(self._entrar('romario'), 'inválidos')
+        self.assertRedirects(self._entrar('11111111111'), reverse('dashboard'), fetch_redirect_response=False)
+
+
+class TrocarSenhasPadraoCommandTests(TestCase):
+    def _usuario(self, cpf, senha, provisoria=True):
+        setor, _ = Setor.objects.get_or_create(nome='Produção')
+        funcionario = Funcionario.objects.create(nome=f'Func {cpf}', cpf=cpf, cargo='Operador', setor=setor, status='ativo')
+        user = User.objects.create_user(username=cpf, password=senha)
+        Usuario.objects.create(user=user, funcionario=funcionario, papel='colaborador', senha_provisoria=provisoria)
+        return user
+
+    def test_troca_so_quem_ainda_esta_com_a_senha_antiga(self):
+        com_padrao = self._usuario('11111111111', 'Padrao@123')
+        ja_trocou = self._usuario('22222222222', 'MinhaSenha!9', provisoria=False)
+
+        call_command('trocar_senhas_padrao', 'Padrao@123', stdout=io.StringIO())
+
+        com_padrao.refresh_from_db()
+        ja_trocou.refresh_from_db()
+        self.assertFalse(com_padrao.check_password('Padrao@123'))
+        self.assertTrue(ja_trocou.check_password('MinhaSenha!9'))
+
+    def test_dry_run_nao_grava(self):
+        com_padrao = self._usuario('11111111111', 'Padrao@123')
+
+        call_command('trocar_senhas_padrao', 'Padrao@123', '--dry-run', stdout=io.StringIO())
+
+        com_padrao.refresh_from_db()
+        self.assertTrue(com_padrao.check_password('Padrao@123'))
+
+
+class RecuperarAcessoTests(TestCase):
+    """"Recuperar acesso" na tela de login: o colaborador pede, o RH/DP gera a nova senha."""
+
+    def setUp(self):
+        cache.clear()
+        self.setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', cargo='Analista', setor=self.setor, status='ativo',
+        )
+        self.user_colaborador = User.objects.create_user(username='12345678901', password='senha123')
+        self.usuario_colaborador = Usuario.objects.create(
+            user=self.user_colaborador, funcionario=self.funcionario, papel='colaborador',
+        )
+
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=self.setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+
+    def test_pedido_com_cpf_formatado_cria_solicitacao(self):
+        response = self.client.post(reverse('recuperar_acesso'), {'cpf': '123.456.789-01'})
+
+        self.assertContains(response, 'Pedido enviado')
+        self.assertEqual(SolicitacaoSenha.pendentes().filter(usuario=self.usuario_colaborador).count(), 1)
+
+    def test_cpf_desconhecido_responde_igual_e_nao_cria_nada(self):
+        response = self.client.post(reverse('recuperar_acesso'), {'cpf': '000.000.000-00'})
+
+        self.assertContains(response, 'Pedido enviado')
+        self.assertFalse(SolicitacaoSenha.objects.exists())
+
+    def test_pedido_repetido_nao_duplica(self):
+        self.client.post(reverse('recuperar_acesso'), {'cpf': '12345678901'})
+        self.client.post(reverse('recuperar_acesso'), {'cpf': '12345678901'})
+
+        self.assertEqual(SolicitacaoSenha.pendentes().count(), 1)
+
+    def test_limite_de_pedidos_por_ip(self):
+        for _ in range(views.LIMITE_PEDIDOS_SENHA_IP):
+            self.client.post(reverse('recuperar_acesso'), {'cpf': '000'})
+
+        response = self.client.post(reverse('recuperar_acesso'), {'cpf': '12345678901'})
+
+        self.assertContains(response, 'Muitos pedidos seguidos')
+        self.assertFalse(SolicitacaoSenha.objects.exists())
+
+    def test_rh_ve_pedido_e_badge(self):
+        SolicitacaoSenha.objects.create(usuario=self.usuario_colaborador)
+        self.client.force_login(self.user_rh)
+
+        response = self.client.get(reverse('pedidos_senha'))
+
+        self.assertContains(response, 'Colaborador Teste')
+        self.assertEqual(response.context['badge_pedidos_senha'], 1)
+
+    def test_colaborador_nao_ve_pedidos(self):
+        self.client.force_login(self.user_colaborador)
+
+        response = self.client.get(reverse('pedidos_senha'))
+
+        self.assertRedirects(response, reverse('dashboard'))
+
+    def test_gerar_nova_senha_fecha_o_pedido(self):
+        pedido = SolicitacaoSenha.objects.create(usuario=self.usuario_colaborador)
+        self.client.force_login(self.user_rh)
+
+        self.client.post(reverse('resetar_senha_funcionario', args=[self.funcionario.id]))
+
+        pedido.refresh_from_db()
+        self.assertIsNotNone(pedido.atendida_em)
+        self.assertEqual(pedido.atendida_por, self.user_rh)
+        self.assertFalse(SolicitacaoSenha.pendentes().exists())
 
 
 class AssinaturaGovViewTests(TestCase):
@@ -749,11 +1039,40 @@ class ValidarComodatoViewTests(TestCase):
     def test_detalhe_mostra_bloco_de_comodatos_e_badge_na_sidebar(self):
         self.client.force_login(self.user_rh)
 
-        response = self.client.get(self.url_detalhe)
+        # Em validação sempre tem o termo assinado: é o envio dele que muda o status.
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            self.comodato.arquivo_assinado = SimpleUploadedFile('assinado.pdf', b'%PDF-1.4')
+            self.comodato.save()
+            response = self.client.get(self.url_detalhe)
 
         self.assertContains(response, 'Comodato de Uniforme')
         self.assertContains(response, reverse('aprovar_comodato', args=[self.comodato.id]))
         self.assertEqual(response.context['badge_comodatos'], 1)
+
+    def test_detalhe_lista_so_comodatos_ja_assinados(self):
+        self.client.force_login(self.user_rh)
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            # Gerado, ainda sem assinatura.
+            sem_assinatura = TermoComodato.objects.create(
+                funcionario=self.funcionario, modalidade='equipamento', data_emprestimo=date(2026, 10, 1),
+                status='aguardando_assinatura',
+            )
+            # Assinado, mas rejeitado: volta a aguardar um novo envio.
+            rejeitado = TermoComodato.objects.create(
+                funcionario=self.funcionario, modalidade='equipamento', data_emprestimo=date(2026, 10, 1),
+                status='aguardando_assinatura', motivo_rejeicao='Ilegível',
+                arquivo_assinado=SimpleUploadedFile('velho.pdf', b'%PDF-1.4'),
+            )
+            ativo = TermoComodato.objects.create(
+                funcionario=self.funcionario, modalidade='equipamento', data_emprestimo=date(2026, 10, 1),
+                status='ativo', arquivo_assinado=SimpleUploadedFile('ok.pdf', b'%PDF-1.4'),
+            )
+
+            response = self.client.get(self.url_detalhe)
+
+        self.assertEqual(list(response.context['comodatos']), [ativo])
+        self.assertNotContains(response, reverse('ver_comodato', args=[sem_assinatura.id, 'gerado']))
+        self.assertNotContains(response, reverse('ver_comodato', args=[rejeitado.id, 'assinado']))
 
 
 class VerComodatoViewTests(TestCase):

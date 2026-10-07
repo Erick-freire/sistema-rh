@@ -1,0 +1,65 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Fichas de EPI
+{% endblock %}
+
+{% block conteudo %}
+{% include 'funcionarios/epi/_epi_tabs.html' %}
+
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>Cargo</th>
+                <th>EPIs</th>
+                <th>Status</th>
+                <th>Data da entrega</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ficha in fichas %}
+            <tr{% if ficha.status == 'em_validacao' %} class="linha-aguardando-rh"{% endif %}>
+                <td>{{ ficha.funcionario.nome }}</td>
+                <td>{{ ficha.funcionario.cargo|default:"—" }}</td>
+                <td>{{ ficha.total_itens }}</td>
+                <td><span class="badge-status badge-status--{{ ficha.status }}">{{ ficha.get_status_display }}</span></td>
+                <td>{{ ficha.data_entrega|date:"d/m/Y" }}</td>
+                <td>
+                    {% if ficha.status == 'em_validacao' and ficha.arquivo_assinado %}
+                    <button type="button" class="btn-primario btn-sm" data-abrir-termo
+                            data-pdf="{% url 'ver_ficha_epi' ficha.id 'assinado' %}"
+                            data-titulo="Ficha de EPI — {{ ficha.funcionario.nome }}"
+                            data-aprovar="{% url 'aprovar_ficha_epi' ficha.id %}"
+                            data-rejeitar-titulo="Rejeitar ficha assinada"
+                            data-rejeitar="{% url 'rejeitar_ficha_epi' ficha.id %}">
+                        {% icon 'eye' %} Validar
+                    </button>
+                    {% elif ficha.status == 'aguardando_assinatura' and not ficha.arquivo_gerado %}
+                    <a href="{% url 'gerar_pdf_ficha_epi' ficha.id %}" class="btn btn-sm">Gerar PDF</a>
+                    {% elif ficha.arquivo_assinado or ficha.arquivo_gerado %}
+                    <button type="button" class="btn-outline btn-sm" data-abrir-termo
+                            data-pdf="{% if ficha.arquivo_assinado %}{% url 'ver_ficha_epi' ficha.id 'assinado' %}{% else %}{% url 'ver_ficha_epi' ficha.id 'gerado' %}{% endif %}"
+                            data-titulo="Ficha de EPI — {{ ficha.funcionario.nome }}">
+                        Ver PDF
+                    </button>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Nenhuma ficha de EPI cadastrada ainda.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% url 'listar_fichas_epi' as url_lista %}
+{% include 'funcionarios/_modal_validar_arquivo.html' with proximo=url_lista|add:'?pendentes=1' %}
+{% endblock %}

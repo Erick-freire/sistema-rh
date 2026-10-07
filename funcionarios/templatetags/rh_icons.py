@@ -39,6 +39,8 @@ ICONS = {
     'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
     'key': '<circle cx="8" cy="15" r="3.3"/><path d="M10.4 12.6 20 3"/><path d="M15.2 8.2 17.6 10.6"/><path d="M18.4 7 20 8.6"/>',
     'trash': '<path d="M4 7h16"/><path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L18.5 7"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    'id-card': '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M5.8 16a3.4 3.4 0 0 1 6.4 0"/><path d="M14.5 10h4"/><path d="M14.5 13.5h3"/>',
+    'lock': '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
     'briefcase': '<rect x="3" y="7.5" width="18" height="12" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5"/><path d="M3 12.5h18"/>',
 }
 

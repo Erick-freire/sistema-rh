@@ -1,0 +1,127 @@
+{% comment %}
+Campo de busca de funcionário por nome, matrícula ou CPF (mesma lógica da tela
+de novo comodato). Espera `campo` (o BoundField do funcionário) e
+`funcionarios_busca` no contexto. Ao escolher, preenche o select escondido e
+dispara `change` nele -- a página escuta esse evento se precisar reagir.
+{% endcomment %}
+<div class="busca-funcionario">
+    <label for="busca-funcionario-input">{{ campo.label }}</label>
+    <input type="text" id="busca-funcionario-input" autocomplete="off"
+           placeholder="Digite nome, matrícula ou CPF"
+           role="combobox" aria-expanded="false" aria-controls="busca-funcionario-lista">
+    <ul class="busca-funcionario__lista" id="busca-funcionario-lista" role="listbox" hidden></ul>
+    <div hidden>{{ campo }}</div>
+    {{ campo.errors }}
+</div>
+
+{{ funcionarios_busca|json_script:"dados-funcionarios" }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var selectFuncionario = document.getElementById('{{ campo.id_for_label }}');
+    var funcionarios = JSON.parse(document.getElementById('dados-funcionarios').textContent);
+    var inputBusca = document.getElementById('busca-funcionario-input');
+    var lista = document.getElementById('busca-funcionario-lista');
+    var LIMITE_RESULTADOS = 8;
+    var destacado = -1;
+
+    function normalizar(texto) {
+        return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    function rotulo(f) {
+        return f.matricula ? f.nome + ' — ' + f.matricula : f.nome;
+    }
+
+    funcionarios.forEach(function (f) {
+        f._busca = normalizar(f.nome + ' ' + f.matricula);
+    });
+
+    function definir(valor) {
+        selectFuncionario.value = valor;
+        selectFuncionario.dispatchEvent(new Event('change'));
+    }
+
+    function fecharLista() {
+        lista.hidden = true;
+        inputBusca.setAttribute('aria-expanded', 'false');
+        destacado = -1;
+    }
+
+    function escolher(f) {
+        inputBusca.value = rotulo(f);
+        fecharLista();
+        definir(String(f.id));
+    }
+
+    function destacar(indice) {
+        var itens = lista.querySelectorAll('li[data-id]');
+        if (!itens.length) return;
+        destacado = (indice + itens.length) % itens.length;
+        itens.forEach(function (li, i) { li.classList.toggle('ativo', i === destacado); });
+        itens[destacado].scrollIntoView({ block: 'nearest' });
+    }
+
+    function buscar() {
+        var termo = normalizar(inputBusca.value.trim());
+        var digitos = inputBusca.value.replace(/\D/g, '');
+        lista.innerHTML = '';
+        if (!termo) { fecharLista(); return; }
+
+        var encontrados = funcionarios.filter(function (f) {
+            return f._busca.indexOf(termo) !== -1 || (digitos.length >= 3 && f.cpf.indexOf(digitos) !== -1);
+        }).slice(0, LIMITE_RESULTADOS);
+
+        if (!encontrados.length) {
+            var vazio = document.createElement('li');
+            vazio.className = 'vazio';
+            vazio.textContent = 'Nenhum funcionário encontrado.';
+            lista.appendChild(vazio);
+        }
+        encontrados.forEach(function (f) {
+            var li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.dataset.id = f.id;
+            li.textContent = rotulo(f);
+            li.addEventListener('mousedown', function (evento) {
+                evento.preventDefault();
+                escolher(f);
+            });
+            lista.appendChild(li);
+        });
+        lista.hidden = false;
+        inputBusca.setAttribute('aria-expanded', 'true');
+        destacado = -1;
+    }
+
+    inputBusca.addEventListener('input', function () {
+        // Texto alterado depois de escolher: deixa de valer a escolha anterior.
+        if (selectFuncionario.value) definir('');
+        buscar();
+    });
+
+    inputBusca.addEventListener('keydown', function (evento) {
+        if (evento.key === 'Enter') evento.preventDefault();
+        if (lista.hidden) return;
+        if (evento.key === 'ArrowDown') { evento.preventDefault(); destacar(destacado + 1); }
+        else if (evento.key === 'ArrowUp') { evento.preventDefault(); destacar(destacado - 1); }
+        else if (evento.key === 'Escape') { fecharLista(); }
+        else if (evento.key === 'Enter') {
+            var itens = lista.querySelectorAll('li[data-id]');
+            var alvo = itens[destacado >= 0 ? destacado : 0];
+            if (alvo) {
+                var f = funcionarios.find(function (x) { return String(x.id) === alvo.dataset.id; });
+                if (f) escolher(f);
+            }
+        }
+    });
+
+    inputBusca.addEventListener('blur', fecharLista);
+
+    // Reexibição após erro de validação: mostra o funcionário já escolhido.
+    if (selectFuncionario.value) {
+        var atual = funcionarios.find(function (f) { return String(f.id) === selectFuncionario.value; });
+        if (atual) inputBusca.value = rotulo(atual);
+    }
+});
+</script>

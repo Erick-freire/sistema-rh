@@ -1,0 +1,49 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Registrar Não Conformidade
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_ocorrencias_epi' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Registrar Não Conformidade
+</h1>
+
+<form method="post" enctype="multipart/form-data" class="card" data-loading-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="form-grid form-grid--3">
+        {% include 'funcionarios/epi/_busca_funcionario.html' with campo=form.funcionario %}
+
+        <div>
+            <label for="{{ form.data_ocorrencia.id_for_label }}">{{ form.data_ocorrencia.label }}</label>
+            {{ form.data_ocorrencia }}
+            {{ form.data_ocorrencia.errors }}
+        </div>
+
+        <div>
+            <label for="{{ form.item_catalogo.id_for_label }}">{{ form.item_catalogo.label }}</label>
+            {{ form.item_catalogo }}
+            {{ form.item_catalogo.errors }}
+        </div>
+    </div>
+
+    <div style="margin-top: 16px;">
+        <label for="{{ form.descricao.id_for_label }}">{{ form.descricao.label }}</label>
+        {{ form.descricao }}
+        <div style="font-size: 0.8rem; color: var(--color-text-muted);">{{ form.descricao.help_text }}</div>
+        {{ form.descricao.errors }}
+    </div>
+
+    <div style="margin-top: 16px;">
+        <label for="{{ form.foto.id_for_label }}">{{ form.foto.label }}</label>
+        {{ form.foto }}
+        {{ form.foto.errors }}
+    </div>
+
+    <button type="submit" class="btn-primario" style="margin-top: 20px;">Registrar</button>
+</form>
+{% endblock %}

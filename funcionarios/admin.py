@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Atestado, Setor, Funcionario, Usuario, TipoDocumento, Documento, TermoComodato, ItemComodato, ItemCatalogoComodato
+from .models import (
+    Atestado, Setor, Funcionario, Usuario, TipoDocumento, Documento, TermoComodato, ItemComodato, ItemCatalogoComodato,
+    ItemCatalogoEPI, FichaEPI, ItemEPI, OcorrenciaEPI, MatrizEpiSetor,
+)
 
 
 @admin.register(Atestado)
@@ -38,7 +41,45 @@ class TermoComodatoAdmin(admin.ModelAdmin):
     inlines = [ItemComodatoInline]
 
 
+@admin.register(ItemCatalogoEPI)
+class ItemCatalogoEPIAdmin(admin.ModelAdmin):
+    list_display = ('nome', 'numero_ca', 'validade_ca', 'ativo')
+    list_filter = ('ativo',)
+    search_fields = ('nome', 'numero_ca')
+
+
+class ItemEPIInline(admin.TabularInline):
+    model = ItemEPI
+    extra = 1
+    fields = ('item_catalogo', 'quantidade', 'data_vencimento', 'devolvido')
+
+
+@admin.register(FichaEPI)
+class FichaEPIAdmin(admin.ModelAdmin):
+    list_display = ('funcionario', 'status', 'data_entrega')
+    list_filter = ('status',)
+    search_fields = ('funcionario__nome',)
+    inlines = [ItemEPIInline]
+
+
+@admin.register(OcorrenciaEPI)
+class OcorrenciaEPIAdmin(admin.ModelAdmin):
+    list_display = ('funcionario', 'data_ocorrencia', 'item_catalogo', 'tecnico')
+    list_filter = ('data_ocorrencia',)
+    search_fields = ('funcionario__nome', 'descricao')
+
+
+@admin.register(MatrizEpiSetor)
+class MatrizEpiSetorAdmin(admin.ModelAdmin):
+    list_display = ('setor', 'item_catalogo', 'quantidade_padrao')
+    list_filter = ('setor',)
+
+
 admin.site.register(Setor)
 admin.site.register(Funcionario)
-admin.site.register(Usuario)
+@admin.register(Usuario)
+class UsuarioAdmin(admin.ModelAdmin):
+    list_display = ('user', 'funcionario', 'papel', 'login_gestor')
+    list_filter = ('papel',)
+    search_fields = ('funcionario__nome', 'user__username', 'login_gestor')
 admin.site.register(TermoComodato, TermoComodatoAdmin)

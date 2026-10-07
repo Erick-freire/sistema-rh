@@ -1,4 +1,4 @@
-{% if usuario_atual.papel == 'gestor' or usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+{% if usuario_atual.papel == 'gestor' or usuario_atual.eh_dp_ou_rh %}
 <div class="tabs">
     {% if usuario_atual.papel == 'gestor' %}
     <a href="{% url 'gestor_listar_ferias' %}" class="tabs__link{% if request.resolver_match.url_name == 'gestor_listar_ferias' %} is-ativo{% endif %}">
@@ -6,13 +6,13 @@
         {% if badge_ferias_gestor %}<span class="tabs__badge">{{ badge_ferias_gestor }}</span>{% endif %}
     </a>
     {% endif %}
-    {% if usuario_atual.papel == 'rh' or usuario_atual.papel == 'gestor' or usuario_atual.acesso_rh %}
+    {% if usuario_atual.papel == 'gestor' or usuario_atual.eh_dp_ou_rh %}
     <a href="{% url 'concluir_ferias' %}" class="tabs__link{% if request.resolver_match.url_name == 'concluir_ferias' %} is-ativo{% endif %}">
         Aguardando RH
         {% if badge_ferias_rh %}<span class="tabs__badge">{{ badge_ferias_rh }}</span>{% endif %}
     </a>
     {% endif %}
-    {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+    {% if usuario_atual.eh_dp_ou_rh %}
     <a href="{% url 'rh_vencimento_ferias' %}" class="tabs__link{% if request.resolver_match.url_name == 'rh_vencimento_ferias' %} is-ativo{% endif %}">
         Vencendo
     </a>

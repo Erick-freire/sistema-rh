@@ -15,7 +15,7 @@ Cadastro concluído
 
     <div class="painel-credenciais" style="text-align: left;">
         <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted);">Usuário</div>
-        <div style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;">{{ username }}</div>
+        <div style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;">{{ username }}{% if funcionario.usuario.login_gestor %} <span style="font-weight: 400; color: var(--color-text-muted);">ou</span> {{ funcionario.usuario.login_gestor }}{% endif %}</div>
 
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--color-border); padding-top: 12px;">
             <div>

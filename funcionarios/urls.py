@@ -1,10 +1,13 @@
 from django.urls import path
 from . import views
 from . import pwa_views
+from . import epi_views
 
 urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('recuperar-acesso/', views.recuperar_acesso_view, name='recuperar_acesso'),
+    path('rh/pedidos-senha/', views.pedidos_senha_view, name='pedidos_senha'),
     path('service-worker.js', pwa_views.service_worker_view, name='service_worker'),
     path('offline/', pwa_views.offline_view, name='offline'),
     path('', views.dashboard_view, name='dashboard'),
@@ -48,4 +51,18 @@ urlpatterns = [
     path('comodatos/<int:comodato_id>/reenviar/', views.reenviar_comodato_assinado_view, name='reenviar_comodato_assinado'),
     path('comodatos/<int:comodato_id>/aprovar/', views.aprovar_comodato_view, name='aprovar_comodato'),
     path('comodatos/<int:comodato_id>/rejeitar/', views.rejeitar_comodato_view, name='rejeitar_comodato'),
+
+    path('epi/', epi_views.listar_fichas_epi_view, name='listar_fichas_epi'),
+    path('epi/nova/', epi_views.criar_ficha_epi_view, name='criar_ficha_epi'),
+    path('epi/<int:ficha_id>/gerar-pdf/', epi_views.gerar_pdf_ficha_epi_view, name='gerar_pdf_ficha_epi'),
+    path('epi/<int:ficha_id>/arquivo/<str:versao>/', epi_views.ver_ficha_epi_view, name='ver_ficha_epi'),
+    path('epi/<int:ficha_id>/reenviar/', epi_views.reenviar_epi_assinado_view, name='reenviar_epi_assinado'),
+    path('epi/<int:ficha_id>/aprovar/', epi_views.aprovar_ficha_epi_view, name='aprovar_ficha_epi'),
+    path('epi/<int:ficha_id>/rejeitar/', epi_views.rejeitar_ficha_epi_view, name='rejeitar_ficha_epi'),
+    path('epi/vencendo/', epi_views.listar_epis_vencendo_view, name='listar_epis_vencendo'),
+    path('epi/<int:ficha_id>/devolucao/', epi_views.registrar_devolucao_epi_view, name='registrar_devolucao_epi'),
+    path('epi/matriz/', epi_views.gerenciar_matriz_epi_view, name='gerenciar_matriz_epi'),
+    path('epi/ocorrencias/', epi_views.listar_ocorrencias_epi_view, name='listar_ocorrencias_epi'),
+    path('epi/ocorrencias/nova/', epi_views.criar_ocorrencia_epi_view, name='criar_ocorrencia_epi'),
+    path('epi/ocorrencias/<int:ocorrencia_id>/foto/', epi_views.ver_foto_ocorrencia_view, name='ver_foto_ocorrencia_epi'),
 ]

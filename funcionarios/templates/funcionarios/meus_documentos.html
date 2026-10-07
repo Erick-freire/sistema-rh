@@ -58,6 +58,37 @@ Meus Documentos
 </div>
 {% endif %}
 
+{% if fichas_epi %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <div class="card__title" style="margin-bottom: 12px;">Fichas de EPI</div>
+    <div class="lista-cards">
+        {% for ficha in fichas_epi %}
+        <div class="item-card">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">Entrega de EPI</div>
+                <div class="item-card__subtitulo">{{ ficha.data_entrega|date:"d/m/Y" }}</div>
+                {% if ficha.motivo_rejeicao and ficha.status == 'aguardando_assinatura' %}
+                <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pela Segurança do Trabalho: {{ ficha.motivo_rejeicao }}. Envie a ficha assinada novamente.</div>
+                {% endif %}
+            </div>
+            <span class="badge-status badge-status--{{ ficha.status }}">{{ ficha.get_status_display }}</span>
+
+            {% if ficha.status == 'aguardando_assinatura' %}
+            <a href="{% url 'ver_ficha_epi' ficha.id 'gerado' %}" target="_blank" class="btn btn-sm">{% icon 'download' %} Baixar</a>
+            <form method="post" action="{% url 'reenviar_epi_assinado' ficha.id %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="file" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-epi-{{ ficha.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+            {% elif ficha.arquivo_assinado %}
+            <a href="{% url 'ver_ficha_epi' ficha.id 'assinado' %}" target="_blank" title="Ver ficha assinada" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if tipos_pendentes %}
 <div class="card" style="border-left: 3px solid var(--color-accent);">
     <div class="card__header">

@@ -295,7 +295,16 @@ a:hover { text-decoration: underline; }
     gap: 8px;
     color: var(--color-text-muted);
 }
-.acoes-tabela a:hover { color: var(--color-primary); }
+.acoes-tabela a:hover, .acoes-tabela .btn-icone:hover { color: var(--color-primary); }
+/* Ícone clicável que não é link (ex.: abre um popup): mesma aparência dos links de ação. */
+.btn-icone {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+}
 
 .errorlist {
     list-style: none;
@@ -970,6 +979,18 @@ a.stat-card:hover, button.stat-card:hover {
     align-items: start;
 }
 
+/* Cards pequenos lado a lado dentro de uma coluna (ex.: Jornada e Atestados no detalhe do funcionário). */
+.cards-lado-a-lado {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 20px;
+}
+.cards-lado-a-lado > .card { margin-bottom: 0; }
+/* Meio card é estreito demais para dois campos de data lado a lado. */
+.cards-lado-a-lado .form-grid { grid-template-columns: 1fr; gap: 10px; }
+
 /* ---------- Abas (navegação entre telas irmãs, ex.: Férias, Ponto) ---------- */
 
 .tabs {
@@ -1356,7 +1377,14 @@ a.stat-card:hover, button.stat-card:hover {
 
 .login-painel--form > p:first-of-type { color: var(--color-text-muted); font-size: 0.9rem; margin-top: 4px; margin-bottom: 22px; }
 
-.login-card .message-error { margin-bottom: 16px; }
+.login-card .message-error,
+.login-card .message-success { margin-bottom: 16px; }
+
+.login-card__texto { color: var(--color-text-muted); font-size: 0.9rem; margin: 4px 0 22px; }
+
+.login-card__voltar { text-align: center; font-size: 0.9rem; margin-top: 18px; }
+
+a.login-card__entrar:hover { text-decoration: none; }
 
 .login-card__aviso {
     text-align: center;
@@ -1365,10 +1393,213 @@ a.stat-card:hover, button.stat-card:hover {
     margin-top: 16px;
 }
 
+.login-card__subtitulo { color: var(--color-text-muted); font-size: 0.9rem; margin-top: 4px; margin-bottom: 22px; }
+
+/* Campos com ícone à esquerda (e o olho da senha à direita) */
+.login-campo { position: relative; display: block; }
+
+.login-campo__icone {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-primary);
+    pointer-events: none;
+}
+
+form .login-campo input[type="text"],
+form .login-campo input[type="password"] { padding-left: 42px; }
+
+form .login-campo input[type="password"],
+form .login-campo input#password { padding-right: 46px; }
+
+.login-campo__olho,
+.login-campo__olho:hover {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    color: var(--color-text-muted);
+    padding: 6px 8px;
+    box-shadow: none;
+}
+
+.login-campo__olho .icon { width: 20px; height: 20px; }
+
+/* Peças que só existem na versão mobile */
+.login-topo,
+.login-mascote,
+.so-mobile { display: none; }
+
 @media (max-width: 760px) {
-    .login-painel { padding: 32px 26px; }
-    .login-painel--marca { gap: 18px; }
-    .login-painel--marca h1 { font-size: 1.2rem; }
+    .so-desktop { display: none; }
+    .so-mobile { display: inline; }
+
+    .login-shell {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 0;
+        background-color: var(--color-primary);
+        font-family: 'Nunito', var(--font-sans);
+    }
+
+    .login-topo {
+        display: block;
+        position: relative;
+        overflow: hidden;
+        padding: 56px 28px 92px;
+        color: #fff;
+    }
+
+    .login-topo__curva {
+        position: absolute;
+        top: -40px;
+        left: -10px;
+        width: 290px;
+        height: 290px;
+        color: rgba(255, 255, 255, 0.1);
+    }
+
+    .login-topo > *:not(.login-topo__curva) { position: relative; }
+
+    .login-topo__logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 60px;
+        height: 60px;
+        margin-bottom: 18px;
+        background-color: #fff;
+        border-radius: 16px;
+    }
+
+    .login-topo__logo img { width: 42px; height: auto; }
+
+    .login-topo h1 {
+        color: #fff;
+        font-family: inherit;
+        font-size: 1.7rem;
+        font-weight: 800;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+    }
+
+    .login-topo p {
+        margin-top: 6px;
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .login-split {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        max-width: none;
+        margin-top: -40px;
+        border-radius: 32px 32px 0 0;
+        box-shadow: none;
+        background-color: var(--color-surface);
+    }
+
+    .login-painel--marca { display: none; }
+
+    .login-painel--form {
+        flex: 1;
+        justify-content: space-between;
+        gap: 36px;
+        padding: 34px 26px 0;
+        border-radius: 32px 32px 0 0;
+    }
+
+    .login-painel--form .login-card { max-width: none; }
+
+    .login-painel--form h2 {
+        margin-bottom: 22px;
+        color: #1F2A22;
+        font-family: inherit;
+        font-size: 1.5rem;
+        font-weight: 800;
+    }
+
+    .login-card__subtitulo,
+    .login-card__aviso { display: none; }
+
+    .login-card form p { margin-bottom: 18px; }
+
+    .login-card form label {
+        color: #2B3A30;
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    form .login-campo input[type="text"],
+    form .login-campo input[type="password"] {
+        height: 52px;
+        padding-left: 48px;
+        border-radius: 14px;
+        font-family: inherit;
+        font-size: 1rem;
+    }
+
+    .login-campo__icone { left: 18px; width: 20px; height: 20px; }
+
+    .login-card__entrar,
+    .login-card__entrar:hover {
+        height: 56px;
+        margin-top: 6px;
+        border-radius: 16px;
+        background-color: var(--color-accent-dark);
+        font-family: inherit;
+        font-size: 1.1rem;
+        font-weight: 800;
+    }
+
+    .login-card__entrar:hover { box-shadow: 0 8px 18px rgba(184, 93, 37, 0.3); }
+
+    .login-mascote {
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+    }
+
+    .login-mascote__img {
+        flex: 0 0 auto;
+        width: 112px;
+        height: auto;
+        display: block;
+    }
+
+    .login-mascote__balao {
+        flex: 1;
+        align-self: center;
+        margin-bottom: 24px;
+        padding: 18px 16px;
+        background-color: #FDF0E1;
+        border-radius: 20px;
+        color: #1F2A22;
+        font-size: 1rem;
+        font-weight: 600;
+        line-height: 1.35;
+    }
+
+    .login-mascote__link,
+    .login-mascote__link:hover {
+        display: inline-block;
+        margin-top: 10px;
+        color: var(--color-accent-dark);
+        font-size: 1rem;
+        font-weight: 800;
+        text-decoration: none;
+    }
+
+    .login-card__texto { font-size: 0.95rem; }
 }
 
 /* ---------- Barra de navegação inferior (mobile, colaborador) ---------- */

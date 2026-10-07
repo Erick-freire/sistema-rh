@@ -13,13 +13,13 @@
 </h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ funcionario.cargo }} · {{ funcionario.setor }} · mat. {{ funcionario.matricula }}</p>
 
+{# O acompanhamento só interessa enquanto o cadastro está em andamento; depois de validado, o badge do título basta. #}
+{% if funcionario.status != 'ativo' and funcionario.status != 'inativo' %}
 <div class="card">
     <div class="card__title" style="margin-bottom: 4px;">Onde este cadastro está</div>
     {% include 'funcionarios/_status_stepper.html' %}
-    {% if funcionario.status == 'ativo' or funcionario.status == 'inativo' %}
-    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-top: 16px;">Cadastro completo. Nada pendente.</p>
-    {% endif %}
 </div>
+{% endif %}
 
 <div class="duas-colunas">
     <div>
@@ -36,7 +36,7 @@
                 </div>
             </div>
 
-            {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+            {% if usuario_atual.eh_dp_ou_rh %}
             <form method="post" action="{% url 'editar_dados_funcionario' funcionario.id %}">
                 {% csrf_token %}
                 <div class="linha-dado">
@@ -45,24 +45,32 @@
                 </div>
                 {{ dados_form.matricula.errors }}
                 <div class="linha-dado">
-                    <span class="linha-dado__rotulo">CPF</span>
-                    <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
-                </div>
-                <div class="linha-dado">
                     <span class="linha-dado__rotulo">Setor</span>
                     {{ dados_form.setor }}
                 </div>
                 {{ dados_form.setor.errors }}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Cargo</span>
+                    {{ dados_form.cargo }}
+                    <datalist id="cargos-existentes">
+                        {% for cargo in dados_form.cargos_existentes %}<option value="{{ cargo }}">{% endfor %}
+                    </datalist>
+                </div>
+                {{ dados_form.cargo.errors }}
+                <div class="linha-dado">
+                    <span class="linha-dado__rotulo">Salário</span>
+                    {{ dados_form.salario }}
+                </div>
+                {{ dados_form.salario.errors }}
                 <div class="linha-dado">
                     <span class="linha-dado__rotulo">Admissão</span>
                     {{ dados_form.data_admissao }}
                 </div>
                 {{ dados_form.data_admissao.errors }}
                 <div class="linha-dado">
-                    <span class="linha-dado__rotulo">Salário</span>
-                    {{ dados_form.salario }}
+                    <span class="linha-dado__rotulo">CPF</span>
+                    <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
                 </div>
-                {{ dados_form.salario.errors }}
                 <div class="linha-dado">
                     <span class="linha-dado__rotulo">Telefone</span>
                     <span class="linha-dado__valor">{{ funcionario.telefone|default:"—" }}</span>
@@ -80,20 +88,20 @@
                 <span class="linha-dado__valor">{{ funcionario.matricula }}</span>
             </div>
             <div class="linha-dado">
-                <span class="linha-dado__rotulo">CPF</span>
-                <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
-            </div>
-            <div class="linha-dado">
-                <span class="linha-dado__rotulo">PIS</span>
-                <span class="linha-dado__valor">{{ funcionario.pis|default:"—" }}</span>
-            </div>
-            <div class="linha-dado">
                 <span class="linha-dado__rotulo">Setor</span>
                 <span class="linha-dado__valor">{{ funcionario.setor }}</span>
             </div>
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Admissão</span>
                 <span class="linha-dado__valor">{{ funcionario.data_admissao|date:"d/m/Y"|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">CPF</span>
+                <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">PIS</span>
+                <span class="linha-dado__valor">{{ funcionario.pis|default:"—" }}</span>
             </div>
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Telefone</span>
@@ -120,12 +128,15 @@
             </form>
             {% else %}
             <p style="color: var(--color-text-muted); font-size: 0.88rem;">Este funcionário já possui acesso ao sistema.</p>
+            {% if funcionario.usuario.login_gestor %}
+            <p style="font-size: 0.88rem; margin-top: 6px;">Entra com o CPF ou com o usuário <strong style="font-family: var(--font-mono);">{{ funcionario.usuario.login_gestor }}</strong>.</p>
+            {% endif %}
             <form method="post" action="{% url 'resetar_senha_funcionario' funcionario.id %}" style="margin-top: 12px;">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline btn-sm">{% icon 'key' %} Gerar nova senha</button>
             </form>
             {% if funcionario.usuario.papel != 'rh' %}
-                {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+                {% if usuario_atual.eh_rh %}
                 <form method="post" action="{% url 'alternar_acesso_rh' funcionario.id %}" style="margin-top: 12px;">
                     {% csrf_token %}
                     {% if funcionario.usuario.acesso_rh %}
@@ -138,85 +149,88 @@
             {% endif %}
             {% endif %}
         </div>
-
-        <div class="card">
-            <div class="card__title" style="margin-bottom: 8px;">Jornada de trabalho (Ponto)</div>
-            {% if jornada_vigente %}
-                <p style="font-size: 0.88rem;">
-                    Horário: <strong>{{ jornada_vigente.horario }}</strong>
-                    <span style="color: var(--color-text-muted);">(vigente desde {{ jornada_vigente.data_inicio|date:"d/m/Y" }})</span>
-                </p>
-            {% else %}
-                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhuma jornada cadastrada ainda.</p>
-            {% endif %}
-
-            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-alterar-jornada" data-texto-alternativo="Cancelar">Alterar horário</button>
-
-            <div id="form-alterar-jornada" style="display: none; margin-top: 14px;">
-                <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}" data-jornada-form>
-                    {% csrf_token %}
-                    <input type="hidden" name="proxima" value="{% url 'detalhe_funcionario' funcionario.id %}">
-                    <div class="form-grid">
-                        <div>
-                            <label for="{{ jornada_form.data_inicio.id_for_label }}" data-jornada-label-data>A partir de</label>
-                            {{ jornada_form.data_inicio }}
-                        </div>
-                        <div>
-                            <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
-                            {{ jornada_form.horario }}
-                        </div>
-                    </div>
-                    <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
-                </form>
-                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;" data-jornada-ajuda>
-                    Data a partir da qual este horário passa a valer. Não altera o cálculo de períodos já passados.
-                </p>
-            </div>
-        </div>
-
-        {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
-        <div class="card">
-            <div class="card__title" style="margin-bottom: 8px;">Atestados</div>
-            {% if atestados %}
-                <ul style="font-size: 0.88rem; padding-left: 18px; margin-bottom: 14px;">
-                    {% for atestado in atestados %}
-                    <li>{{ atestado.data_inicio|date:"d/m/Y" }} a {{ atestado.data_fim|date:"d/m/Y" }}{% if atestado.motivo %} — {{ atestado.motivo }}{% endif %}</li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhum atestado lançado.</p>
-            {% endif %}
-
-            <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-lancar-atestado" data-texto-alternativo="Cancelar">Lançar atestado</button>
-
-            <div id="form-lancar-atestado" style="display: none; margin-top: 14px;">
-                <form method="post" action="{% url 'lancar_atestado' funcionario.id %}">
-                    {% csrf_token %}
-                    <div class="form-grid">
-                        <div>
-                            <label for="{{ atestado_form.data_inicio.id_for_label }}">De</label>
-                            {{ atestado_form.data_inicio }}
-                        </div>
-                        <div>
-                            <label for="{{ atestado_form.data_fim.id_for_label }}">Até</label>
-                            {{ atestado_form.data_fim }}
-                        </div>
-                        <div class="span-2">
-                            <label for="{{ atestado_form.motivo.id_for_label }}">Motivo (opcional)</label>
-                            {{ atestado_form.motivo }}
-                        </div>
-                    </div>
-                    <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar atestado</button>
-                </form>
-                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-                    Nesses dias, o espelho de ponto mostra "Atestado" em vez de folga/falta e não desconta horas.
-                </p>
-            </div>
-        </div>
-        {% endif %}
     </div>
 
     <div>
+        {# Jornada e atestados lado a lado no topo da coluna; empilham quando falta largura. #}
+        <div class="cards-lado-a-lado">
+            <div class="card">
+                <div class="card__title" style="margin-bottom: 8px;">Jornada de trabalho (Ponto)</div>
+                {% if jornada_vigente %}
+                    <p style="font-size: 0.88rem;">
+                        Horário: <strong>{{ jornada_vigente.horario }}</strong>
+                        <span style="color: var(--color-text-muted);">(vigente desde {{ jornada_vigente.data_inicio|date:"d/m/Y" }})</span>
+                    </p>
+                {% else %}
+                    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhuma jornada cadastrada ainda.</p>
+                {% endif %}
+
+                <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-alterar-jornada" data-texto-alternativo="Cancelar">Alterar horário</button>
+
+                <div id="form-alterar-jornada" style="display: none; margin-top: 14px;">
+                    <form method="post" action="{% url 'ponto:atribuir_jornada' funcionario.id %}" data-jornada-form>
+                        {% csrf_token %}
+                        <input type="hidden" name="proxima" value="{% url 'detalhe_funcionario' funcionario.id %}">
+                        <div class="form-grid">
+                            <div>
+                                <label for="{{ jornada_form.data_inicio.id_for_label }}" data-jornada-label-data>A partir de</label>
+                                {{ jornada_form.data_inicio }}
+                            </div>
+                            <div>
+                                <label for="{{ jornada_form.horario.id_for_label }}">Horário</label>
+                                {{ jornada_form.horario }}
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Definir jornada</button>
+                    </form>
+                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;" data-jornada-ajuda>
+                        Data a partir da qual este horário passa a valer. Não altera o cálculo de períodos já passados.
+                    </p>
+                </div>
+            </div>
+
+            {% if usuario_atual.eh_dp_ou_rh %}
+            <div class="card">
+                <div class="card__title" style="margin-bottom: 8px;">Atestados</div>
+                {% if atestados %}
+                    <ul style="font-size: 0.88rem; padding-left: 18px; margin-bottom: 14px;">
+                        {% for atestado in atestados %}
+                        <li>{{ atestado.data_inicio|date:"d/m/Y" }} a {{ atestado.data_fim|date:"d/m/Y" }}{% if atestado.motivo %} — {{ atestado.motivo }}{% endif %}</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhum atestado lançado.</p>
+                {% endif %}
+
+                <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-lancar-atestado" data-texto-alternativo="Cancelar">Lançar atestado</button>
+
+                <div id="form-lancar-atestado" style="display: none; margin-top: 14px;">
+                    <form method="post" action="{% url 'lancar_atestado' funcionario.id %}">
+                        {% csrf_token %}
+                        <div class="form-grid">
+                            <div>
+                                <label for="{{ atestado_form.data_inicio.id_for_label }}">De</label>
+                                {{ atestado_form.data_inicio }}
+                            </div>
+                            <div>
+                                <label for="{{ atestado_form.data_fim.id_for_label }}">Até</label>
+                                {{ atestado_form.data_fim }}
+                            </div>
+                            <div class="span-2">
+                                <label for="{{ atestado_form.motivo.id_for_label }}">Motivo (opcional)</label>
+                                {{ atestado_form.motivo }}
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar atestado</button>
+                    </form>
+                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+                        Nesses dias, o espelho de ponto mostra "Atestado" em vez de folga/falta e não desconta horas.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
         <div class="card">
             <div class="card__header">
                 <span class="card__title">Documentos obrigatórios</span>
@@ -263,31 +277,19 @@
                             <div class="item-card__subtitulo">{{ documento.nome_arquivo }} · {{ documento.data_upload|date:"d/m/Y" }}</div>
                         </div>
                         <span class="badge-status badge-status--{{ documento.status }}">{{ documento.get_status_display }}</span>
-                        {% if funcionario.status == 'em_validacao' and documento.status == 'pendente' %}
-                        <form method="post" action="{% url 'aprovar_documento' documento.id %}" style="margin: 0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
-                        </form>
-                        <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-{{ documento.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
-                        {% endif %}
                         <span class="acoes-tabela">
-                            <a href="{% url 'ver_documento' documento.id %}" target="_blank" title="Visualizar">{% icon 'eye' %}</a>
+                            {# A validação fica no popup: pendente abre com Validar/Rejeitar; analisado abre só para ver. #}
+                            <button type="button" class="btn-icone" title="Visualizar" aria-label="Visualizar" data-abrir-termo
+                                    data-pdf="{% url 'ver_documento' documento.id %}"
+                                    data-titulo="{{ documento.tipo_documento }} — {{ funcionario.nome }}"
+                                    {% if usuario_atual.eh_dp_ou_rh and documento.status == 'pendente' %}data-aprovar="{% url 'aprovar_documento' documento.id %}"
+                                    data-rejeitar="{% url 'rejeitar_documento' documento.id %}"
+                                    data-rejeitar-titulo="Rejeitar {{ documento.tipo_documento }}"{% endif %}>{% icon 'eye' %}</button>
                             <a href="{% url 'ver_documento' documento.id %}" download title="Baixar">{% icon 'download' %}</a>
                         </span>
                     </div>
                     {% if documento.status == 'rejeitado' %}
                     <div style="font-size: 0.85rem; color: var(--color-error);">{{ documento.motivo_rejeicao }}</div>
-                    {% endif %}
-                    {% if funcionario.status == 'em_validacao' and documento.status == 'pendente' %}
-                    <div id="rejeitar-{{ documento.id }}" style="display: none;">
-                        <form method="post" action="{% url 'rejeitar_documento' documento.id %}">
-                            {% csrf_token %}
-                            {{ form_rejeicao.motivo }}
-                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;"
-                                    data-confirmar="Tem certeza? O colaborador vai precisar reenviar este documento."
-                                    data-confirmar-titulo="Rejeitar documento">Confirmar rejeição</button>
-                        </form>
-                    </div>
                     {% endif %}
                 </div>
                 {% empty %}
@@ -296,7 +298,7 @@
             </div>
         </div>
 
-        {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+        {% if usuario_atual.eh_dp_ou_rh %}
         <div class="card">
             <div class="card__header">
                 <span class="card__title">Comodatos</span>
@@ -315,43 +317,25 @@
                             </div>
                         </div>
                         <span class="badge-status badge-status--{{ comodato.status }}">{{ comodato.get_status_display }}</span>
-                        {% if comodato.status == 'em_validacao' %}
-                        <form method="post" action="{% url 'aprovar_comodato' comodato.id %}" style="margin: 0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-outline btn-sm">Aprovar</button>
-                        </form>
-                        <button type="button" class="btn-outline btn-sm" data-toggle-alvo="rejeitar-comodato-{{ comodato.id }}" data-texto-alternativo="Cancelar">Rejeitar</button>
-                        {% endif %}
                         <span class="acoes-tabela">
-                            {% if comodato.arquivo_assinado %}
-                            <a href="{% url 'ver_comodato' comodato.id 'assinado' %}" target="_blank" title="Ver termo assinado">{% icon 'eye' %}</a>
+                            <button type="button" class="btn-icone" title="Ver termo assinado" aria-label="Ver termo assinado" data-abrir-termo
+                                    data-pdf="{% url 'ver_comodato' comodato.id 'assinado' %}"
+                                    data-titulo="Comodato de {{ comodato.get_modalidade_display|lower }} — {{ funcionario.nome }}"
+                                    {% if comodato.status == 'em_validacao' %}data-aprovar="{% url 'aprovar_comodato' comodato.id %}"
+                                    data-rejeitar="{% url 'rejeitar_comodato' comodato.id %}"
+                                    data-rejeitar-titulo="Rejeitar termo assinado"{% endif %}>{% icon 'eye' %}</button>
                             <a href="{% url 'ver_comodato' comodato.id 'assinado' %}" download title="Baixar termo assinado">{% icon 'download' %}</a>
-                            {% elif comodato.arquivo_gerado %}
-                            <a href="{% url 'ver_comodato' comodato.id 'gerado' %}" target="_blank" title="Ver termo gerado (sem assinatura)">{% icon 'eye' %}</a>
-                            {% endif %}
                         </span>
                     </div>
-                    {% if comodato.motivo_rejeicao and comodato.status == 'aguardando_assinatura' %}
-                    <div style="font-size: 0.85rem; color: var(--color-error);">Rejeitado: {{ comodato.motivo_rejeicao }}</div>
-                    {% endif %}
-                    {% if comodato.status == 'em_validacao' %}
-                    <div id="rejeitar-comodato-{{ comodato.id }}" style="display: none;">
-                        <form method="post" action="{% url 'rejeitar_comodato' comodato.id %}">
-                            {% csrf_token %}
-                            {{ form_rejeicao.motivo }}
-                            <button type="submit" class="btn-outline btn-sm" style="margin-top: 6px;"
-                                    data-confirmar="Tem certeza? O colaborador vai precisar reenviar o termo assinado."
-                                    data-confirmar-titulo="Rejeitar comodato">Confirmar rejeição</button>
-                        </form>
-                    </div>
-                    {% endif %}
                 </div>
                 {% empty %}
-                <p>Nenhum comodato registrado.</p>
+                <p>Nenhum termo de comodato assinado.</p>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
     </div>
 </div>
+
+{% include 'funcionarios/_modal_validar_arquivo.html' with proximo=request.path %}
 {% endblock %}

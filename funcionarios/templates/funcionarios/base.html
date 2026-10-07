@@ -14,6 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="{% static_v 'js/ui.js' %}" defer></script>
+    {% block head_extra %}{% endblock %}
 </head>
 <body>
 
@@ -84,7 +85,7 @@
         </div>
 
         <nav class="sidebar__nav">
-            {% if usuario_atual.papel == 'rh' or usuario_atual.papel == 'gestor' or usuario_atual.acesso_rh %}
+            {% if usuario_atual.papel == 'gestor' or usuario_atual.eh_dp_ou_rh %}
             <div class="sidebar__section">Gestão</div>
             <ul>
                 <li class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
@@ -99,7 +100,7 @@
                         {% if badge_ferias_total %}<span class="nav-badge">{{ badge_ferias_total }}</span>{% endif %}
                     </a>
                 </li>
-                {% if usuario_atual.papel == 'rh' or usuario_atual.acesso_rh %}
+                {% if usuario_atual.eh_dp_ou_rh %}
                 <li class="{% if request.resolver_match.app_name == 'ponto' %}active{% endif %}">
                     <a href="{% url 'ponto:listar_equipamentos' %}">
                         {% icon 'clock' %} Ponto
@@ -118,8 +119,36 @@
                         {% if badge_comodatos %}<span class="nav-badge">{{ badge_comodatos }}</span>{% endif %}
                     </a>
                 </li>
+                <li class="{% if request.resolver_match.url_name == 'pedidos_senha' %}active{% endif %}">
+                    <a href="{% url 'pedidos_senha' %}">
+                        {% icon 'key' %} Pedidos de senha
+                        {% if badge_pedidos_senha %}<span class="nav-badge">{{ badge_pedidos_senha }}</span>{% endif %}
+                    </a>
+                </li>
                 {% endif %}
             </ul>
+            {% endif %}
+
+            {% if usuario_atual.eh_seguranca_ou_rh %}
+            <div class="sidebar__section">Segurança do Trabalho</div>
+            <ul>
+                <li class="{% if request.resolver_match.url_name == 'listar_fichas_epi' or request.resolver_match.url_name == 'criar_ficha_epi' or request.resolver_match.url_name == 'listar_epis_vencendo' %}active{% endif %}">
+                    {# Validar ficha vem antes: se não houver, o atalho leva às devoluções pendentes. #}
+                    <a href="{% if badge_fichas_epi %}{% url 'listar_fichas_epi' %}?pendentes=1{% elif badge_devolucoes_epi %}{% url 'listar_epis_vencendo' %}{% else %}{% url 'listar_fichas_epi' %}{% endif %}">
+                        {% icon 'check-square' %} Fichas de EPI
+                        {% if badge_fichas_epi or badge_devolucoes_epi %}<span class="nav-badge">{{ badge_fichas_epi|add:badge_devolucoes_epi }}</span>{% endif %}
+                    </a>
+                </li>
+                <li class="{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' %}active{% endif %}">
+                    <a href="{% url 'gerenciar_matriz_epi' %}">{% icon 'briefcase' %} Matriz por Setor</a>
+                </li>
+                <li class="{% if request.resolver_match.url_name == 'listar_ocorrencias_epi' or request.resolver_match.url_name == 'criar_ocorrencia_epi' %}active{% endif %}">
+                    <a href="{% url 'listar_ocorrencias_epi' %}">{% icon 'alert-triangle' %} Não Conformidades</a>
+                </li>
+            </ul>
+            {% endif %}
+
+            {% if usuario_atual.papel == 'gestor' or usuario_atual.eh_dp_ou_rh or usuario_atual.eh_seguranca_ou_rh %}
             <div class="sidebar__section">Meu espaço</div>
             <ul>
             {% else %}

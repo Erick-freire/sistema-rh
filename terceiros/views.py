@@ -12,6 +12,7 @@ from django.http import FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from xhtml2pdf import pisa
 
 from funcionarios.decorators import papel_required
@@ -52,7 +53,7 @@ class FalhaNaGeracaoDoPdf(Exception):
 # ---------- Empresas terceiras (RH) ----------
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_empresas_view(request):
     busca = request.GET.get('busca', '').strip()
     status_filtro = request.GET.get('status', 'em_andamento')
@@ -98,7 +99,7 @@ def listar_empresas_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def cadastrar_empresa_view(request):
     if request.method == 'POST':
         form = CadastroEmpresaForm(request.POST)
@@ -166,7 +167,7 @@ def _pode_analisar_documento_de(documento, empresa):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def detalhe_empresa_view(request, empresa_id):
     empresa = get_object_or_404(
         EmpresaTerceira.objects.select_related('responsavel'), id=empresa_id
@@ -191,7 +192,7 @@ def detalhe_empresa_view(request, empresa_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def resetar_senha_responsavel_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
     responsavel = getattr(empresa, 'responsavel', None)
@@ -215,7 +216,7 @@ def resetar_senha_responsavel_view(request, empresa_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def alternar_status_empresa_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
 
@@ -249,7 +250,7 @@ def _valores_marcadores(empresa, responsavel, prazo_meses):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def gerar_contrato_view(request, empresa_id):
     empresa = get_object_or_404(
         EmpresaTerceira.objects.select_related('responsavel'), id=empresa_id
@@ -434,7 +435,7 @@ def _render_biblioteca_clausulas(request, form, form_edicao=None, clausula_em_ed
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_clausulas_view(request):
     if request.method == 'POST':
         form = ClausulaContratualForm(request.POST)
@@ -450,7 +451,7 @@ def listar_clausulas_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def editar_clausula_view(request, clausula_id):
     """
     Edita o texto da biblioteca. Os contratos já gerados não mudam: o PDF fica
@@ -473,7 +474,7 @@ def editar_clausula_view(request, clausula_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def alternar_clausula_view(request, clausula_id):
     clausula = get_object_or_404(ClausulaContratual, id=clausula_id)
     clausula.ativa = not clausula.ativa
@@ -490,6 +491,9 @@ def alternar_clausula_view(request, clausula_id):
 # ---------- Validação de documentos (RH) ----------
 
 def _aprovar(request, documento, empresa, descricao, pode_analisar):
+    if request.method != 'POST':
+        return redirect('terceiros:detalhe_empresa', empresa_id=empresa.id)
+
     if not pode_analisar:
         messages.error(request, 'A documentação desta prestadora não está em análise.')
         return redirect('terceiros:detalhe_empresa', empresa_id=empresa.id)
@@ -505,6 +509,9 @@ def _aprovar(request, documento, empresa, descricao, pode_analisar):
 
 
 def _rejeitar(request, documento, empresa, descricao, pode_analisar):
+    if request.method != 'POST':
+        return redirect('terceiros:detalhe_empresa', empresa_id=empresa.id)
+
     if not pode_analisar:
         messages.error(request, 'A documentação desta prestadora não está em análise.')
         return redirect('terceiros:detalhe_empresa', empresa_id=empresa.id)
@@ -535,7 +542,7 @@ def _reabrir_envio_se_estava_em_validacao(empresa):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def aprovar_documento_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoColaborador.objects.select_related('colaborador__empresa'), id=documento_id
@@ -555,7 +562,7 @@ def aprovar_documento_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rejeitar_documento_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoColaborador.objects.select_related('colaborador__empresa'), id=documento_id
@@ -575,7 +582,7 @@ def rejeitar_documento_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def aprovar_documento_empresa_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoEmpresaTerceira.objects.select_related('empresa'), id=documento_id
@@ -588,7 +595,7 @@ def aprovar_documento_empresa_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rejeitar_documento_empresa_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoEmpresaTerceira.objects.select_related('empresa'), id=documento_id
@@ -601,7 +608,7 @@ def rejeitar_documento_empresa_view(request, documento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def validar_empresa_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
 
@@ -938,10 +945,11 @@ def _pode_ver_empresa(user, empresa):
     usuario = usuario_de(user)
     if usuario is None:
         return False
-    return usuario.papel == 'rh' or usuario.acesso_rh
+    return usuario.eh_dp_ou_rh()
 
 
 @login_required
+@xframe_options_sameorigin  # o detalhe da empresa exibe o arquivo num popup (iframe), dentro do próprio sistema
 def baixar_contrato_view(request, contrato_id):
     contrato = get_object_or_404(
         ContratoTerceiro.objects.select_related('empresa'), id=contrato_id
@@ -959,6 +967,7 @@ def baixar_contrato_view(request, contrato_id):
 
 
 @login_required
+@xframe_options_sameorigin  # o detalhe da empresa exibe o arquivo num popup (iframe), dentro do próprio sistema
 def ver_documento_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoColaborador.objects.select_related('colaborador__empresa'), id=documento_id
@@ -972,6 +981,7 @@ def ver_documento_view(request, documento_id):
 
 
 @login_required
+@xframe_options_sameorigin  # o detalhe da empresa exibe o arquivo num popup (iframe), dentro do próprio sistema
 def ver_documento_empresa_view(request, documento_id):
     documento = get_object_or_404(
         DocumentoEmpresaTerceira.objects.select_related('empresa'), id=documento_id

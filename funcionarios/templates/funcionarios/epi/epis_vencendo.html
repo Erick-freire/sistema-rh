@@ -1,0 +1,116 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Fichas de EPI
+{% endblock %}
+
+{% block conteudo %}
+{% include 'funcionarios/epi/_epi_tabs.html' %}
+
+{% if devolucoes %}
+<h2>Devolução pendente</h2>
+<p style="color: var(--color-text-muted);">Colaboradores desligados que ainda estão com EPI. Marque o que foi devolvido; o que ficar desmarcado continua pendente.</p>
+
+<div class="lista-cards" style="margin-bottom: 32px;">
+    {% for ficha in devolucoes %}
+    <form method="post" action="{% url 'registrar_devolucao_epi' ficha.id %}" class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px; border-left: 3px solid var(--color-error);">
+        {% csrf_token %}
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ ficha.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ ficha.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">
+                    {% if ficha.funcionario.matricula %}Matrícula {{ ficha.funcionario.matricula }} · {% endif %}entregue em {{ ficha.data_entrega|date:"d/m/Y" }}
+                </div>
+            </div>
+            <span class="badge-status badge-status--erro">Desligado</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            {% for item in ficha.itens_pendentes %}
+            <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="itens" value="{{ item.id }}" checked>
+                {{ item.item_catalogo }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}
+            </label>
+            {% endfor %}
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="text" name="observacoes" placeholder="Observação (opcional): estado do EPI, quem recebeu..." style="flex: 1; min-width: 200px;">
+            <button type="submit" class="btn-primario btn-sm">{% icon 'check-circle' %} Registrar devolução</button>
+        </div>
+    </form>
+    {% endfor %}
+</div>
+
+<h2>Troca vencida ou a vencer</h2>
+{% endif %}
+
+<p style="color: var(--color-text-muted);">EPIs entregues e não devolvidos com data de troca já passada ou nos próximos {{ limite_dias }} dias.</p>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>EPI</th>
+                <th>Entregue em</th>
+                <th>Trocar em</th>
+                <th>Situação</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <td>
+                    <span class="tabela-nome">
+                        <span class="avatar avatar--sm">{{ item.ficha.funcionario.iniciais }}</span>
+                        {{ item.ficha.funcionario.nome }}
+                    </span>
+                </td>
+                <td>{{ item.item_catalogo }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}</td>
+                <td>{{ item.ficha.data_entrega|date:"d/m/Y" }}</td>
+                <td>{{ item.data_vencimento|date:"d/m/Y" }}</td>
+                <td>
+                    {% if item.dias < 0 %}
+                    <span class="badge-status badge-status--erro">Vencido há {{ item.dias_abs }} dia{{ item.dias_abs|pluralize }}</span>
+                    {% elif item.dias == 0 %}
+                    <span class="badge-status badge-status--erro">Vence hoje</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">{{ item.dias }} dia{{ item.dias|pluralize }} restante{{ item.dias|pluralize }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">Nenhum EPI vencendo nos próximos {{ limite_dias }} dias.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for item in itens %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ item.ficha.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ item.ficha.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">{{ item.item_catalogo }} · trocar em {{ item.data_vencimento|date:"d/m/Y" }}</div>
+            </div>
+        </div>
+        {% if item.dias < 0 %}
+        <span class="badge-status badge-status--erro">Vencido há {{ item.dias_abs }} dia{{ item.dias_abs|pluralize }}</span>
+        {% elif item.dias == 0 %}
+        <span class="badge-status badge-status--erro">Vence hoje</span>
+        {% else %}
+        <span class="badge-status badge-status--pendente">{{ item.dias }} dia{{ item.dias|pluralize }} restante{{ item.dias|pluralize }}</span>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p>Nenhum EPI vencendo nos próximos {{ limite_dias }} dias.</p>
+    {% endfor %}
+</div>
+{% endblock %}

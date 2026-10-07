@@ -48,7 +48,7 @@ def _dias_com_forms(formset):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_equipamentos_view(request):
     equipamentos = Equipamento.objects.all()
     return render(request, 'ponto/listar_equipamentos.html', {
@@ -57,7 +57,7 @@ def listar_equipamentos_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def cadastrar_equipamento_view(request):
     if request.method == 'POST':
         form = EquipamentoForm(request.POST)
@@ -72,7 +72,7 @@ def cadastrar_equipamento_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def editar_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
 
@@ -89,7 +89,7 @@ def editar_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def testar_conexao_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
 
@@ -103,7 +103,7 @@ def testar_conexao_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def alternar_status_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
     equipamento.ativo = not equipamento.ativo
@@ -118,7 +118,7 @@ def alternar_status_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def excluir_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
     nome = equipamento.nome
@@ -137,7 +137,7 @@ def excluir_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def enviar_equipamento_view(request, equipamento_id):
     """
     "Enviar": só processa os cadastros pendentes desse equipamento (igual ao
@@ -159,7 +159,7 @@ def enviar_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def receber_equipamento_view(request, equipamento_id):
     """"Receber": só puxa as marcações novas desse equipamento (igual ao Receber do Secullum)."""
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
@@ -169,7 +169,7 @@ def receber_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def enviar_todos_view(request):
     processadas, sucesso = services.processar_pendencias()
 
@@ -184,7 +184,7 @@ def enviar_todos_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def receber_todos_view(request):
     total_marcacoes = sum(services.coletar_marcacoes(e) for e in Equipamento.objects.filter(ativo=True))
     messages.success(request, f'{total_marcacoes} marcação(ões) nova(s).')
@@ -192,7 +192,7 @@ def receber_todos_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_marcacoes_view(request):
     funcionario_id = request.GET.get('funcionario')
     data = request.GET.get('data')
@@ -212,7 +212,7 @@ def listar_marcacoes_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_horarios_view(request):
     horarios = Horario.objects.prefetch_related('dias')
     feriados = Feriado.objects.all()
@@ -220,7 +220,7 @@ def listar_horarios_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def cadastrar_horario_view(request):
     if request.method == 'POST':
         form = HorarioForm(request.POST)
@@ -242,7 +242,7 @@ def cadastrar_horario_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def editar_horario_view(request, horario_id):
     horario = get_object_or_404(Horario, id=horario_id)
 
@@ -265,7 +265,7 @@ def editar_horario_view(request, horario_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def excluir_horario_view(request, horario_id):
     horario = get_object_or_404(Horario, id=horario_id)
     numero = horario.numero
@@ -275,7 +275,7 @@ def excluir_horario_view(request, horario_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def ajustar_marcacao_view(request, funcionario_id, data):
     """
     Lançamento manual de uma marcação (batida esquecida ou correção de uma
@@ -342,7 +342,7 @@ def ajustar_marcacao_view(request, funcionario_id, data):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_calculo_view(request):
     hoje = timezone.now().date()
     data_inicio = date.fromisoformat(request.GET.get('data_inicio') or hoje.replace(day=1).isoformat())
@@ -374,7 +374,7 @@ def listar_calculo_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def atribuir_jornada_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -402,13 +402,13 @@ def atribuir_jornada_view(request, funcionario_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def listar_feriados_view(request):
     return render(request, 'ponto/listar_feriados.html', {'feriados': Feriado.objects.all()})
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def cadastrar_feriado_view(request):
     if request.method == 'POST':
         form = FeriadoForm(request.POST)
@@ -423,7 +423,7 @@ def cadastrar_feriado_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def excluir_feriado_view(request, feriado_id):
     feriado = get_object_or_404(Feriado, id=feriado_id)
     feriado.delete()
@@ -531,7 +531,7 @@ def meus_ajustes_view(request):
 # ---------- RH: fila de aprovação de ajustes ----------
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def ajustes_pendentes_view(request):
     ajustes = (
         AjustePonto.objects
@@ -546,7 +546,7 @@ def ajustes_pendentes_view(request):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def aprovar_ajuste_view(request, ajuste_id):
     ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
 
@@ -574,7 +574,7 @@ def aprovar_ajuste_view(request, ajuste_id):
 
 
 @login_required
-@papel_required('rh')
+@papel_required('rh', 'dp')
 def rejeitar_ajuste_view(request, ajuste_id):
     ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
 

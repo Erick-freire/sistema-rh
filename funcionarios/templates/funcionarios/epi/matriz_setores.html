@@ -1,0 +1,60 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Matriz de EPI por Setor
+{% endblock %}
+
+{% block conteudo %}
+<h1>Matriz de EPI por Setor</h1>
+<p style="color: var(--color-text-muted);">Os EPIs marcados aqui são pré-preenchidos na ficha de entrega quando um funcionário do setor é escolhido.</p>
+
+<div class="card">
+    <form method="get" class="form-grid form-grid--3" style="align-items: end;">
+        <div>
+            <label for="setor-select">Setor</label>
+            <select name="setor" id="setor-select" onchange="this.form.submit()">
+                <option value="">Selecione um setor...</option>
+                {% for item in setores %}
+                <option value="{{ item.id }}"{% if item.id == setor.id %} selected{% endif %}>{{ item.nome }}{% if item.total %} ({{ item.total }} EPI{{ item.total|pluralize }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <noscript><button type="submit" class="btn">Abrir</button></noscript>
+    </form>
+</div>
+
+{% if setor %}
+<form method="post" class="card">
+    {% csrf_token %}
+    <input type="hidden" name="setor" value="{{ setor.id }}">
+    <h2 style="margin-top: 0;">EPIs obrigatórios — {{ setor.nome }}</h2>
+
+    {% if linhas_catalogo %}
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 48px;">Obrigatório</th>
+                    <th>EPI</th>
+                    <th style="width: 140px;">Quantidade padrão</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for linha in linhas_catalogo %}
+                <tr>
+                    <td><input type="checkbox" name="item_{{ linha.item.id }}" value="1" aria-label="{{ linha.item }}"{% if linha.marcado %} checked{% endif %}></td>
+                    <td>{{ linha.item }}</td>
+                    <td><input type="number" name="quantidade_{{ linha.item.id }}" value="{{ linha.quantidade }}" min="1" style="max-width: 100px;"></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <button type="submit" class="btn-primario" style="margin-top: 20px;">Salvar matriz</button>
+    {% else %}
+    <p>Nenhum EPI ativo no catálogo. Cadastre os EPIs pelo admin antes de montar a matriz.</p>
+    {% endif %}
+</form>
+{% endif %}
+{% endblock %}

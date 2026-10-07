@@ -1,0 +1,115 @@
+{% load rh_icons %}
+{% comment %}
+Popup que mostra um arquivo (PDF ou imagem) num iframe e, quando for o caso,
+oferece Validar / Rejeitar. Usado nas listas de comodato e ficha de EPI e no
+detalhe do funcionário.
+
+Cada botão que abre o popup leva `data-abrir-termo` e:
+  data-pdf             URL do arquivo (a view precisa de @xframe_options_sameorigin)
+  data-titulo          título do popup
+  data-aprovar         (opcional) URL de aprovação -- sem ela o popup só exibe
+  data-rejeitar        URL de rejeição, obrigatória junto com data-aprovar
+  data-rejeitar-titulo (opcional) título da janela que pede o motivo
+  data-rejeitar-mensagem / data-rejeitar-placeholder (opcionais) texto e exemplo
+                       dessa janela -- o padrão fala com o colaborador CLT
+
+Parâmetros do include:
+  proximo          (opcional) para onde voltar depois de validar/rejeitar
+  abrir_pendente   se verdadeiro, já abre o primeiro botão que tem data-aprovar
+{% endcomment %}
+<div class="modal-backdrop modal-termo" id="modal-termo" data-abrir-pendente="{{ abrir_pendente|yesno:'1,0' }}" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-termo-titulo">
+        <div class="modal__header">
+            <h2 class="modal__title" id="modal-termo-titulo"></h2>
+            <button type="button" class="modal__close btn-fechar-modal" id="modal-termo-fechar" aria-label="Fechar">{% icon 'x' %}</button>
+        </div>
+
+        <iframe class="modal-termo__pdf" id="modal-termo-pdf" title="Arquivo"></iframe>
+
+        <div class="modal__footer">
+            <a href="#" target="_blank" class="btn-outline btn-sm" id="modal-termo-nova-aba" style="margin-right: auto;">Abrir em nova aba</a>
+
+            <div class="modal-termo__acoes" id="modal-termo-acoes">
+                <form method="post" id="modal-termo-rejeitar" style="margin: 0;">
+                    {% csrf_token %}
+                    {% if proximo %}<input type="hidden" name="next" value="{{ proximo }}">{% endif %}
+                    {# Preenchido pelo modal de motivo antes do submit -- ver data-motivo em static/js/ui.js. #}
+                    <input type="hidden" name="motivo" value="">
+                    <button type="submit" class="btn-outline" id="modal-termo-botao-rejeitar"
+                            data-motivo="Escreva o que o colaborador precisa corrigir. O texto aparece para ele em Meus Documentos."
+                            data-motivo-titulo="Rejeitar arquivo"
+                            data-motivo-placeholder="Ex.: assinatura faltando, página cortada, arquivo ilegível...">
+                        {% icon 'x' %} Rejeitar
+                    </button>
+                </form>
+                <form method="post" id="modal-termo-aprovar" style="margin: 0;">
+                    {% csrf_token %}
+                    {% if proximo %}<input type="hidden" name="next" value="{{ proximo }}">{% endif %}
+                    <button type="submit" class="btn-primario">{% icon 'check-circle' %} Validar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('modal-termo');
+    var titulo = document.getElementById('modal-termo-titulo');
+    var iframe = document.getElementById('modal-termo-pdf');
+    var novaAba = document.getElementById('modal-termo-nova-aba');
+    var acoes = document.getElementById('modal-termo-acoes');
+    var formAprovar = document.getElementById('modal-termo-aprovar');
+    var formRejeitar = document.getElementById('modal-termo-rejeitar');
+    var botaoRejeitar = document.getElementById('modal-termo-botao-rejeitar');
+    var motivoPadrao = {
+        mensagem: botaoRejeitar.dataset.motivo,
+        placeholder: botaoRejeitar.dataset.motivoPlaceholder,
+    };
+    var modalMotivo = document.getElementById('modal-motivo');
+
+    function abrir(botao) {
+        titulo.textContent = botao.dataset.titulo;
+        iframe.title = botao.dataset.titulo;
+        iframe.src = botao.dataset.pdf;
+        novaAba.href = botao.dataset.pdf;
+
+        var podeValidar = Boolean(botao.dataset.aprovar);
+        acoes.hidden = !podeValidar;
+        if (podeValidar) {
+            formAprovar.action = botao.dataset.aprovar;
+            formRejeitar.action = botao.dataset.rejeitar;
+            botaoRejeitar.dataset.motivoTitulo = botao.dataset.rejeitarTitulo || 'Rejeitar arquivo';
+            botaoRejeitar.dataset.motivo = botao.dataset.rejeitarMensagem || motivoPadrao.mensagem;
+            botaoRejeitar.dataset.motivoPlaceholder = botao.dataset.rejeitarPlaceholder || motivoPadrao.placeholder;
+        }
+        modal.hidden = false;
+    }
+
+    function fechar() {
+        modal.hidden = true;
+        iframe.src = 'about:blank';
+    }
+
+    document.querySelectorAll('[data-abrir-termo]').forEach(function (botao) {
+        botao.addEventListener('click', function () { abrir(botao); });
+    });
+    document.getElementById('modal-termo-fechar').addEventListener('click', fechar);
+    modal.addEventListener('click', function (evento) {
+        if (evento.target === modal) fechar();
+    });
+    // Captura: roda antes do Esc do modal de motivo (ui.js), que fica por cima
+    // deste ao rejeitar -- o Esc deve fechar só o de motivo nesse caso.
+    document.addEventListener('keydown', function (evento) {
+        if (evento.key !== 'Escape' || modal.hidden) return;
+        if (modalMotivo && !modalMotivo.hidden) return;
+        fechar();
+    }, true);
+
+    // Atalho da notificação na sidebar: já abre o primeiro arquivo esperando validação.
+    if (modal.dataset.abrirPendente === '1') {
+        var primeiroPendente = document.querySelector('[data-abrir-termo][data-aprovar]');
+        if (primeiroPendente) abrir(primeiroPendente);
+    }
+});
+</script>

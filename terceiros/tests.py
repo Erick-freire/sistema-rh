@@ -295,6 +295,37 @@ class AnaliseDeDocumentosTests(TestCase):
         # O motivo é digitado no modal (data-motivo), não num formulário aberto na página.
         self.assertContains(resposta, 'data-motivo=')
 
+    def test_analise_fica_no_popup_do_olho(self):
+        resposta = self.client.get(
+            reverse('terceiros:detalhe_empresa', args=[self.empresa.id])
+        )
+
+        self.assertContains(resposta, 'id="modal-termo"')
+        # Só o ícone de olho leva as ações; não há mais Aprovar/Reprovar na linha.
+        self.assertContains(
+            resposta, f'data-aprovar="{reverse("terceiros:aprovar_documento", args=[self.documento.id])}"', count=1,
+        )
+        self.assertNotContains(resposta, f'action="{reverse("terceiros:aprovar_documento", args=[self.documento.id])}"')
+        # A mensagem do motivo fala com a prestadora, não com o colaborador CLT.
+        self.assertContains(resposta, 'data-rejeitar-mensagem="Escreva o que a prestadora precisa corrigir.')
+
+        arquivo = self.client.get(reverse('terceiros:ver_documento', args=[self.documento.id]))
+        self.assertEqual(arquivo['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_aprovar_exige_post(self):
+        self.client.get(reverse('terceiros:aprovar_documento', args=[self.documento.id]))
+
+        self.documento.refresh_from_db()
+        self.assertEqual(self.documento.status, 'pendente')
+
+    def test_quadro_de_andamento_some_com_a_empresa_ativa(self):
+        url = reverse('terceiros:detalhe_empresa', args=[self.empresa.id])
+        self.assertContains(self.client.get(url), 'Onde este cadastro está')
+
+        self.empresa.status = 'ativo'
+        self.empresa.save()
+        self.assertNotContains(self.client.get(url), 'Onde este cadastro está')
+
     def test_documento_ja_analisado_nao_mostra_mais_os_botoes(self):
         self.documento.status = 'aprovado'
         self.documento.save()

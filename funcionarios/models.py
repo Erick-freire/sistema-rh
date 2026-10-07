@@ -4,6 +4,23 @@ from datetime import timedelta
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.utils.text import slugify
+
+
+def proximo_login_gestor(nome, ocupados):
+    """Login por nome do gestor: o primeiro nome, minúsculo e sem acento.
+
+    Se já estiver em uso, numera: "daniel", "daniel2", "daniel3"...
+    `ocupados` é o conjunto de logins que não podem ser repetidos.
+    """
+    primeiro_nome = slugify(((nome or '').split() or [''])[0]).replace('-', '') or 'gestor'
+    login = primeiro_nome
+    sufixo = 2
+    while login in ocupados:
+        login = f'{primeiro_nome}{sufixo}'
+        sufixo += 1
+    return login
+
 
 class Setor(models.Model):
     nome = models.CharField(max_length=100)
@@ -279,9 +296,11 @@ class Funcionario(models.Model):
     
 class Usuario(models.Model):
     PAPEL_CHOICES = [
-        ('rh', 'RH'),
-        ('gestor', 'Gestor'),
         ('colaborador', 'Colaborador'),
+        ('gestor', 'Gestor'),
+        ('dp', 'Departamento Pessoal'),
+        ('rh', 'Recursos Humanos'),
+        ('seguranca_trabalho', 'Segurança do Trabalho'),
     ]
 
     user = models.OneToOneField(
@@ -293,18 +312,51 @@ class Usuario(models.Model):
         on_delete=models.CASCADE
     )
     papel = models.CharField(
-        max_length=15,
+        max_length=25,
         choices=PAPEL_CHOICES
     )
     acesso_rh = models.BooleanField(
         default=False,
-        help_text='Concede acesso às telas de RH além do papel principal '
-                   '(ex.: colaborador ou gestor que também trabalha no setor de RH).'
+        help_text='Concede o acesso completo de RH além do papel principal, incluindo '
+                   'os módulos exclusivos de RH (que o DP não vê).'
     )
     senha_provisoria = models.BooleanField(default=False)
+    # Só gestor entra pelo primeiro nome (os demais, pelo CPF -- que o gestor
+    # também continua podendo usar). Preenchido/limpo sozinho no save().
+    login_gestor = models.CharField(
+        max_length=40, unique=True, null=True, blank=True,
+        help_text='Login pelo primeiro nome, só enquanto o papel for Gestor.',
+    )
 
     def __str__(self):
         return f'{self.user.username} ({self.papel})'
+
+    def save(self, *args, **kwargs):
+        if self.papel != 'gestor':
+            self.login_gestor = None
+        elif not self.login_gestor:
+            ocupados = set(
+                Usuario.objects.exclude(pk=self.pk).exclude(login_gestor=None)
+                .values_list('login_gestor', flat=True)
+            )
+            self.login_gestor = proximo_login_gestor(self.funcionario.nome, ocupados)
+        else:
+            self.login_gestor = self.login_gestor.strip().lower()
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = {*kwargs['update_fields'], 'login_gestor'}
+        super().save(*args, **kwargs)
+
+    def eh_rh(self):
+        """RH de fato: vê tudo, inclusive os módulos exclusivos de RH."""
+        return self.papel == 'rh' or self.acesso_rh
+
+    def eh_dp_ou_rh(self):
+        """Quem opera os módulos do dia a dia (funcionários, férias, ponto, comodatos...)."""
+        return self.papel == 'dp' or self.eh_rh()
+
+    def eh_seguranca_ou_rh(self):
+        """Quem opera o módulo de EPI. O DP não entra: não é rotina dele."""
+        return self.papel == 'seguranca_trabalho' or self.eh_rh()
     
 class TipoDocumento(models.Model):
     CONDICAO_CHOICES = [
@@ -570,3 +622,138 @@ class ItemComodato(models.Model):
 
     def __str__(self):
         return f'{self.descricao} ({self.quantidade}x)'
+
+# ---------- EPI (Segurança do Trabalho) ----------
+
+class ItemCatalogoEPI(models.Model):
+    nome = models.CharField(max_length=100)
+    numero_ca = models.CharField(
+        max_length=20, help_text='Número do Certificado de Aprovação (CA), exigido pela NR-6.'
+    )
+    validade_ca = models.DateField(
+        null=True, blank=True, help_text='Data de validade do CA deste modelo de EPI.'
+    )
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['nome']
+
+    def __str__(self):
+        return f'{self.nome} (CA {self.numero_ca})'
+
+
+class FichaEPI(models.Model):
+    # Mesmo ciclo e mesmos nomes de campo do TermoComodato.
+    STATUS_CHOICES = [
+        ('aguardando_assinatura', 'Aguardando assinatura'),
+        ('em_validacao', 'Assinado, aguardando validação'),
+        ('ativo', 'Ativo (EPI(s) em uso)'),
+        ('devolvido_total', 'Devolvido integralmente'),
+        ('devolvido_parcial', 'Devolvido parcialmente'),
+    ]
+
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='fichas_epi')
+    data_entrega = models.DateField()
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='aguardando_assinatura')
+
+    data_devolucao = models.DateField(null=True, blank=True)
+    observacoes_devolucao = models.TextField(blank=True)
+
+    arquivo_gerado = models.FileField(upload_to='epi/', null=True, blank=True)
+    arquivo_assinado = models.FileField(upload_to='epi/assinados/', null=True, blank=True)
+
+    gerado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='fichas_epi_geradas')
+    gerado_em = models.DateTimeField(auto_now_add=True)
+    validado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='fichas_epi_validadas'
+    )
+    validado_em = models.DateTimeField(null=True, blank=True)
+    motivo_rejeicao = models.TextField(blank=True)
+
+    def __str__(self):
+        return f'Ficha EPI — {self.funcionario.nome}'
+
+    @classmethod
+    def com_devolucao_pendente(cls):
+        """Fichas de colaboradores desligados (inativos) que ainda têm EPI a devolver."""
+        return cls.objects.filter(funcionario__status='inativo', itens__devolvido=False).distinct()
+
+    def registrar_devolucao(self, itens_devolvidos, observacoes=''):
+        """Marca os itens como devolvidos e fecha a ficha como devolvida total ou parcialmente."""
+        self.itens.filter(id__in=[item.id for item in itens_devolvidos]).update(devolvido=True)
+        self.data_devolucao = timezone.now().date()
+        self.observacoes_devolucao = observacoes
+        self.status = 'devolvido_parcial' if self.itens.filter(devolvido=False).exists() else 'devolvido_total'
+        self.save()
+
+
+class ItemEPI(models.Model):
+    ficha = models.ForeignKey(FichaEPI, on_delete=models.CASCADE, related_name='itens')
+    item_catalogo = models.ForeignKey(ItemCatalogoEPI, on_delete=models.PROTECT, related_name='fichas')
+    quantidade = models.PositiveIntegerField(default=1)
+    data_vencimento = models.DateField(
+        null=True, blank=True,
+        help_text='Data em que este EPI deve ser revisado/trocado. Opcional — deixe em branco se não aplicável.'
+    )
+    devolvido = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f'{self.item_catalogo.nome} ({self.quantidade}x)'
+
+
+class OcorrenciaEPI(models.Model):
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='ocorrencias_epi')
+    tecnico = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name='ocorrencias_epi_registradas'
+    )
+    data_ocorrencia = models.DateField()
+    descricao = models.TextField(help_text='Ex: "Encontrado sem óculos de proteção na linha de produção."')
+    item_catalogo = models.ForeignKey(
+        ItemCatalogoEPI, on_delete=models.SET_NULL, null=True, blank=True,
+        help_text='Qual EPI estava em falta ou sendo usado incorretamente, se aplicável.'
+    )
+    foto = models.ImageField(upload_to='epi/ocorrencias/', null=True, blank=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Ocorrência — {self.funcionario.nome} ({self.data_ocorrencia})'
+
+
+class MatrizEpiSetor(models.Model):
+    """EPIs obrigatórios de um setor: pré-preenchem a ficha de entrega de quem é desse setor."""
+    setor = models.ForeignKey(Setor, on_delete=models.CASCADE, related_name='matriz_epi')
+    item_catalogo = models.ForeignKey(ItemCatalogoEPI, on_delete=models.PROTECT, related_name='matriz_setores')
+    quantidade_padrao = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['setor', 'item_catalogo'], name='unico_item_por_setor_na_matriz')
+        ]
+        ordering = ['setor__nome', 'item_catalogo__nome']
+
+    def __str__(self):
+        return f'{self.setor.nome} — {self.item_catalogo.nome}'
+
+
+class SolicitacaoSenha(models.Model):
+    """Pedido de nova senha feito na tela de login ("Recuperar acesso").
+
+    Não troca senha nenhuma: só avisa o RH/DP, que gera a nova senha provisória
+    pela ficha do funcionário. Gerar a senha fecha os pedidos em aberto dele.
+    Um pedido em aberto por usuário -- conferido no código, já que o MySQL
+    ignora UniqueConstraint condicional.
+    """
+    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='solicitacoes_senha')
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atendida_em = models.DateTimeField(null=True, blank=True)
+    atendida_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        ordering = ['-criada_em']
+
+    def __str__(self):
+        return f'Nova senha — {self.usuario.funcionario.nome} ({self.criada_em:%d/%m/%Y})'
+
+    @classmethod
+    def pendentes(cls):
+        return cls.objects.filter(atendida_em__isnull=True)

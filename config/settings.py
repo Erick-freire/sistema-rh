@@ -162,6 +162,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 LOGIN_URL = 'login'
 
+# Todo mundo entra pelo CPF; gestor também pelo primeiro nome.
+AUTHENTICATION_BACKENDS = ['funcionarios.backends.CpfOuLoginGestorBackend']
+
 
 # Chave de cifra do EncryptedTextField (integracao_gov/fields.py) -- hoje só
 # protege Equipamento.senha_admin (app ponto). Vazia = deriva uma chave a
@@ -179,12 +182,6 @@ SECULLUM_DATABASE = config('SECULLUM_DATABASE', default='')
 SECULLUM_USER = config('SECULLUM_USER', default='')
 SECULLUM_PASSWORD = config('SECULLUM_PASSWORD', default='')
 
-
-# Senha padrão usada ao gerar acesso em massa/individual para funcionários já
-# contratados sem login (ex.: importados do Secullum) — troca obrigatória no
-# primeiro login continua ativa via senha_provisoria=True.
-
-SENHA_PADRAO_ACESSO = config('SENHA_PADRAO_ACESSO', default='Sotrigo@123')
 
 
 # Google reCAPTCHA v2 ("Não sou um robô") na tela de login -- cadastrar o

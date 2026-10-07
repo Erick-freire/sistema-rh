@@ -1,5 +1,8 @@
 from django import forms
-from .models import Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento, TermoComodato, ItemComodato, ItemCatalogoComodato
+from .models import (
+    Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento, TermoComodato, ItemComodato,
+    ItemCatalogoComodato, FichaEPI, ItemEPI, ItemCatalogoEPI, OcorrenciaEPI,
+)
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
 
@@ -59,10 +62,23 @@ class DadosCadastraisForm(forms.ModelForm):
 
     class Meta:
         model = Funcionario
-        fields = ['matricula', 'setor', 'data_admissao', 'salario']
+        fields = ['matricula', 'cargo', 'setor', 'data_admissao', 'salario']
         widgets = {
+            # Texto livre com sugestões: o <datalist> é renderizado no template a partir de `cargos_existentes`.
+            'cargo': forms.TextInput(attrs={'list': 'cargos-existentes', 'autocomplete': 'off'}),
             'salario': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
         }
+
+    @property
+    def cargos_existentes(self):
+        return Funcionario.objects.exclude(cargo='').order_by('cargo').values_list('cargo', flat=True).distinct()
+
+    def clean_cargo(self):
+        # Reaproveita a grafia de um cargo já cadastrado ("operador" vira "Operador"),
+        # para não abrir um cargo duplicado só por maiúscula/minúscula.
+        cargo = ' '.join(self.cleaned_data['cargo'].split())
+        existente = Funcionario.objects.filter(cargo__iexact=cargo).values_list('cargo', flat=True).first()
+        return existente or cargo
 
 class AtestadoForm(forms.ModelForm):
     class Meta:
@@ -258,3 +274,83 @@ ItemComodatoFormSet = inlineformset_factory(
         extra=5,
         can_delete=True,
     )
+
+
+# ---------- EPI ----------
+
+class FichaEPIForm(forms.ModelForm):
+    data_entrega = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        label='Data da entrega',
+    )
+
+    class Meta:
+        model = FichaEPI
+        fields = ['funcionario', 'data_entrega']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['funcionario'].queryset = Funcionario.objects.exclude(status='inativo').order_by('nome')
+
+
+class ItemEPIForm(forms.ModelForm):
+    data_vencimento = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        label='Trocar em',
+    )
+
+    class Meta:
+        model = ItemEPI
+        fields = ['item_catalogo', 'quantidade', 'data_vencimento']
+        labels = {'item_catalogo': 'EPI'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['item_catalogo'].queryset = ItemCatalogoEPI.objects.filter(ativo=True)
+
+
+class BaseItemEPIFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+
+        linhas = [f for f in self.forms if f.has_changed() and not self._should_delete_form(f)]
+        if not linhas:
+            raise forms.ValidationError('Adicione pelo menos um EPI à ficha.')
+
+
+def item_epi_formset(extra=5):
+    """
+    O número de linhas vazias acompanha o maior cargo da matriz, para o
+    pré-preenchimento nunca ficar sem linha. No POST o que vale é o
+    TOTAL_FORMS enviado, então o `extra` só importa na exibição.
+    """
+    return inlineformset_factory(
+        FichaEPI,
+        ItemEPI,
+        form=ItemEPIForm,
+        formset=BaseItemEPIFormSet,
+        fields=['item_catalogo', 'quantidade', 'data_vencimento'],
+        extra=extra,
+        can_delete=True,
+    )
+
+
+class OcorrenciaEPIForm(forms.ModelForm):
+    data_ocorrencia = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        label='Data da ocorrência',
+    )
+
+    class Meta:
+        model = OcorrenciaEPI
+        fields = ['funcionario', 'data_ocorrencia', 'descricao', 'item_catalogo', 'foto']
+        labels = {'descricao': 'Descrição', 'item_catalogo': 'EPI relacionado (opcional)', 'foto': 'Foto (opcional)'}
+        widgets = {'descricao': forms.Textarea(attrs={'rows': 4})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['funcionario'].queryset = Funcionario.objects.exclude(status='inativo').order_by('nome')
+        self.fields['item_catalogo'].queryset = ItemCatalogoEPI.objects.filter(ativo=True)

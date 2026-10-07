@@ -1,0 +1,83 @@
+{% comment %}
+Base: "Termo de Guarda e Responsabilidade por Uso de Equipamento" (o mesmo do
+comodato de equipamento), com as cláusulas trocadas pelas obrigações do
+empregado na NR-6. Diferente do comodato, EPI é fornecido gratuitamente
+(CLT art. 166), então não há cláusula de ressarcimento integral -- só o
+desconto por dano causado com dolo (CLT art. 462, § 1º). Revisar o texto com
+a Segurança do Trabalho / jurídico antes de usar.
+{% endcomment %}
+<html>
+<head>
+<style>
+    @page { size: A4; margin: 2.5cm; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #222; }
+    .logo { width: 140px; margin-bottom: 20px; }
+    h1 { text-align: center; font-size: 14pt; text-transform: uppercase; }
+    p { text-align: justify; line-height: 1.5; }
+    .negrito { font-weight: bold; }
+    .assinatura { margin-top: 60px; }
+    .linha-assinatura { border-top: 1px solid #000; width: 350px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<img class="logo" src="{{ caminho_logo }}">
+
+<h1>Ficha de Entrega e Responsabilidade por Uso de EPI</h1>
+
+<p>
+    Eu, <span class="negrito">{{ funcionario.nome }}</span>, inscrito no CPF nº
+    <span class="negrito">{{ cpf_formatado }}</span>, função
+    <span class="negrito">{{ funcionario.cargo }}</span>, venho para os devidos fins DECLARAR
+    que a empresa, <span class="negrito">SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA</span>,
+    inscrita do CNPJ nº <span class="negrito">04.577.125/0001-30</span>, na qualidade de minha
+    Empregadora, está me entregando nesta data, gratuitamente, o(s) Equipamento(s) de Proteção
+    Individual abaixo discriminado(s), novo(s) ou em perfeito estado de conservação e
+    funcionamento, com o respectivo Certificado de Aprovação (CA), e que recebi orientação sobre
+    o seu uso adequado, guarda e conservação, ficando ciente de que, nos termos da Norma
+    Regulamentadora nº 6 (NR-6), devo:
+</p>
+
+<p>
+    I - Usar o(s) EPI(s) apenas para a finalidade a que se destina(m), durante toda a jornada
+    de trabalho em que houver exposição ao risco;
+</p>
+
+<p>
+    II - Responsabilizar-me pela guarda e conservação do(s) EPI(s) recebido(s);
+</p>
+
+<p>
+    III - Comunicar à empresa qualquer alteração que torne o(s) EPI(s) impróprio(s) para uso,
+    solicitando a sua substituição;
+</p>
+
+<p>
+    IV - Cumprir as determinações da empresa sobre o uso adequado do(s) EPI(s).
+</p>
+
+<p>
+    Declaro estar ciente de que a recusa injustificada ao uso do EPI constitui ato faltoso,
+    nos termos do art. 158, parágrafo único, alínea "b", da Consolidação das Leis do Trabalho
+    (CLT), e de que, em caso de dano ou extravio causado com dolo, o valor correspondente poderá
+    ser descontado de minha remuneração, conforme o art. 462, § 1º, da CLT.
+</p>
+
+<p class="negrito">EPIS ENTREGUES</p>
+
+<p>
+    {% for item in itens %}
+        <span class="negrito">{{ item.item_catalogo.nome }} (CA {{ item.item_catalogo.numero_ca }})</span>{% if item.quantidade > 1 %} — quantidade: {{ item.quantidade }}{% endif %}{% if not forloop.last %}; {% endif %}
+    {% endfor %}
+</p>
+
+<p>Anápolis - GO, {{ data_extenso }}.</p>
+
+<div class="assinatura">
+    <br>
+    <hr class="linha-assinatura">
+    <p class="negrito">COLABORADOR</p>
+</div>
+
+</body>
+</html>
