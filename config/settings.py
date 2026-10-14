@@ -52,6 +52,12 @@ if ATRAS_DE_PROXY:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     USE_X_FORWARDED_HOST = True
 
+TUNEL_DEV = config('TUNEL_DEV', default=False, cast=bool)
+
+if TUNEL_DEV:
+    ALLOWED_HOSTS += ['.trycloudflare.com']
+    CSRF_TRUSTED_ORIGINS += ['https://*.trycloudflare.com']
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 
@@ -190,3 +196,17 @@ SECULLUM_PASSWORD = config('SECULLUM_PASSWORD', default='')
 # desafio não aparece e não é exigido no login.
 RECAPTCHA_SITE_KEY = config('RECAPTCHA_SITE_KEY', default='')
 RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
+
+
+# Notificações push do PWA (Web Push com VAPID). Gerar o par de chaves uma
+# vez com `manage.py gerar_chaves_vapid` e colar no .env -- trocar as chaves
+# depois invalida a inscrição de todos os aparelhos. Com as chaves vazias, o
+# push fica desligado: o botão de ativar não aparece e nada é enviado.
+VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='')
+VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='')
+# Contato que os serviços de push (Google, Apple, Mozilla) usam se houver
+# algum problema com os envios.
+VAPID_CONTATO = config('VAPID_CONTATO', default='mailto:tisuporte@sotrigo.com.br')
+# O envio sai numa thread separada para a tela não esperar o Google/Apple
+# responderem. Os testes desligam para conferir o envio na hora.
+PUSH_EM_SEGUNDO_PLANO = True

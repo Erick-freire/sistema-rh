@@ -81,11 +81,26 @@ Pela tela de Equipamentos, clicar em **"Sincronizar"** em cada relógio (ou
 histórico completo de marcações de cada equipamento (idempotente, pode
 rodar quantas vezes quiser).
 
-Por enquanto a sincronização é sempre manual, pela tela de Equipamentos.
-Os dois comandos abaixo existem e funcionam (dá pra rodar pelo terminal se
-precisar), mas não há nada agendado automaticamente:
+Além do botão, os dois comandos abaixo fazem a mesma coisa pelo terminal:
 
 ```
-python manage.py coletar_marcacoes_control_id
 python manage.py sincronizar_pendencias_control_id
+python manage.py coletar_marcacoes_control_id
 ```
+
+### Sincronização automática (06:00 e 18:00)
+
+`scripts\sincronizar_ponto.bat` roda os dois comandos acima em sequência
+(envia cadastros, depois recebe marcações) e grava a saída em
+`logs\sincronizar_ponto.log`. Para agendar no servidor, abrir um prompt
+**como administrador** na pasta do projeto e rodar (troque o caminho se o
+projeto estiver em outro lugar):
+
+```
+schtasks /create /tn "SistemaRH\Sincronizar ponto 06h" /sc daily /st 06:00 /ru SYSTEM /rl HIGHEST /tr "\"C:\caminho\sistema-rh\scripts\sincronizar_ponto.bat\""
+schtasks /create /tn "SistemaRH\Sincronizar ponto 18h" /sc daily /st 18:00 /ru SYSTEM /rl HIGHEST /tr "\"C:\caminho\sistema-rh\scripts\sincronizar_ponto.bat\""
+```
+
+`/ru SYSTEM` faz rodar mesmo sem ninguém logado no servidor. Para testar na
+hora: `schtasks /run /tn "SistemaRH\Sincronizar ponto 06h"` e conferir o
+log. Para remover: `schtasks /delete /tn "SistemaRH\Sincronizar ponto 06h" /f`.

@@ -3,12 +3,13 @@ from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from funcionarios import notificacoes
 from funcionarios.decorators import papel_required
 from funcionarios.models import Funcionario, Usuario
 
@@ -434,7 +435,15 @@ def excluir_feriado_view(request, feriado_id):
 # ---------- Colaborador: Meu Ponto ----------
 # Sem @papel_required de propósito -- é autoatendimento igual meu_perfil_view/
 # solicitar_ferias_view em funcionarios/views.py, disponível pra qualquer
-# Usuario (RH e gestor também são funcionários e batem ponto).
+# Usuario que bate ponto (RH e DP também batem). Gestor não: todo gerente tem
+# cargo de confiança e não registra ponto, então ele cai no ponto da equipe.
+
+def _eh_gestor(request):
+    try:
+        return request.user.usuario.papel == 'gestor'
+    except Usuario.DoesNotExist:
+        return False
+
 
 def _periodo_meu_ponto(request):
     hoje = timezone.now().date()
@@ -447,8 +456,25 @@ def _periodo_meu_ponto(request):
     return hoje, data_inicio, data_fim
 
 
+def _navegacao_periodo(data_inicio, data_fim, hoje):
+    periodo_anterior = {
+        'data_inicio': (data_inicio - timedelta(days=JANELA_MEU_PONTO_DIAS)).isoformat(),
+        'data_fim': (data_inicio - timedelta(days=1)).isoformat(),
+    }
+    periodo_seguinte = None
+    if data_fim < hoje:
+        nova_data_inicio = data_fim + timedelta(days=1)
+        periodo_seguinte = {
+            'data_inicio': nova_data_inicio.isoformat(),
+            'data_fim': min(nova_data_inicio + timedelta(days=JANELA_MEU_PONTO_DIAS - 1), hoje).isoformat(),
+        }
+    return {'periodo_anterior': periodo_anterior, 'periodo_seguinte': periodo_seguinte}
+
+
 @login_required
 def meu_ponto_view(request):
+    if _eh_gestor(request):
+        return redirect('ponto:ponto_equipe')
     try:
         funcionario = request.user.usuario.funcionario
     except Usuario.DoesNotExist:
@@ -463,31 +489,20 @@ def meu_ponto_view(request):
         dia['pode_solicitar'] = pode_solicitar
         dia['tipo_sugerido'] = 'saida' if dia['marcacao_impar'] else 'entrada'
 
-    periodo_anterior = {
-        'data_inicio': (data_inicio - timedelta(days=JANELA_MEU_PONTO_DIAS)).isoformat(),
-        'data_fim': (data_inicio - timedelta(days=1)).isoformat(),
-    }
-    periodo_seguinte = None
-    if data_fim < hoje:
-        nova_data_inicio = data_fim + timedelta(days=1)
-        periodo_seguinte = {
-            'data_inicio': nova_data_inicio.isoformat(),
-            'data_fim': min(nova_data_inicio + timedelta(days=JANELA_MEU_PONTO_DIAS - 1), hoje).isoformat(),
-        }
-
     return render(request, 'ponto/meu_ponto.html', {
         'funcionario': funcionario,
         'resultado': resultado,
         'data_inicio': data_inicio,
         'data_fim': data_fim,
-        'periodo_anterior': periodo_anterior,
-        'periodo_seguinte': periodo_seguinte,
+        **_navegacao_periodo(data_inicio, data_fim, hoje),
         'numeros_dos_pares': list(range(1, resultado['pares_no_periodo'] + 1)),
     })
 
 
 @login_required
 def solicitar_ajuste_ponto_view(request):
+    if _eh_gestor(request):
+        return redirect('ponto:ponto_equipe')
     try:
         funcionario = request.user.usuario.funcionario
     except Usuario.DoesNotExist:
@@ -502,6 +517,7 @@ def solicitar_ajuste_ponto_view(request):
             ajuste.solicitado_por = request.user
             ajuste.status = 'pendente'
             ajuste.save()
+            notificacoes.ajuste_ponto_solicitado(ajuste)
             messages.success(request, 'Solicitação enviada. Acompanhe em "Meus Ajustes" -- o RH vai analisar.')
             return redirect('ponto:meus_ajustes')
     else:
@@ -519,6 +535,8 @@ def solicitar_ajuste_ponto_view(request):
 
 @login_required
 def meus_ajustes_view(request):
+    if _eh_gestor(request):
+        return redirect('ponto:ponto_equipe')
     try:
         funcionario = request.user.usuario.funcionario
     except Usuario.DoesNotExist:
@@ -526,6 +544,64 @@ def meus_ajustes_view(request):
 
     ajustes = AjustePonto.objects.filter(funcionario=funcionario).select_related('analisado_por')
     return render(request, 'ponto/meus_ajustes.html', {'ajustes': ajustes})
+
+
+# ---------- Gestor: ponto da equipe ----------
+# Gestor não bate ponto (cargo de confiança) -- no lugar do "Meu Ponto" ele vê
+# as batidas de quem trabalha nos setores dele. Só leitura: correção continua
+# sendo pedida pelo próprio colaborador e analisada pelo RH.
+
+def _funcionarios_da_equipe(usuario):
+    """Setor do próprio gestor + setores em que ele é o responsável, sem outros gestores (que também não batem ponto)."""
+    gestor = usuario.funcionario
+    return (
+        Funcionario.objects
+        .filter(Q(setor_id=gestor.setor_id) | Q(setor__gestor=gestor), status='ativo')
+        .exclude(id=gestor.id)
+        .exclude(usuario__papel='gestor')
+        .select_related('setor')
+        .order_by('nome')
+    )
+
+
+@login_required
+@papel_required('gestor')
+def ponto_equipe_view(request):
+    hoje = timezone.now().date()
+    data = min(_data_do_get(request, 'data', hoje), hoje)
+
+    linhas = []
+    for funcionario in _funcionarios_da_equipe(request.user.usuario):
+        dia = calcular_periodo(funcionario, data, data)['dias'][0]
+        texto, cor, _ = situacao_do_dia(dia, hoje)
+        linhas.append({'funcionario': funcionario, 'dia': dia, 'situacao_texto': texto, 'situacao_cor': cor})
+
+    return render(request, 'ponto/ponto_equipe.html', {
+        'data': data,
+        'linhas': linhas,
+        'dia_anterior': (data - timedelta(days=1)).isoformat(),
+        'dia_seguinte': (data + timedelta(days=1)).isoformat() if data < hoje else None,
+        'eh_hoje': data == hoje,
+    })
+
+
+@login_required
+@papel_required('gestor')
+def ponto_equipe_funcionario_view(request, funcionario_id):
+    funcionario = get_object_or_404(_funcionarios_da_equipe(request.user.usuario), id=funcionario_id)
+
+    hoje, data_inicio, data_fim = _periodo_meu_ponto(request)
+    resultado = calcular_periodo(funcionario, data_inicio, data_fim)
+    for dia in resultado['dias']:
+        dia['situacao_texto'], dia['situacao_cor'], _ = situacao_do_dia(dia, hoje)
+
+    return render(request, 'ponto/ponto_equipe_funcionario.html', {
+        'funcionario': funcionario,
+        'resultado': resultado,
+        'data_inicio': data_inicio,
+        'data_fim': data_fim,
+        **_navegacao_periodo(data_inicio, data_fim, hoje),
+    })
 
 
 # ---------- RH: fila de aprovação de ajustes ----------
@@ -569,6 +645,7 @@ def aprovar_ajuste_view(request, ajuste_id):
     ajuste.analisado_por = request.user
     ajuste.analisado_em = timezone.now()
     ajuste.save()
+    notificacoes.ajuste_ponto_analisado(ajuste)
     messages.success(request, f'Ajuste de {ajuste.funcionario.nome} aprovado.')
     return redirect('ponto:ajustes_pendentes')
 
@@ -589,6 +666,7 @@ def rejeitar_ajuste_view(request, ajuste_id):
         ajuste.analisado_por = request.user
         ajuste.analisado_em = timezone.now()
         ajuste.save()
+        notificacoes.ajuste_ponto_analisado(ajuste)
         messages.success(request, f'Ajuste de {ajuste.funcionario.nome} rejeitado.')
     else:
         messages.error(request, 'Informe o motivo da rejeição.')

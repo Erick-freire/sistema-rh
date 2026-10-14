@@ -64,3 +64,49 @@ self.addEventListener('fetch', (event) => {
   // apareceria para o próximo). Sem rede, mostra a página offline.
   event.respondWith(fetch(req).catch(() => caches.match(PAGINA_OFFLINE)));
 });
+
+// ---------- Notificações push ----------
+// O servidor manda {titulo, corpo, url, tag} (ver funcionarios/notificacoes.py).
+self.addEventListener('push', (event) => {
+  let dados = {};
+  try {
+    dados = event.data ? event.data.json() : {};
+  } catch (e) {
+    dados = { corpo: event.data ? event.data.text() : '' };
+  }
+
+  const opcoes = {
+    body: dados.corpo || '',
+    icon: '/static/pwa/icon-192.png',
+    badge: '/static/pwa/icon-192.png',
+    data: { url: dados.url || '/' },
+    lang: 'pt-BR',
+  };
+  if (dados.tag) {
+    // Mesma tag troca a notificação anterior; `renotify` faz vibrar de novo.
+    opcoes.tag = dados.tag;
+    opcoes.renotify = true;
+  }
+
+  event.waitUntil(self.registration.showNotification(dados.titulo || 'RH Sotrigo', opcoes));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const destino = new URL(event.notification.data?.url || '/', self.location.origin).href;
+
+  // Reaproveita uma janela do app já aberta em vez de abrir outra.
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((janelas) => {
+      const janela = janelas.find((j) => new URL(j.url).origin === self.location.origin);
+      if (janela) {
+        // `navigate` falha em janela que este service worker ainda não
+        // controla; aí abre uma nova.
+        return janela.focus()
+          .then((j) => (j || janela).navigate(destino))
+          .catch(() => self.clients.openWindow(destino));
+      }
+      return self.clients.openWindow(destino);
+    })
+  );
+});

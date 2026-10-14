@@ -1231,6 +1231,63 @@ class MeuPontoViewTests(TestCase):
         self.assertTemplateUsed(resposta, 'funcionarios/sem_perfil.html')
 
 
+class PontoEquipeViewTests(TestCase):
+    """Gestor tem cargo de confiança e não bate ponto -- vê o ponto da equipe no lugar do próprio."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.gestor = Funcionario.objects.create(
+            nome='Gil Gestor', matricula='3001', cargo='Gerente', setor=self.setor, cpf='77711111111',
+        )
+        self.setor.gestor = self.gestor
+        self.setor.save()
+        user = User.objects.create_user(username='gilgestor', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.gestor, papel='gestor')
+        self.client.login(username='gilgestor', password='senha123')
+
+        self.equipamento = _criar_equipamento()
+        horario = _criar_horario_util(4201)
+        self.membro = Funcionario.objects.create(
+            nome='Bia Operadora', matricula='3002', cargo='Operadora', setor=self.setor, cpf='77722222222',
+        )
+        FuncionarioJornada.objects.create(funcionario=self.membro, data_inicio=date(2026, 8, 1), horario=horario)
+        self.de_fora = Funcionario.objects.create(
+            nome='Caio Outro Setor', matricula='3003', cargo='Analista',
+            setor=Setor.objects.create(nome='Financeiro'), cpf='77733333333',
+        )
+
+    def test_meu_ponto_redireciona_gestor_para_equipe(self):
+        for nome in ('ponto:meu_ponto', 'ponto:meus_ajustes', 'ponto:solicitar_ajuste_ponto'):
+            self.assertRedirects(self.client.get(reverse(nome)), reverse('ponto:ponto_equipe'))
+
+    def test_lista_batidas_so_da_equipe_e_sem_o_gestor(self):
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.membro, self.equipamento, segunda, '08:00', '12:00', '13:00', '17:00')
+
+        resposta = self.client.get(reverse('ponto:ponto_equipe') + f'?data={segunda.isoformat()}')
+
+        self.assertEqual(resposta.status_code, 200)
+        funcionarios = [linha['funcionario'] for linha in resposta.context['linhas']]
+        self.assertEqual(funcionarios, [self.membro])
+        self.assertEqual(resposta.context['linhas'][0]['situacao_texto'], 'OK')
+        self.assertNotContains(resposta, 'Meu Ponto')
+
+    def test_espelho_de_funcionario_de_outro_setor_da_404(self):
+        self.assertEqual(
+            self.client.get(reverse('ponto:ponto_equipe_funcionario', args=[self.membro.id])).status_code, 200,
+        )
+        self.assertEqual(
+            self.client.get(reverse('ponto:ponto_equipe_funcionario', args=[self.de_fora.id])).status_code, 404,
+        )
+
+    def test_colaborador_nao_acessa_ponto_da_equipe(self):
+        user = User.objects.create_user(username='biaoperadora', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.membro, papel='colaborador')
+        self.client.login(username='biaoperadora', password='senha123')
+
+        self.assertRedirects(self.client.get(reverse('ponto:ponto_equipe')), reverse('dashboard'), fetch_redirect_response=False)
+
+
 class SolicitarAjustePontoViewTests(TestCase):
     def setUp(self):
         setor = Setor.objects.create(nome='TI')

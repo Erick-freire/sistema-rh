@@ -1,0 +1,38 @@
+{% load rh_icons %}
+{# Espelho por período em cards. `permite_correcao` liga o "Pedir correção" -- só no Meu Ponto do próprio colaborador. #}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+        <a href="?data_inicio={{ periodo_anterior.data_inicio }}&data_fim={{ periodo_anterior.data_fim }}" class="pagina-link">{% icon 'arrow-left' %} Período anterior</a>
+        <strong>{{ data_inicio|date:'d/m/Y' }} a {{ data_fim|date:'d/m/Y' }}</strong>
+        {% if periodo_seguinte %}
+        <a href="?data_inicio={{ periodo_seguinte.data_inicio }}&data_fim={{ periodo_seguinte.data_fim }}" class="pagina-link">Período seguinte {% icon 'chevron-right' %}</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+    </div>
+
+    <div class="lista-cards">
+        {% for dia in resultado.dias %}
+        <div class="item-card item-card--ponto">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ dia.data|date:'d/m' }}</div>
+                <div class="item-card__subtitulo">{{ dia.data|dia_semana_curto }}</div>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Esperado</span>
+                <span class="item-card__campo-valor">{% if dia.entrada_esperada and dia.saida_esperada %}{{ dia.entrada_esperada|time:'H:i' }} – {{ dia.saida_esperada|time:'H:i' }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Batidas registradas</span>
+                <span class="item-card__campo-valor">{% for evento in dia.marcacoes %}{{ evento.momento|time:'H:i' }}{% if evento.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}{% if not dia.marcacoes %}—{% endif %}</span>
+            </div>
+            <div class="item-card__extra">
+                <span class="badge-status badge-status--{{ dia.situacao_cor }}">{{ dia.situacao_texto }}</span>
+                {% if permite_correcao and dia.pode_solicitar %}
+                <a href="{% url 'ponto:solicitar_ajuste_ponto' %}?data={{ dia.data|date:'Y-m-d' }}&tipo={{ dia.tipo_sugerido }}" class="btn-outline btn-sm">Pedir correção</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

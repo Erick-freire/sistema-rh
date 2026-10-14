@@ -60,7 +60,6 @@
 
 {% if usuario_atual or responsavel_atual %}
 <input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
-<label for="menu-toggle" class="menu-toggle-label" aria-label="Abrir menu">{% icon 'menu' %}</label>
 <label for="menu-toggle" class="sidebar-overlay" aria-label="Fechar menu"></label>
 
 <div class="app-shell">
@@ -70,18 +69,6 @@
             <span class="sidebar__brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
             Sotrigo RH
             <label for="menu-toggle" class="sidebar__close" aria-label="Fechar menu">{% icon 'x' %}</label>
-        </div>
-
-        <div class="sidebar__user">
-            {% if usuario_atual.funcionario.foto %}
-            <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--sm" style="object-fit: cover;">
-            {% else %}
-            <span class="avatar avatar--sm avatar--brand">{{ usuario_atual.funcionario.iniciais }}</span>
-            {% endif %}
-            <div>
-                <div class="sidebar__user-name">{{ usuario_atual.funcionario.nome }}</div>
-                <div class="sidebar__user-role">{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %}{% if usuario_atual.funcionario.setor %} · {{ usuario_atual.funcionario.setor }}{% endif %}</div>
-            </div>
         </div>
 
         <nav class="sidebar__nav">
@@ -100,8 +87,13 @@
                         {% if badge_ferias_total %}<span class="nav-badge">{{ badge_ferias_total }}</span>{% endif %}
                     </a>
                 </li>
+                {% if usuario_atual.papel == 'gestor' %}
+                <li class="{% if request.resolver_match.url_name == 'ponto_equipe' or request.resolver_match.url_name == 'ponto_equipe_funcionario' %}active{% endif %}">
+                    <a href="{% url 'ponto:ponto_equipe' %}">{% icon 'clock' %} Ponto da Equipe</a>
+                </li>
+                {% endif %}
                 {% if usuario_atual.eh_dp_ou_rh %}
-                <li class="{% if request.resolver_match.app_name == 'ponto' %}active{% endif %}">
+                <li class="{% if request.resolver_match.app_name == 'ponto' and 'ponto_equipe' not in request.resolver_match.url_name %}active{% endif %}">
                     <a href="{% url 'ponto:listar_equipamentos' %}">
                         {% icon 'clock' %} Ponto
                         {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
@@ -157,9 +149,11 @@
                     <a href="{% url 'dashboard' %}">{% icon 'home' %} Início</a>
                 </li>
             {% endif %}
+                {% if usuario_atual.papel != 'gestor' %}{# gestor tem cargo de confiança e não bate ponto #}
                 <li class="{% if request.resolver_match.url_name == 'meu_ponto' or request.resolver_match.url_name == 'meus_ajustes' %}active{% endif %}">
                     <a href="{% url 'ponto:meu_ponto' %}">{% icon 'clock' %} Meu Ponto</a>
                 </li>
+                {% endif %}
                 <li class="{% if request.resolver_match.url_name == 'solicitar_ferias' %}active{% endif %}">
                     <a href="{% url 'solicitar_ferias' %}">
                         {% icon 'calendar-plus' %} Minhas Férias
@@ -181,30 +175,52 @@
             </ul>
         </nav>
 
-        <ul>
-            <li class="sair"><a href="{% url 'logout' %}">{% icon 'log-out' %} Sair</a></li>
-        </ul>
+        <div class="sidebar__rodape">
+            <a href="{% url 'meu_perfil' %}" class="sidebar__user" title="Meu perfil">
+                {% if usuario_atual.funcionario.foto %}
+                <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--sm avatar--foto">
+                {% else %}
+                <span class="avatar avatar--sm avatar--claro">{{ usuario_atual.funcionario.iniciais }}</span>
+                {% endif %}
+                <span class="sidebar__user-info">
+                    <span class="sidebar__user-name">{{ usuario_atual.funcionario.nome }}</span>
+                    <span class="sidebar__user-role">{% if usuario_atual.papel != 'colaborador' %}{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %} · {% endif %}Matrícula {{ usuario_atual.funcionario.matricula }}</span>
+                </span>
+            </a>
+            <a href="{% url 'logout' %}" class="sidebar__sair" title="Sair" aria-label="Sair">{% icon 'log-out' %}</a>
+        </div>
         {% endblock %}
     </aside>
 
-    <main class="content">
-        <div class="topbar">
-            {% block topbar %}
-            <div class="topbar__user">
-                {% if usuario_atual.funcionario.foto %}
-                <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--brand" style="object-fit: cover;">
-                {% else %}
-                <span class="avatar avatar--brand">{{ usuario_atual.funcionario.iniciais }}</span>
-                {% endif %}
-                <div class="topbar__user-info">
-                    <div class="topbar__user-name">{{ usuario_atual.funcionario.nome }}</div>
-                    <div class="topbar__user-role">{{ usuario_atual.get_papel_display }}</div>
-                </div>
+    <main class="content{% block content_classe %}{% endblock %}">
+        {# Barra superior do celular: no desktop a navegação fica toda na sidebar. #}
+        <header class="appbar">
+            <div class="appbar__linha">
+                <label for="menu-toggle" class="appbar__botao" aria-label="Abrir menu">{% icon 'menu' %}</label>
+                <span class="appbar__marca">{% block appbar_titulo %}<img src="{% static 'img/logo-sotrigo.png' %}" alt="">Sotrigo RH{% endblock %}</span>
+                {% block appbar_avatar %}
+                <a href="{% url 'meu_perfil' %}" class="appbar__avatar" aria-label="Meu perfil">
+                    {% if usuario_atual.funcionario.foto %}
+                    <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--foto">
+                    {% else %}
+                    <span class="avatar avatar--claro">{{ usuario_atual.funcionario.iniciais }}</span>
+                    {% endif %}
+                </a>
+                {% endblock %}
             </div>
-            {% endblock %}
-        </div>
+            {% block appbar_hero %}{% endblock %}
+        </header>
 
         <div class="content__body">
+            {% if push_chave_publica %}
+            <div class="alert alert--sucesso alert--com-acao" id="aviso-push" hidden>
+                <span>{% icon 'bell' %} Receba no celular os avisos de férias, documentos, assinaturas e ponto.</span>
+                <span>
+                    <button type="button" class="btn btn-sm" data-push-ativar>Ativar notificações</button>
+                    <button type="button" class="btn-outline btn-sm" data-push-dispensar>Agora não</button>
+                </span>
+            </div>
+            {% endif %}
             {% block conteudo %}
             {% endblock %}
         </div>
@@ -217,7 +233,7 @@
     <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
         {% icon 'home' %} Início
     </a>
-    <a href="{% url 'ponto:meu_ponto' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_ponto' %} active{% endif %}">
+    <a href="{% url 'ponto:meu_ponto' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_ponto' or request.resolver_match.url_name == 'meus_ajustes' %} active{% endif %}">
         {% icon 'clock' %} Ponto
     </a>
     <a href="{% url 'solicitar_ferias' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'solicitar_ferias' %} active{% endif %}">
@@ -227,6 +243,62 @@
     <a href="{% url 'meus_documentos' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meus_documentos' or request.resolver_match.url_name == 'enviar_documento' %} active{% endif %}">
         {% icon 'folder' %} Documentos
         {% if documentos_pendentes %}<span class="bottom-nav__dot"></span>{% endif %}
+    </a>
+    <a href="{% url 'meu_perfil' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_perfil' %} active{% endif %}">
+        {% icon 'user' %} Perfil
+    </a>
+</nav>
+{% elif usuario_atual.papel == 'gestor' %}
+<nav class="bottom-nav">
+    <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
+        {% icon 'home' %} Início
+    </a>
+    <a href="{% url 'listar_funcionarios' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'detalhe_funcionario' %} active{% endif %}">
+        {% icon 'users' %} Equipe
+    </a>
+    <a href="{% url 'gestor_listar_ferias' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'gestor_listar_ferias' %} active{% endif %}">
+        {% icon 'umbrella' %} Férias
+        {% if badge_ferias_total %}<span class="bottom-nav__dot"></span>{% endif %}
+    </a>
+    <a href="{% url 'ponto:ponto_equipe' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'ponto_equipe' or request.resolver_match.url_name == 'ponto_equipe_funcionario' %} active{% endif %}">
+        {% icon 'clock' %} Ponto
+    </a>
+    <a href="{% url 'meu_perfil' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_perfil' %} active{% endif %}">
+        {% icon 'user' %} Perfil
+    </a>
+</nav>
+{% elif usuario_atual.eh_dp_ou_rh %}
+<nav class="bottom-nav">
+    <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
+        {% icon 'home' %} Início
+    </a>
+    <a href="{% url 'listar_funcionarios' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'detalhe_funcionario' or request.resolver_match.url_name == 'cadastrar_funcionario' %} active{% endif %}">
+        {% icon 'users' %} Pessoas
+    </a>
+    <a href="{% url 'concluir_ferias' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'concluir_ferias' or request.resolver_match.url_name == 'rh_vencimento_ferias' %} active{% endif %}">
+        {% icon 'umbrella' %} Férias
+        {% if badge_ferias_total %}<span class="bottom-nav__dot"></span>{% endif %}
+    </a>
+    <a href="{% url 'ponto:listar_equipamentos' %}" class="bottom-nav__item{% if request.resolver_match.app_name == 'ponto' and 'ponto_equipe' not in request.resolver_match.url_name and request.resolver_match.url_name != 'meu_ponto' and request.resolver_match.url_name != 'meus_ajustes' %} active{% endif %}">
+        {% icon 'clock' %} Ponto
+        {% if badge_ajustes_pendentes %}<span class="bottom-nav__dot"></span>{% endif %}
+    </a>
+    <label for="menu-toggle" class="bottom-nav__item">
+        {% icon 'menu' %} Mais
+        {% if badge_terceiros or badge_comodatos or badge_pedidos_senha or badge_fichas_epi or badge_devolucoes_epi %}<span class="bottom-nav__dot"></span>{% endif %}
+    </label>
+</nav>
+{% elif usuario_atual.eh_seguranca_ou_rh %}
+<nav class="bottom-nav">
+    <a href="{% url 'listar_fichas_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_fichas_epi' or request.resolver_match.url_name == 'criar_ficha_epi' or request.resolver_match.url_name == 'listar_epis_vencendo' %} active{% endif %}">
+        {% icon 'check-square' %} Fichas
+        {% if badge_fichas_epi or badge_devolucoes_epi %}<span class="bottom-nav__dot"></span>{% endif %}
+    </a>
+    <a href="{% url 'gerenciar_matriz_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' %} active{% endif %}">
+        {% icon 'briefcase' %} Matriz
+    </a>
+    <a href="{% url 'listar_ocorrencias_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_ocorrencias_epi' or request.resolver_match.url_name == 'criar_ocorrencia_epi' %} active{% endif %}">
+        {% icon 'alert-triangle' %} Ocorrências
     </a>
     <a href="{% url 'meu_perfil' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_perfil' %} active{% endif %}">
         {% icon 'user' %} Perfil
@@ -248,6 +320,14 @@ if ('serviceWorker' in navigator) {
     });
 }
 </script>
+{% if push_chave_publica %}
+<script src="{% static_v 'js/notificacoes.js' %}" defer
+        data-chave="{{ push_chave_publica }}"
+        data-url-inscrever="{% url 'inscrever_push' %}"
+        data-url-cancelar="{% url 'cancelar_push' %}"
+        data-csrf="{{ csrf_token }}"
+        data-inscrito-na-sessao="{{ push_inscrito_na_sessao|yesno:'1,0' }}"></script>
+{% endif %}
 
 </body>
 </html>

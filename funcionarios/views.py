@@ -24,12 +24,14 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.core.files.base import ContentFile
 from xhtml2pdf import pisa
 
+from . import notificacoes
 from .decorators import papel_required
 from .models import (
     Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias,
     TermoComodato, ItemCatalogoComodato, SolicitacaoSenha,
 )
 from .perfis import TIPO_TERCEIRO, perfil_de_acesso
+from .pwa_views import desvincular_push_da_sessao
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
     DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
@@ -179,6 +181,7 @@ def pedidos_senha_view(request):
 
 
 def logout_view(request):
+    desvincular_push_da_sessao(request)
     logout(request)
     return redirect('login')
 
@@ -302,9 +305,11 @@ def dashboard_rh_view(request):
     funcionarios_por_setor = funcionarios_ativos.values('setor__nome').annotate(total=Count('id')).order_by('-total')
     maior_total_setor = max([item['total'] for item in funcionarios_por_setor], default=0)
 
+    # Mesmo filtro da fila do gestor (`gestor_listar_ferias_view`): mesmo com
+    # `acesso_rh`, o gestor só aprova férias do próprio setor.
     ferias_gestor_qs = SolicitacaoFerias.objects.filter(
-        status='pendente_gestor', funcionario__in=funcionarios_do_escopo
-    ).order_by('criado_em')
+        status='pendente_gestor', funcionario__setor=funcionario_atual.setor
+    ).exclude(funcionario=funcionario_atual).order_by('criado_em')
     ferias_aguardando_gestor = ferias_gestor_qs.count()
     mais_antiga_gestor = ferias_gestor_qs.first()
     dias_mais_antiga_gestor = (hoje - mais_antiga_gestor.criado_em.date()).days if mais_antiga_gestor else None
@@ -484,13 +489,15 @@ def enviar_documento_view(request):
     if request.method == 'POST':
         form = EnviarDocumentoForm(request.POST, request.FILES, funcionario=funcionario)
         if form.is_valid():
-            Documento.substituir_ou_criar(
+            documento = Documento.substituir_ou_criar(
                 funcionario=funcionario,
                 tipo_documento=form.cleaned_data['tipo_documento'],
                 arquivo=form.cleaned_data['arquivo'],
                 enviado_por=request.user,
             )
             avancar_status_por_documentos(funcionario)
+            if documento.tipo_documento.eh_contrato:
+                notificacoes.contrato_assinado_enviado(documento)
             messages.success(request, 'Documento enviado com sucesso.')
 
             if request.POST.get('origem') == 'meus_documentos':
@@ -939,6 +946,7 @@ def gerar_contrato_view(request, funcionario_id):
 
     funcionario.status = 'aguardando_assinatura'
     funcionario.save()
+    notificacoes.contrato_para_assinar(funcionario)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{nome_arquivo}"'
@@ -997,6 +1005,7 @@ def rejeitar_documento_view(request, documento_id):
         documento.analisado_por = request.user
         documento.analisado_em = timezone.now()
         documento.save()
+        notificacoes.documento_rejeitado(documento)
         messages.success(request, f'{documento.tipo_documento} rejeitado. O colaborador poderá reenviar.')
     else:
         messages.error(request, 'Informe o motivo da rejeição.')
@@ -1096,9 +1105,11 @@ def solicitar_ferias_view(request):
                 if aviso_pendente:
                     solicitacao.aviso_origem = aviso_pendente
                 solicitacao.save()
+                notificacoes.ferias_aguardando_rh(solicitacao)
                 messages.success(request, 'Solicitação de férias enviada diretamente ao RH.')
             else:
                 solicitacao.save()
+                notificacoes.ferias_aguardando_gestor(solicitacao)
                 messages.success(request, 'Solicitação de férias enviada ao seu gestor.')
             return redirect('solicitar_ferias')
     else:
@@ -1135,10 +1146,12 @@ def aceitar_sugestao_ferias_view(request, solicitacao_id):
         if solicitacao.funcionario.eh_gestor or solicitacao.aviso_origem_id:
             solicitacao.status = 'pendente_rh'
             solicitacao.save()
+            notificacoes.ferias_aguardando_rh(solicitacao)
             messages.success(request, 'Nova data aceita e enviada diretamente ao RH.')
         else:
             solicitacao.status = 'pendente_gestor'
             solicitacao.save()
+            notificacoes.ferias_aguardando_gestor(solicitacao)
             messages.success(request, 'Nova data aceita e enviada para análise do gestor.')
 
     return redirect('solicitar_ferias')
@@ -1162,10 +1175,12 @@ def propor_outra_data_ferias_view(request, solicitacao_id):
             if solicitacao.funcionario.eh_gestor or solicitacao.aviso_origem_id:
                 solicitacao.status = 'pendente_rh'
                 solicitacao.save()
+                notificacoes.ferias_aguardando_rh(solicitacao)
                 messages.success(request, 'Nova data proposta e enviada diretamente ao RH.')
             else:
                 solicitacao.status = 'pendente_gestor'
                 solicitacao.save()
+                notificacoes.ferias_aguardando_gestor(solicitacao)
                 messages.success(request, 'Nova data proposta e enviada para análise do gestor.')
             return redirect('solicitar_ferias')
     else:
@@ -1195,16 +1210,17 @@ def adiar_ferias_view(request, solicitacao_id):
 
 # ---------- Férias — Gestor ----------
 
+# A etapa do gestor é só do gestor do setor: o RH (mesmo o gestor com
+# `acesso_rh`) não aprova férias de outros setores -- recebe a solicitação já
+# aprovada, em "Aguardando RH".
 @login_required
-@papel_required('gestor', 'rh', 'dp')
+@papel_required('gestor')
 def gestor_listar_ferias_view(request):
     usuario = request.user.usuario
 
-    solicitacoes = SolicitacaoFerias.objects.filter(status='pendente_gestor').exclude(funcionario=usuario.funcionario)
-    if usuario.papel == 'gestor' and not usuario.acesso_rh:
-        solicitacoes = solicitacoes.filter(funcionario__setor=usuario.funcionario.setor)
-
-    solicitacoes = solicitacoes.order_by('criado_em')
+    solicitacoes = SolicitacaoFerias.objects.filter(
+        status='pendente_gestor', funcionario__setor=usuario.funcionario.setor,
+    ).exclude(funcionario=usuario.funcionario).order_by('criado_em')
 
     return render(request, 'funcionarios/rh/gestor_listar_ferias.html', {
         'solicitacoes': solicitacoes,
@@ -1212,7 +1228,7 @@ def gestor_listar_ferias_view(request):
 
 
 @login_required
-@papel_required('gestor', 'rh', 'dp')
+@papel_required('gestor')
 def gestor_aprovar_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
@@ -1221,7 +1237,7 @@ def gestor_aprovar_ferias_view(request, solicitacao_id):
         messages.error(request, 'Você não pode aprovar sua própria solicitação de férias. Ela é enviada direto ao RH.')
         return redirect('gestor_listar_ferias')
 
-    if usuario.papel == 'gestor' and not usuario.acesso_rh and solicitacao.funcionario.setor != usuario.funcionario.setor:
+    if solicitacao.funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('gestor_listar_ferias')
 
@@ -1229,13 +1245,15 @@ def gestor_aprovar_ferias_view(request, solicitacao_id):
         solicitacao.status = 'pendente_rh'
         solicitacao.analisado_por_gestor = request.user
         solicitacao.save()
+        notificacoes.ferias_aprovadas_pelo_gestor(solicitacao)
+        notificacoes.ferias_aguardando_rh(solicitacao)
         messages.success(request, 'Solicitação aprovada e enviada ao RH.')
 
     return redirect('gestor_listar_ferias')
 
 
 @login_required
-@papel_required('gestor', 'rh', 'dp')
+@papel_required('gestor')
 def gestor_sugerir_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
@@ -1244,7 +1262,7 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
         messages.error(request, 'Você não pode sugerir alteração na sua própria solicitação de férias. Ela é enviada direto ao RH.')
         return redirect('gestor_listar_ferias')
 
-    if usuario.papel == 'gestor' and not usuario.acesso_rh and solicitacao.funcionario.setor != usuario.funcionario.setor:
+    if solicitacao.funcionario.setor != usuario.funcionario.setor:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('gestor_listar_ferias')
 
@@ -1257,6 +1275,7 @@ def gestor_sugerir_ferias_view(request, solicitacao_id):
             solicitacao.status = 'sugestao_gestor'
             solicitacao.analisado_por_gestor = request.user
             solicitacao.save()
+            notificacoes.ferias_sugestao_gestor(solicitacao)
             messages.success(request, 'Sugestão enviada ao colaborador.')
             return redirect('gestor_listar_ferias')
     else:
@@ -1314,6 +1333,7 @@ def rh_concluir_ferias_view(request, solicitacao_id):
         solicitacao.status = 'aprovada'
         solicitacao.concluido_por_rh = request.user
         solicitacao.save()
+        notificacoes.ferias_confirmadas(solicitacao)
         messages.success(request, 'Férias aprovadas e concluídas.')
 
     return redirect('concluir_ferias')
@@ -1358,12 +1378,13 @@ def criar_aviso_ferias_view(request, funcionario_id):
     if request.method == 'POST':
         form = AvisoFeriasForm(request.POST)
         if form.is_valid():
-            AvisoFerias.objects.create(
+            aviso = AvisoFerias.objects.create(
                 funcionario=funcionario,
                 data_prevista=form.cleaned_data['data_prevista'],
                 mensagem=form.cleaned_data['mensagem'],
                 criado_por=request.user,
             )
+            notificacoes.aviso_ferias_criado(aviso)
             messages.success(request, 'Aviso enviado ao gestor.')
             return redirect('rh_vencimento_ferias')
     else:
@@ -1479,6 +1500,7 @@ def gerar_pdf_comodato_view(request, comodato_id):
     comodato.arquivo_gerado.save(nome_arquivo, ContentFile(pdf_bytes), save=False)
     comodato.status = 'aguardando_assinatura'
     comodato.save()
+    notificacoes.comodato_para_assinar(comodato)
 
     messages.success(request, 'Termo de comodato gerado e disponibilizado ao colaborador.')
     return redirect('listar_comodatos')
@@ -1497,6 +1519,7 @@ def reenviar_comodato_assinado_view(request, comodato_id):
         comodato.status = 'em_validacao'
         comodato.motivo_rejeicao = ''
         comodato.save()
+        notificacoes.comodato_assinado_enviado(comodato)
         messages.success(request, 'Termo assinado enviado. Aguarde a validação do RH.')
 
     return redirect('meus_documentos')
@@ -1547,6 +1570,7 @@ def rejeitar_comodato_view(request, comodato_id):
         comodato.validado_por = request.user
         comodato.validado_em = timezone.now()
         comodato.save()
+        notificacoes.comodato_rejeitado(comodato)
         messages.success(request, 'Termo rejeitado. O colaborador poderá reenviar.')
     else:
         messages.error(request, 'Informe o motivo da rejeição.')

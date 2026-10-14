@@ -757,3 +757,22 @@ class SolicitacaoSenha(models.Model):
     @classmethod
     def pendentes(cls):
         return cls.objects.filter(atendida_em__isnull=True)
+
+
+class InscricaoPush(models.Model):
+    """Um aparelho (navegador/PWA) inscrito para receber notificações push.
+
+    O mesmo endpoint é sempre um aparelho só: se outra pessoa entra no
+    aparelho compartilhado, a inscrição passa para ela (ver pwa_views) e o
+    logout desfaz o vínculo, para ninguém receber aviso do outro.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inscricoes_push')
+    endpoint = models.CharField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    navegador = models.CharField(max_length=300, blank=True)
+    criada_em = models.DateTimeField(auto_now_add=True)
+    atualizada_em = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Push — {self.user.username} ({self.navegador[:40]})'

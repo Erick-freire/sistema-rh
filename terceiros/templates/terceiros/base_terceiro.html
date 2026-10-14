@@ -6,7 +6,7 @@
 Shell do responsável de empresa terceira: mesmo esqueleto do sistema principal
 (toasts, modais, CSS, PWA, gaveta no mobile), sidebar própria.
 
-Sobrescreve só `menu`, `topbar` e `barra_inferior` do `funcionarios/base.html`.
+Sobrescreve só `menu`, `appbar_titulo`, `appbar_avatar` e `barra_inferior` do `funcionarios/base.html`.
 A sidebar do RH/gestor/colaborador nunca aparece aqui: o responsável é um tipo
 de conta paralelo, sem `Usuario` e fora do sistema de papéis, e as telas dele
 não têm nada em comum com as de CLT.
@@ -23,14 +23,6 @@ troca de senha, por exemplo, é servida por uma view do app `funcionarios`).
     <span class="sidebar__brand-mark"><img src="{% static 'img/logo-sotrigo.png' %}" alt="Sotrigo"></span>
     Portal do Prestador
     <label for="menu-toggle" class="sidebar__close" aria-label="Fechar menu">{% icon 'x' %}</label>
-</div>
-
-<div class="sidebar__user">
-    <span class="avatar avatar--sm avatar--brand">{{ responsavel_atual.iniciais }}</span>
-    <div>
-        <div class="sidebar__user-name">{{ responsavel_atual.nome }}</div>
-        <div class="sidebar__user-role">{{ responsavel_atual.empresa.nome_curto }}</div>
-    </div>
 </div>
 
 <nav class="sidebar__nav">
@@ -50,19 +42,24 @@ troca de senha, por exemplo, é servida por uma view do app `funcionarios`).
     </ul>
 </nav>
 
-<ul>
-    <li class="sair"><a href="{% url 'logout' %}">{% icon 'log-out' %} Sair</a></li>
-</ul>
+<div class="sidebar__rodape">
+    <div class="sidebar__user">
+        <span class="avatar avatar--sm avatar--claro">{{ responsavel_atual.iniciais }}</span>
+        <span class="sidebar__user-info">
+            <span class="sidebar__user-name">{{ responsavel_atual.nome }}</span>
+            <span class="sidebar__user-role">{{ responsavel_atual.empresa.nome_curto }}</span>
+        </span>
+    </div>
+    <a href="{% url 'logout' %}" class="sidebar__sair" title="Sair" aria-label="Sair">{% icon 'log-out' %}</a>
+</div>
 {% endblock %}
 
-{% block topbar %}
-<div class="topbar__user">
-    <span class="avatar avatar--brand">{{ responsavel_atual.iniciais }}</span>
-    <div class="topbar__user-info">
-        <div class="topbar__user-name">{{ responsavel_atual.nome }}</div>
-        <div class="topbar__user-role">{{ responsavel_atual.empresa.nome_curto }}</div>
-    </div>
-</div>
+{% block appbar_titulo %}<img src="{% static 'img/logo-sotrigo.png' %}" alt="">Portal do Prestador{% endblock %}
+
+{% block appbar_avatar %}
+<span class="appbar__avatar" title="{{ responsavel_atual.nome }}">
+    <span class="avatar avatar--claro">{{ responsavel_atual.iniciais }}</span>
+</span>
 {% endblock %}
 
 {% block barra_inferior %}

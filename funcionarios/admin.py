@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Atestado, Setor, Funcionario, Usuario, TipoDocumento, Documento, TermoComodato, ItemComodato, ItemCatalogoComodato,
-    ItemCatalogoEPI, FichaEPI, ItemEPI, OcorrenciaEPI, MatrizEpiSetor,
+    ItemCatalogoEPI, FichaEPI, ItemEPI, OcorrenciaEPI, MatrizEpiSetor, InscricaoPush,
 )
 
 
@@ -83,3 +83,10 @@ class UsuarioAdmin(admin.ModelAdmin):
     list_filter = ('papel',)
     search_fields = ('funcionario__nome', 'user__username', 'login_gestor')
 admin.site.register(TermoComodato, TermoComodatoAdmin)
+
+
+@admin.register(InscricaoPush)
+class InscricaoPushAdmin(admin.ModelAdmin):
+    list_display = ('user', 'navegador', 'criada_em', 'atualizada_em')
+    search_fields = ('user__username', 'user__usuario__funcionario__nome')
+    readonly_fields = ('endpoint', 'p256dh', 'auth', 'navegador', 'criada_em', 'atualizada_em')

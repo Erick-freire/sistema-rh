@@ -1,8 +1,11 @@
+from django.conf import settings
+
 from ponto.models import AjustePonto
 from terceiros.models import EmpresaTerceira
 
 from .models import AvisoFerias, FichaEPI, SolicitacaoFerias, SolicitacaoSenha, TermoComodato, Usuario
 from .perfis import responsavel_terceiro_de
+from .pwa_views import CHAVE_SESSAO_PUSH
 
 # Rotas que a sidebar do Portal do Prestador acende sob "Funcionários" -- a
 # lista da equipe e tudo que se abre a partir dela. Fica aqui, e não no
@@ -30,6 +33,12 @@ def usuario_logado(request):
         }
 
     contexto = {'usuario_atual': usuario, 'responsavel_atual': None}
+
+    # Notificações push: só para quem tem `Usuario` (o Portal do Prestador não
+    # recebe) e só com as chaves VAPID configuradas.
+    if settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY:
+        contexto['push_chave_publica'] = settings.VAPID_PUBLIC_KEY
+        contexto['push_inscrito_na_sessao'] = bool(request.session.get(CHAVE_SESSAO_PUSH))
 
     if usuario.papel == 'gestor':
         contexto['badge_ferias_gestor'] = SolicitacaoFerias.objects.filter(

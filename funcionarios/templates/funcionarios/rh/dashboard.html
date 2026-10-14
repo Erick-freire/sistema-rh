@@ -2,14 +2,24 @@
 {% load rh_icons %}
 
 {% block titulo %}
-Painel do RH
+{% if usuario_atual.papel == 'gestor' %}Painel do Gestor{% else %}Painel do RH{% endif %}
+{% endblock %}
+
+{% block appbar_hero %}
+{% include 'funcionarios/_saudacao.html' with nome=nome_usuario hero=True %}
 {% endblock %}
 
 {% block conteudo %}
-<h1>{{ saudacao }}, {{ nome_usuario }}</h1>
-<p class="item-card__subtitulo" style="margin-bottom: 20px;">
-    {{ data_extenso }} · {{ total_itens_acao }} ite{{ total_itens_acao|pluralize:"m,ns" }} esperando o RH
-</p>
+<div class="pagina-topo pagina-topo--inicio">
+    {% include 'funcionarios/_saudacao.html' with nome=nome_usuario %}
+    <div class="pagina-topo__acoes">
+        {% if usuario_atual.papel == 'gestor' %}
+        <a href="{% url 'gestor_listar_ferias' %}" class="btn-primario btn-pilula">{% icon 'umbrella' %} Férias da equipe</a>
+        {% else %}
+        <a href="{% url 'cadastrar_funcionario' %}" class="btn-primario btn-pilula">{% icon 'plus' %} Cadastrar funcionário</a>
+        {% endif %}
+    </div>
+</div>
 
 {% if avisos_vencendo_30_dias %}
 <div class="alert alert--aviso alert--com-acao">
@@ -35,12 +45,6 @@ Painel do RH
         <div class="valor">{{ ferias_aguardando_gestor }}</div>
         {% if dias_mais_antiga_gestor %}<div class="stat-card__sub stat-card__sub--alerta">mais antiga: {{ dias_mais_antiga_gestor }} dia{{ dias_mais_antiga_gestor|pluralize }}</div>{% endif %}
     </a>
-    {% else %}
-    <div class="stat-card">
-        <div class="rotulo">Férias com o gestor</div>
-        <div class="valor">{{ ferias_aguardando_gestor }}</div>
-        {% if dias_mais_antiga_gestor %}<div class="stat-card__sub stat-card__sub--alerta">mais antiga: {{ dias_mais_antiga_gestor }} dia{{ dias_mais_antiga_gestor|pluralize }}</div>{% endif %}
-    </div>
     {% endif %}
     <a href="{% url 'concluir_ferias' %}" class="stat-card">
         <div class="rotulo">Férias com o RH</div>
@@ -49,44 +53,138 @@ Painel do RH
     </a>
 </div>
 
-<div class="duas-colunas">
-    <div class="card">
-        <div class="card__header">
-            <span class="card__title">Funcionários por setor</span>
-        </div>
-        {% for item in funcionarios_por_setor %}
-        <div class="setor-item">
-            <div class="setor-item__topo">
-                <span>{{ item.setor__nome }}</span>
-                <span class="setor-item__valor">{{ item.total }}</span>
+<div class="inicio-grid">
+    <div class="inicio-coluna">
+        <section class="inicio-bloco--topo">
+            <div class="secao-topo">
+                <span class="secao-topo__titulo">Precisa da sua ação</span>
+                {% if total_itens_acao %}<span class="secao-topo__info">{{ total_itens_acao }} ite{{ total_itens_acao|pluralize:"m,ns" }} esperando ação</span>{% endif %}
             </div>
-            <div class="progress">
-                <div class="progress__bar" style="width: {% widthratio item.total maior_total_setor 100 %}%;"></div>
+            <div class="lista-agrupada lista-agrupada--acoes">
+                {% for item in itens_acao %}
+                <a href="{{ item.url }}" class="lista-agrupada__item">
+                    {% if 'contrato' in item.titulo %}
+                    <span class="lista-agrupada__icone">{% icon 'pen' %}</span>
+                    {% elif 'validar' in item.titulo %}
+                    <span class="lista-agrupada__icone">{% icon 'check-square' %}</span>
+                    {% elif 'venc' in item.titulo %}
+                    <span class="lista-agrupada__icone lista-agrupada__icone--alerta">{% icon 'umbrella' %}</span>
+                    {% elif 'férias' in item.titulo %}
+                    <span class="lista-agrupada__icone">{% icon 'umbrella' %}</span>
+                    {% elif 'ponto' in item.titulo %}
+                    <span class="lista-agrupada__icone">{% icon 'clock' %}</span>
+                    {% else %}
+                    <span class="lista-agrupada__icone">{% icon 'file' %}</span>
+                    {% endif %}
+                    <span class="lista-agrupada__corpo">
+                        <span class="lista-agrupada__titulo">{{ item.titulo }}</span>
+                        <span class="lista-agrupada__sub">{{ item.subtitulo }}</span>
+                    </span>
+                    <span class="lista-agrupada__acao">Resolver</span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                {% empty %}
+                <div class="lista-agrupada__vazio">{% icon 'check-circle' %} Tudo em dia por aqui.</div>
+                {% endfor %}
             </div>
-        </div>
-        {% empty %}
-        <p>Nenhum funcionário ativo neste escopo.</p>
-        {% endfor %}
-    </div>
+        </section>
 
-    <div class="card">
-        <div class="card__header">
-            <span class="card__title">Precisa da sua ação</span>
-            <a href="{% url 'dashboard' %}" class="card__link">Ver tudo</a>
-        </div>
-        <div class="lista-cards">
-            {% for item in itens_acao %}
-            <a href="{{ item.url }}" class="item-card">
-                <div class="item-card__corpo">
-                    <div class="item-card__titulo">{{ item.titulo }}</div>
-                    <div class="item-card__subtitulo">{{ item.subtitulo }}</div>
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Funcionários por setor</span>
+            </div>
+            {% for item in funcionarios_por_setor %}
+            <div class="setor-item">
+                <div class="setor-item__topo">
+                    <span>{{ item.setor__nome }}</span>
+                    <span class="setor-item__valor">{{ item.total }}</span>
                 </div>
-                {% icon 'chevron-right' %}
-            </a>
+                <div class="progress">
+                    <div class="progress__bar" style="width: {% widthratio item.total maior_total_setor 100 %}%;"></div>
+                </div>
+            </div>
             {% empty %}
-            <p style="color: var(--color-text-muted); font-size: 0.9rem;">Tudo em dia por aqui.</p>
+            <p>Nenhum funcionário ativo neste escopo.</p>
             {% endfor %}
         </div>
+    </div>
+
+    <div class="inicio-coluna">
+        <section class="inicio-bloco--topo">
+            <div class="secao-topo">
+                <span class="secao-topo__titulo">Atalhos</span>
+            </div>
+            <div class="lista-agrupada lista-agrupada--atalhos">
+                {% if usuario_atual.papel == 'gestor' %}
+                <a href="{% url 'listar_funcionarios' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'users' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Minha equipe</span></span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'gestor_listar_ferias' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'umbrella' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Férias da equipe</span></span>
+                    {% if badge_ferias_total %}<span class="nav-badge">{{ badge_ferias_total }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'ponto:ponto_equipe' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'clock' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Ponto da equipe</span></span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                {% endif %}
+                {% if usuario_atual.eh_dp_ou_rh %}
+                {% if usuario_atual.papel != 'gestor' %}{# gestor com acesso de RH já tem equipe e férias acima #}
+                <a href="{% url 'listar_funcionarios' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'users' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Funcionários</span></span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'concluir_ferias' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'umbrella' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Férias</span></span>
+                    {% if badge_ferias_total %}<span class="nav-badge">{{ badge_ferias_total }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                {% endif %}
+                <a href="{% url 'ponto:ajustes_pendentes' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'clock' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Correções de ponto</span></span>
+                    {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'terceiros:listar_empresas' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'briefcase' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Terceiros</span></span>
+                    {% if badge_terceiros %}<span class="nav-badge">{{ badge_terceiros }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'listar_comodatos' %}{% if badge_comodatos %}?pendentes=1{% endif %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'file' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Comodatos</span></span>
+                    {% if badge_comodatos %}<span class="nav-badge">{{ badge_comodatos }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'pedidos_senha' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'key' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Pedidos de senha</span></span>
+                    {% if badge_pedidos_senha %}<span class="nav-badge">{{ badge_pedidos_senha }}</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                {% endif %}
+                <a href="{% url 'solicitar_ferias' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'calendar-plus' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Minhas férias</span></span>
+                    {% if aviso_ferias_pendente %}<span class="nav-badge">1</span>{% endif %}
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                <a href="{% url 'meus_documentos' %}" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'folder' %}</span>
+                    <span class="lista-agrupada__corpo"><span class="lista-agrupada__titulo">Meus documentos</span></span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+            </div>
+        </section>
     </div>
 </div>
 {% endblock %}

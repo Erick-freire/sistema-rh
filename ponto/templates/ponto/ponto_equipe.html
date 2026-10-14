@@ -1,0 +1,47 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Ponto da Equipe{% endblock %}
+
+{% block conteudo %}
+<h1>Ponto da equipe</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    Batidas de cada funcionário do seu setor no dia. Toque no nome para ver o espelho completo. Correções são pedidas pelo próprio colaborador e analisadas pelo RH.
+</p>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+        <a href="?data={{ dia_anterior }}" class="pagina-link">{% icon 'arrow-left' %} Dia anterior</a>
+        <strong>{% if eh_hoje %}Hoje, {% endif %}{{ data|date:'d/m/Y' }} · {{ data|dia_semana_curto }}</strong>
+        {% if dia_seguinte %}
+        <a href="?data={{ dia_seguinte }}" class="pagina-link">Dia seguinte {% icon 'chevron-right' %}</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+    </div>
+
+    <div class="lista-cards">
+        {% for linha in linhas %}
+        <div class="item-card item-card--ponto">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo"><a href="{% url 'ponto:ponto_equipe_funcionario' linha.funcionario.id %}">{{ linha.funcionario.nome }}</a></div>
+                <div class="item-card__subtitulo">{{ linha.funcionario.cargo }} · {{ linha.funcionario.setor }}</div>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Esperado</span>
+                <span class="item-card__campo-valor">{% if linha.dia.entrada_esperada and linha.dia.saida_esperada %}{{ linha.dia.entrada_esperada|time:'H:i' }} – {{ linha.dia.saida_esperada|time:'H:i' }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Batidas registradas</span>
+                <span class="item-card__campo-valor">{% for evento in linha.dia.marcacoes %}{{ evento.momento|time:'H:i' }}{% if evento.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}{% if not linha.dia.marcacoes %}—{% endif %}</span>
+            </div>
+            <div class="item-card__extra">
+                <span class="badge-status badge-status--{{ linha.situacao_cor }}">{{ linha.situacao_texto }}</span>
+            </div>
+        </div>
+        {% empty %}
+        <p class="item-card__subtitulo">Nenhum funcionário ativo no seu setor.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

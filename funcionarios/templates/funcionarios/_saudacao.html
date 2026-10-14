@@ -1,0 +1,14 @@
+{% comment %}
+Saudação da tela inicial ("Boa tarde, Fulano" + data). Usada duas vezes por
+tela: no cabeçalho da página (desktop) e, com `hero=True`, dentro da barra
+colorida do topo no celular.
+
+Se a view já manda `saudacao` e `data_extenso` (painel do RH/gestor), usa elas;
+senão calcula aqui pelo relógio do servidor (fuso de settings.TIME_ZONE).
+Parâmetro: `nome`.
+{% endcomment %}
+{% now "G" as hora_atual %}{% now "l, j \d\e F" as data_hoje %}
+<div{% if hero %} class="appbar__hero"{% endif %}>
+    <h1>{% if saudacao %}{{ saudacao }}{% elif hora_atual|add:0 < 12 %}Bom dia{% elif hora_atual|add:0 < 18 %}Boa tarde{% else %}Boa noite{% endif %}, {{ nome }}</h1>
+    <p class="pagina-topo__sub">{% if data_extenso %}{{ data_extenso }}{% else %}{{ data_hoje|lower|cut:"-feira"|capfirst }}{% endif %}</p>
+</div>

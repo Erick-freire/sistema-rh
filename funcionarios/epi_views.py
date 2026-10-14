@@ -26,6 +26,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from xhtml2pdf import pisa
 
+from . import notificacoes
 from .decorators import papel_required
 from .forms import FichaEPIForm, OcorrenciaEPIForm, RejeitarDocumentoForm, item_epi_formset
 from .models import FichaEPI, Funcionario, ItemCatalogoEPI, ItemEPI, MatrizEpiSetor, OcorrenciaEPI, Setor, Usuario
@@ -199,6 +200,7 @@ def reenviar_epi_assinado_view(request, ficha_id):
         ficha.status = 'em_validacao'
         ficha.motivo_rejeicao = ''
         ficha.save()
+        notificacoes.ficha_epi_assinada_enviada(ficha)
         messages.success(request, 'Ficha de EPI assinada enviada. Aguarde a validação da Segurança do Trabalho.')
 
     return redirect('meus_documentos')

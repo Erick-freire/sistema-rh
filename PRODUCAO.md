@@ -70,3 +70,33 @@ levantar erro — ver `EncryptedTextField.to_python`).
 3. Sem as chaves (padrão em dev), o desafio simplesmente não aparece — dá
    para subir em produção antes de ter a conta pronta e ligar depois, sem
    deploy extra.
+
+## 5. Notificações push (PWA)
+
+1. `pip install -r requirements.txt` (traz o `pywebpush`) e
+   `python manage.py migrate`.
+2. Gerar as chaves **uma vez só** e colar a saída no `.env`:
+
+   ```
+   python manage.py gerar_chaves_vapid
+   ```
+
+   Trocar as chaves depois desliga a inscrição de todos os aparelhos (cada
+   um volta a se inscrever sozinho na próxima vez que abrir o sistema, mas
+   até lá não recebe nada). Opcional: `VAPID_CONTATO=mailto:...` (padrão
+   `tisuporte@sotrigo.com.br`).
+3. Sem as chaves, o push fica desligado: o convite e o botão em "Meu Perfil"
+   não aparecem.
+4. Push exige HTTPS (item 2). No iPhone, só funciona com o app instalado na
+   Tela de Início (iOS 16.4 ou mais novo).
+5. O servidor precisa conseguir sair para a internet em HTTPS para
+   `fcm.googleapis.com`, `*.push.apple.com`, `*.push.services.mozilla.com` e
+   `*.notify.windows.com`.
+6. Lembrete diário de pendências (documento a enviar, contrato ou comodato a
+   assinar), às 09:00:
+
+   ```
+   schtasks /create /tn "SistemaRH\Lembrar pendencias 09h" /sc daily /st 09:00 /ru SYSTEM /rl HIGHEST /tr "\"C:\caminho\sistema-rh\scripts\lembrar_pendencias.bat\""
+   ```
+
+   Log em `logs\lembrar_pendencias.log`.

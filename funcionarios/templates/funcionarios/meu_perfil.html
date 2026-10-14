@@ -11,27 +11,29 @@ Meu Perfil
 <div class="duas-colunas">
     <form method="post" enctype="multipart/form-data" action="{% url 'atualizar_foto' %}">
         {% csrf_token %}
-        <div class="card" style="text-align: center;">
-            {% if funcionario.foto %}
-            <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}" style="width: 96px; height: 96px; border-radius: 999px; object-fit: cover; margin-bottom: 12px;">
-            {% else %}
-            <span class="avatar avatar--lg" style="width: 96px; height: 96px; font-size: 1.6rem; margin-bottom: 12px;">{{ funcionario.iniciais }}</span>
-            {% endif %}
-
-            <div>
-                <label for="{{ foto_form.foto.id_for_label }}" class="btn-outline btn-sm" style="cursor: pointer;">{% icon 'camera' %} Trocar foto</label>
+        <div class="card">
+            <div class="perfil-cabecalho">
+                <div class="perfil-foto">
+                    {% if funcionario.foto %}
+                    <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}">
+                    {% else %}
+                    <span class="avatar">{{ funcionario.iniciais }}</span>
+                    {% endif %}
+                    <label for="{{ foto_form.foto.id_for_label }}" class="perfil-foto__botao" title="Trocar foto" aria-label="Trocar foto">{% icon 'camera' %}</label>
+                </div>
                 <div style="display: none;">{{ foto_form.foto }}</div>
+                <div class="perfil-nome">{{ funcionario.nome }}</div>
+                <div class="perfil-cargo">{{ funcionario.cargo }}</div>
             </div>
 
-            <div style="text-align: left; margin-top: 24px;">
-                <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); margin-bottom: 6px;">Dados do RH</div>
-                <div class="linha-dado"><span class="linha-dado__rotulo">Nome</span><span class="linha-dado__valor">{{ funcionario.nome }}</span></div>
-                <div class="linha-dado"><span class="linha-dado__rotulo">CPF</span><span class="linha-dado__valor">{{ funcionario.cpf }}</span></div>
-                <div class="linha-dado"><span class="linha-dado__rotulo">Matrícula</span><span class="linha-dado__valor">{{ funcionario.matricula }}</span></div>
-                <div class="linha-dado"><span class="linha-dado__rotulo">Cargo</span><span class="linha-dado__valor">{{ funcionario.cargo }}</span></div>
-                <div class="linha-dado"><span class="linha-dado__rotulo">Setor</span><span class="linha-dado__valor">{{ funcionario.setor }}</span></div>
-                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 10px;">Para corrigir estes dados, fale com o RH.</p>
+            <div class="dados-lista">
+                <div class="dados-lista__item"><span class="dados-lista__rotulo">Nome</span><span class="dados-lista__valor">{{ funcionario.nome }}</span></div>
+                <div class="dados-lista__item"><span class="dados-lista__rotulo">CPF</span><span class="dados-lista__valor">{{ funcionario.cpf }}</span></div>
+                <div class="dados-lista__item"><span class="dados-lista__rotulo">Matrícula</span><span class="dados-lista__valor">{{ funcionario.matricula }}</span></div>
+                <div class="dados-lista__item"><span class="dados-lista__rotulo">Cargo</span><span class="dados-lista__valor">{{ funcionario.cargo }}</span></div>
+                <div class="dados-lista__item"><span class="dados-lista__rotulo">Setor</span><span class="dados-lista__valor">{{ funcionario.setor }}</span></div>
             </div>
+            <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 10px;">Para corrigir estes dados, fale com o RH.</p>
         </div>
     </form>
 
@@ -132,6 +134,17 @@ Meu Perfil
                 </div>
                 <a href="{% url 'trocar_senha' %}" class="btn-outline btn-sm">Trocar senha</a>
             </div>
+
+            {% if push_chave_publica %}
+            <div class="card" style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div>
+                    <div class="card__title">Notificações</div>
+                    <div style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 4px;" data-push-estado>Verificando este aparelho…</div>
+                </div>
+                <button type="button" class="btn-outline btn-sm" data-push-ativar hidden>Ativar</button>
+                <button type="button" class="btn-outline btn-sm" data-push-desativar hidden>Desativar</button>
+            </div>
+            {% endif %}
         </div>
 </div>
 

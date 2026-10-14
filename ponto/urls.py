@@ -36,6 +36,10 @@ urlpatterns = [
     path('meu-ponto/solicitar-ajuste/', views.solicitar_ajuste_ponto_view, name='solicitar_ajuste_ponto'),
     path('meus-ajustes/', views.meus_ajustes_view, name='meus_ajustes'),
 
+    # Gestor -- não bate ponto, acompanha o da equipe
+    path('equipe/', views.ponto_equipe_view, name='ponto_equipe'),
+    path('equipe/<int:funcionario_id>/', views.ponto_equipe_funcionario_view, name='ponto_equipe_funcionario'),
+
     # RH — fila de aprovação
     path('ajustes/pendentes/', views.ajustes_pendentes_view, name='ajustes_pendentes'),
     path('ajustes/<int:ajuste_id>/aprovar/', views.aprovar_ajuste_view, name='aprovar_ajuste'),

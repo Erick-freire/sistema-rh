@@ -32,7 +32,7 @@ Meus Documentos
     <div class="card__title" style="margin-bottom: 12px;">Comodatos</div>
     <div class="lista-cards">
         {% for comodato in comodatos %}
-        <div class="item-card">
+        <div class="item-card item-card--termo">
             <div class="item-card__corpo">
                 <div class="item-card__titulo">Comodato de {{ comodato.get_modalidade_display }}</div>
                 <div class="item-card__subtitulo">{{ comodato.data_emprestimo|date:"d/m/Y" }}</div>
@@ -63,7 +63,7 @@ Meus Documentos
     <div class="card__title" style="margin-bottom: 12px;">Fichas de EPI</div>
     <div class="lista-cards">
         {% for ficha in fichas_epi %}
-        <div class="item-card">
+        <div class="item-card item-card--termo">
             <div class="item-card__corpo">
                 <div class="item-card__titulo">Entrega de EPI</div>
                 <div class="item-card__subtitulo">{{ ficha.data_entrega|date:"d/m/Y" }}</div>
