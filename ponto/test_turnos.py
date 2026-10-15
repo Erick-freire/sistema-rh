@@ -152,6 +152,19 @@ class AgruparBatidasTests(unittest.TestCase):
         self.assertEqual(len(r), 2)
         self.assertIsNone(r[1].previsto)
 
+    def test_aceita_objetos_de_batida_com_chave(self):
+        class Batida:
+            def __init__(self, momento, manual=False):
+                self.momento, self.manual = momento, manual
+
+        previstos = [turno_previsto_do_dia(date(2026, 7, 6), [time(22), time(6)])]
+        batidas = [Batida(dt(6, 21, 58)), Batida(dt(7, 6, 2), manual=True), Batida(dt(9, 8))]
+        r = agrupar_batidas_em_turnos(previstos, batidas, chave=lambda b: b.momento)
+        self.assertEqual([b.momento for b in r[0].momentos], [dt(6, 21, 58), dt(7, 6, 2)])
+        self.assertTrue(r[0].momentos[1].manual)
+        self.assertIsNone(r[1].previsto)           # a batida de dia 9 sobrou e virou grupo fora de escala
+        self.assertEqual(r[1].data, date(2026, 7, 9))
+
     def test_ordem_das_batidas_nao_importa(self):
         previstos = [turno(6, (8, 0), (17, 0))]
         r = agrupar_batidas_em_turnos(previstos, [dt(6, 17), dt(6, 8)])

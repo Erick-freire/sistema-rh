@@ -18,14 +18,24 @@ Regras (confirmadas com o usuário):
 Turno que atravessa a meia-noite (ex.: 12x36 noturno 18:00-06:00, horário
 1003): a batida inteira fica no dia em que o turno COMEÇOU, nunca dividida
 entre os dois dias -- é assim que o Secullum já trata (conferido direto no
-sistema deles). Ver `_janela_do_dia`.
+sistema deles).
+
+Como as batidas são encaixadas nos dias: em vez de buscar "as batidas do dia"
+(00:00 a 24:00), o cálculo monta os turnos PREVISTOS do período e encaixa cada
+batida no turno a que pertence (ver `turnos.agrupar_batidas_em_turnos`). Cada
+turno tem uma janela com margem antes e depois, o que cobre entrada
+antecipada e saída tardia, inclusive em turno noturno. Batida que não cai em
+nenhum turno (folga, sem jornada) fica no dia em que foi batida.
 """
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Optional
 
 from django.utils import timezone
 
 from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio
+from .turnos import agrupar_batidas_em_turnos, turno_previsto_do_dia
 from .utils import intervalo_do_dia
 
 # `funcionario.solicitacoes_ferias`/`funcionario.atestados` são relations
@@ -52,6 +62,10 @@ def _dias_atestado(funcionario):
             data += timedelta(days=1)
     return dias
 
+
+def _dias_feriado(data_inicio, data_fim):
+    return {feriado.data for feriado in Feriado.objects.filter(data__gte=data_inicio, data__lte=data_fim)}
+
 # date.isoweekday() (1=segunda...7=domingo) já bate exatamente com HorarioDia.dia_semana.
 
 
@@ -61,9 +75,12 @@ class _Evento:
     Um ponto no tempo pra fim de pareamento -- tanto faz se veio de uma
     MarcacaoRelogio real ou de um AjustePonto manual, o pareamento é sempre
     por ordem cronológica. `manual` é só pra sinalizar o "*" na tela.
+    `marcacao_id` só existe nas batidas reais: é como um ajuste que corrige uma
+    marcação (`marcacao_original`) a tira da conta.
     """
     momento: object
     manual: bool
+    marcacao_id: Optional[int] = None
 
 
 def _segundos_esperados(horario_dia):
@@ -127,14 +144,12 @@ def _atravessa_meia_noite(horario_dia):
 
 def _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem):
     """
-    (início, fim) aware usada pra buscar as marcações do dia `data`.
-    Normalmente é meia-noite a meia-noite local (`intervalo_do_dia`). Mas se
-    o turno de HOJE atravessa a meia-noite, a janela vai da hora da primeira
-    entrada até a mesma hora do dia seguinte -- assim a madrugada inteira
-    (que no relógio já é "amanhã") fica contada no dia em que o turno
-    começou, igual o Secullum. E se foi o turno de ONTEM que atravessou a
-    meia-noite, a janela de hoje só começa depois que aquele turno termina,
-    pra não contar a mesma madrugada nos dois dias.
+    LEGADO: o cálculo não usa mais esta função (as batidas agora são encaixadas
+    por `turnos.agrupar_batidas_em_turnos`, que também cobre entrada antecipada
+    em turno noturno). Foi mantida só porque testes antigos podem referenciá-la;
+    pode ser removida quando eles forem migrados.
+
+    (início, fim) aware que era usada pra buscar as marcações do dia `data`.
     """
     if _atravessa_meia_noite(horario_dia_hoje):
         inicio = timezone.make_aware(datetime.combine(data, _primeira_entrada(horario_dia_hoje)))
@@ -153,33 +168,138 @@ def _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem):
 MAX_PARES_EXIBIDOS = 5  # mesmo limite do espelho do Secullum (Ent.1..Ent.5/Saí.1..Saí.5)
 
 
+def _horarios_em_ordem(horario_dia):
+    """Os horários do HorarioDia na ordem em que acontecem (entrada1, saída1, entrada2...), sem os vazios."""
+    if horario_dia is None:
+        return []
+    campos = (
+        horario_dia.entrada1, horario_dia.saida1,
+        horario_dia.entrada2, horario_dia.saida2,
+        horario_dia.entrada3, horario_dia.saida3,
+    )
+    return [campo for campo in campos if campo]
+
+
+def _info_dos_dias(funcionario, data_inicio, data_fim, dias_ferias, dias_atestado, dias_feriado=frozenset()):
+    """
+    Para cada dia de `data_inicio` a `data_fim`: jornada vigente, HorarioDia efetivo
+    (None em folga, férias, atestado ou feriado) e as flags de férias/atestado/feriado.
+
+    Feriado: se o dia está cadastrado como feriado, o horário tem `considerar_feriados`
+    e a jornada NÃO é 12x36, o dia vira folga (esperado zero, sem falta); quem trabalha
+    nele recebe extra de 100%. No 12x36 o feriado é dia normal de trabalho. O intervalo
+    pedido vai além do período calculado (ver `calcular_periodo`), porque para
+    encaixar as batidas é preciso saber onde termina o turno anterior e onde
+    começa o seguinte.
+    """
+    info = {}
+    dia = data_inicio
+    while dia <= data_fim:
+        jornada = FuncionarioJornada.vigente_em(funcionario, dia)
+        em_ferias = dia in dias_ferias
+        em_atestado = not em_ferias and dia in dias_atestado
+
+        horario_dia, em_12x36 = None, False
+        em_feriado = False
+        if jornada is not None:
+            horario_dia, em_12x36 = _horario_do_dia(jornada, dia)
+            em_feriado = (
+                dia in dias_feriado and not em_12x36 and bool(jornada.horario.considerar_feriados)
+            )
+            # Em férias aprovadas, atestado ou feriado, o dia não tem jornada esperada --
+            # trata igual folga pro cálculo (0 esperado, sem desconto de falta),
+            # só troca o rótulo exibido (ver `situacao_do_dia`/templates).
+            if em_ferias or em_atestado or em_feriado:
+                horario_dia = None
+
+        info[dia] = {
+            'jornada': jornada,
+            'horario_dia': horario_dia,
+            'em_12x36': em_12x36,
+            'em_ferias': em_ferias,
+            'em_atestado': em_atestado,
+            'em_feriado': em_feriado,
+        }
+        dia += timedelta(days=1)
+    return info
+
+
+def _eventos_por_data(funcionario, data_inicio, data_fim, info=None):
+    """
+    {dia: [eventos em ordem cronológica]} para cada dia de `data_inicio` a `data_fim`.
+
+    Marcações reais encaixadas no turno de cada dia + ajustes manuais aprovados.
+    Um ajuste com `marcacao_original` substitui a marcação real que corrige (a
+    MarcacaoRelogio em si nunca é alterada/apagada, só sai da conta); sem
+    `marcacao_original` é uma batida que faltou e vira um evento a mais.
+
+    Os ajustes continuam presos ao dia indicado em `AjustePonto.data`, como antes.
+    Uma saída de turno noturno que acontece depois da meia-noite ainda precisa
+    ser tratada na tela de ajuste (data real da batida).
+    """
+    if info is None:
+        inicio_info, fim_info = data_inicio - timedelta(days=2), data_fim + timedelta(days=2)
+        info = _info_dos_dias(
+            funcionario, inicio_info, fim_info,
+            _dias_ferias_aprovadas(funcionario), _dias_atestado(funcionario),
+            _dias_feriado(inicio_info, fim_info),
+        )
+    tz = timezone.get_current_timezone()
+
+    previstos = []
+    for dia, dados in info.items():
+        turno = turno_previsto_do_dia(dia, _horarios_em_ordem(dados['horario_dia']), tzinfo=tz)
+        if turno is not None:
+            previstos.append(turno)
+
+    inicio_busca = intervalo_do_dia(data_inicio - timedelta(days=1))[0]
+    fim_busca = intervalo_do_dia(data_fim + timedelta(days=1))[1]
+    reais = [
+        _Evento(momento=m.momento, manual=False, marcacao_id=m.id)
+        for m in (
+            MarcacaoRelogio.objects
+            .filter(funcionario=funcionario, momento__gte=inicio_busca, momento__lt=fim_busca)
+            .order_by('momento')
+        )
+    ]
+
+    reais_por_data = defaultdict(list)
+    for turno in agrupar_batidas_em_turnos(previstos, reais, tzinfo=tz, chave=lambda e: e.momento):
+        reais_por_data[turno.data].extend(turno.momentos)
+
+    ajustes_por_data = defaultdict(list)
+    for ajuste in AjustePonto.objects.filter(
+        funcionario=funcionario, data__gte=data_inicio, data__lte=data_fim, status='aprovado'
+    ):
+        ajustes_por_data[ajuste.data].append(ajuste)
+
+    resultado = {}
+    dia = data_inicio
+    while dia <= data_fim:
+        ajustes = ajustes_por_data.get(dia, [])
+        ids_corrigidos = {a.marcacao_original_id for a in ajustes if a.marcacao_original_id}
+
+        eventos = [e for e in reais_por_data.get(dia, []) if e.marcacao_id not in ids_corrigidos]
+        for ajuste in ajustes:
+            momento = timezone.make_aware(datetime.combine(dia, ajuste.horario_ajustado))
+            eventos.append(_Evento(momento=momento, manual=True))
+        eventos.sort(key=lambda evento: evento.momento)
+
+        resultado[dia] = eventos
+        dia += timedelta(days=1)
+    return resultado
+
+
 def _eventos_do_dia(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
     """
-    Marcações reais do dia + ajustes manuais, mesclados em ordem cronológica.
-    Um ajuste com `marcacao_original` substitui a marcação real que corrige
-    (a MarcacaoRelogio em si nunca é alterada/apagada, só sai da conta);
-    sem `marcacao_original` é uma batida que faltou e vira um evento a mais.
+    Eventos de um único dia. Os parâmetros de horário não são mais usados (o
+    encaixe nos turnos olha os dias vizinhos sozinho); ficam só para não quebrar
+    quem ainda chama com eles.
     """
-    inicio, fim = _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem)
-    reais = list(
-        MarcacaoRelogio.objects
-        .filter(funcionario=funcionario, momento__gte=inicio, momento__lt=fim)
-        .order_by('momento')
-    )
-    ajustes = list(AjustePonto.objects.filter(funcionario=funcionario, data=data, status='aprovado'))
-    ids_corrigidos = {a.marcacao_original_id for a in ajustes if a.marcacao_original_id}
-
-    eventos = [_Evento(momento=m.momento, manual=False) for m in reais if m.id not in ids_corrigidos]
-    for ajuste in ajustes:
-        momento = timezone.make_aware(datetime.combine(data, ajuste.horario_ajustado))
-        eventos.append(_Evento(momento=momento, manual=True))
-    eventos.sort(key=lambda evento: evento.momento)
-    return eventos
+    return _eventos_por_data(funcionario, data, data)[data]
 
 
-def _marcacoes_pareadas(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
-    eventos = _eventos_do_dia(funcionario, data, horario_dia_hoje, horario_dia_ontem)
-
+def _parear_eventos(eventos):
     segundos_trabalhados = 0
     pares = []
     for i in range(0, len(eventos) - 1, 2):
@@ -191,6 +311,10 @@ def _marcacoes_pareadas(funcionario, data, horario_dia_hoje=None, horario_dia_on
         pares.append((eventos[-1], None))  # última batida sem par, sinalizada mas visível
 
     return eventos, pares[:MAX_PARES_EXIBIDOS], segundos_trabalhados, marcacao_impar
+
+
+def _marcacoes_pareadas(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
+    return _parear_eventos(_eventos_do_dia(funcionario, data, horario_dia_hoje, horario_dia_ontem))
 
 
 def _taxa_extra_do_dia(data, em_12x36):
@@ -211,48 +335,46 @@ def _horario_dia_de(funcionario, data):
 
 def calcular_periodo(funcionario, data_inicio, data_fim):
     dias = []
-    dia_atual = data_inicio
-    horario_dia_anterior = _horario_dia_de(funcionario, data_inicio - timedelta(days=1))
     dias_ferias = _dias_ferias_aprovadas(funcionario)
     dias_atestado = _dias_atestado(funcionario)
 
+    # Dois dias a mais de cada lado: o turno que começou antes do período pode
+    # terminar dentro dele, e o último turno do período pode terminar depois.
+    inicio_info, fim_info = data_inicio - timedelta(days=2), data_fim + timedelta(days=2)
+    info = _info_dos_dias(
+        funcionario, inicio_info, fim_info,
+        dias_ferias, dias_atestado, _dias_feriado(inicio_info, fim_info),
+    )
+    eventos_por_data = _eventos_por_data(funcionario, data_inicio, data_fim, info)
+
+    dia_atual = data_inicio
     while dia_atual <= data_fim:
-        jornada = FuncionarioJornada.vigente_em(funcionario, dia_atual)
-        em_ferias = dia_atual in dias_ferias
-        em_atestado = not em_ferias and dia_atual in dias_atestado
+        dados = info[dia_atual]
+        jornada = dados['jornada']
+        em_ferias = dados['em_ferias']
+        em_atestado = dados['em_atestado']
+        marcacoes, pares, segundos_trabalhados, marcacao_impar = _parear_eventos(eventos_por_data[dia_atual])
 
         if jornada is None:
             # Sem jornada cadastrada não quer dizer que o funcionário não bateu
             # ponto -- ainda mostramos as batidas reais do dia (só não há
             # esperado nenhum pra comparar, então não entra no total de horas).
-            marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(
-                funcionario, dia_atual, None, horario_dia_anterior
-            )
             dias.append({
                 'data': dia_atual, 'sem_jornada': True, 'marcacoes': marcacoes, 'pares': pares,
                 'entrada_esperada': None, 'saida_esperada': None,
                 'segundos_esperados': 0, 'segundos_trabalhados': segundos_trabalhados, 'saldo_segundos': 0,
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
                 'marcacao_impar': marcacao_impar, 'taxa_extra': None, 'folga': False,
-                'ferias': em_ferias, 'atestado': em_atestado,
+                'ferias': em_ferias, 'atestado': em_atestado, 'feriado': False,
             })
-            horario_dia_anterior = None
             dia_atual += timedelta(days=1)
             continue
 
-        horario_dia, em_12x36 = _horario_do_dia(jornada, dia_atual)
-        # Em férias aprovadas ou atestado, o dia não tem jornada esperada --
-        # trata igual folga pro cálculo (0 esperado, sem desconto de falta),
-        # só troca o rótulo exibido (ver `situacao_do_dia`/templates).
-        if em_ferias or em_atestado:
-            horario_dia = None
+        horario_dia = dados['horario_dia']
+        em_12x36 = dados['em_12x36']
         segundos_esperados = _segundos_esperados(horario_dia)
         entrada_esperada = _primeira_entrada(horario_dia) if horario_dia else None
         saida_esperada = _ultima_saida(horario_dia) if horario_dia else None
-        marcacoes, pares, segundos_trabalhados, marcacao_impar = _marcacoes_pareadas(
-            funcionario, dia_atual, horario_dia, horario_dia_anterior
-        )
-        horario_dia_anterior = horario_dia
         saldo_segundos = segundos_trabalhados - segundos_esperados
         taxa_extra = _taxa_extra_do_dia(dia_atual, em_12x36)
 
@@ -266,6 +388,7 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
             'folga': horario_dia is None or horario_dia.folga,
             'ferias': em_ferias,
             'atestado': em_atestado,
+            'feriado': dados['em_feriado'],
             'marcacoes': marcacoes,
             'pares': pares,
             'marcacao_impar': marcacao_impar,
@@ -329,6 +452,8 @@ def situacao_do_dia(dia, hoje):
         return 'Atestado', 'inativo', False
     if dia['sem_jornada']:
         return 'Sem jornada', 'inativo', False
+    if dia.get('feriado'):
+        return 'Feriado', 'inativo', False
     if dia['folga']:
         return 'Folga', 'inativo', False
 
