@@ -855,7 +855,7 @@ def _bater_ponto(funcionario, equipamento, dia, *horarios):
         momento = timezone.make_aware(datetime(dia.year, dia.month, dia.day, hora, minuto))
         marcacoes.append(MarcacaoRelogio.objects.create(
             equipamento=equipamento, funcionario=funcionario,
-            id_evento_dispositivo=f'{dia.isoformat()}-{i}', momento=momento,
+            id_evento_dispositivo=f'{funcionario.pk}-{dia.isoformat()}-{i}', momento=momento,
         ))
     return marcacoes
 
