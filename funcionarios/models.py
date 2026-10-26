@@ -70,6 +70,13 @@ class Funcionario(models.Model):
 
     nome = models.CharField(max_length=150)
     matricula = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    # 453 é o código de quase todos na planilha de fechamento de set/2026; os
+    # demais (454 a 466) vieram dela pelo `importar_fechamento_planilha`.
+    codigo_empresa = models.PositiveIntegerField(
+        'código da empresa',
+        default=453,
+        help_text='Código da empresa no sistema da contabilidade (coluna EMP do fechamento de folha).',
+    )
     sexo = models.CharField(
         max_length=15,
         choices=SEXO_CHOICES,
@@ -133,6 +140,14 @@ class Funcionario(models.Model):
     agencia = models.CharField(max_length=10, blank=True)
     numero_conta = models.CharField(max_length=20, blank=True)
     foto = models.ImageField(upload_to='fotos_perfil/', blank=True, null=True)
+    # Quem responde é o próprio colaborador, em Meu Perfil. Quem não usa não
+    # tem desconto de vale-transporte no fechamento de folha (app `folha`).
+    usa_vale_transporte = models.BooleanField(
+        'usa vale-transporte',
+        null=True,
+        blank=True,
+        help_text='Informado pelo colaborador em Meu Perfil. Vazio = ainda não respondeu.',
+    )
 
     def __str__(self):
         return f'{self.nome} ({self.matricula})'

@@ -56,7 +56,8 @@ class DivisaoPerfisTests(TestCase):
 
     def _salvar_cargo(self, cargo):
         return self.client.post(reverse('editar_dados_funcionario', args=[self.colaborador.id]), {
-            'matricula': '', 'cargo': cargo, 'setor': self.setor.id, 'data_admissao': '', 'salario': '',
+            'matricula': '', 'codigo_empresa': 453, 'cargo': cargo, 'setor': self.setor.id,
+            'data_admissao': '', 'salario': '',
         })
 
     def test_rh_altera_cargo_com_sugestoes_dos_cargos_existentes(self):

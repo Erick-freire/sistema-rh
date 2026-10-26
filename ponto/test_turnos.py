@@ -7,7 +7,9 @@ Rode com:   python manage.py test ponto.test_turnos
 import unittest
 from datetime import date, datetime, time, timedelta
 
-from .turnos import agrupar_batidas_em_turnos, turno_previsto_do_dia
+from .turnos import (
+    agrupar_batidas_em_turnos, em_hora_noturna, segundos_computados, segundos_noturnos, turno_previsto_do_dia,
+)
 
 
 def dt(dia, hora, minuto=0):
@@ -173,3 +175,20 @@ class AgruparBatidasTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class HoraNoturnaTests(unittest.TestCase):
+    """Faixa noturna 22:00-05:00 e a hora de 52min30s."""
+
+    def test_turno_da_noite_toda_tem_7h_noturnas(self):
+        self.assertEqual(segundos_noturnos(dt(6, 18), dt(7, 6)), 7 * 3600)
+
+    def test_conta_so_a_parte_dentro_da_faixa(self):
+        self.assertEqual(segundos_noturnos(dt(6, 21), dt(6, 23)), 3600)
+        self.assertEqual(segundos_noturnos(dt(7, 4), dt(7, 8)), 3600)
+
+    def test_turno_que_termina_as_22h_nao_tem_noturno(self):
+        self.assertEqual(segundos_noturnos(dt(6, 13), dt(6, 22)), 0)
+
+    def test_7h_de_relogio_valem_8h(self):
+        self.assertEqual(em_hora_noturna(7 * 3600), 8 * 3600)
+        self.assertEqual(segundos_computados(12 * 3600, 7 * 3600), 13 * 3600)

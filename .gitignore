@@ -5,3 +5,6 @@ db.sqlite3
 *.log
 media/
 importacoes/
+# Planilhas com dados reais (modelos de folha etc.)
+*.xlsx
+*.xls

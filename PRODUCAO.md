@@ -100,3 +100,13 @@ levantar erro — ver `EncryptedTextField.to_python`).
    ```
 
    Log em `logs\lembrar_pendencias.log`.
+7. Aviso diário ao RH e ao gestor de quem tirou menos intervalo que o mínimo
+   no dia anterior (1h acima de 6h trabalhadas, 15 min acima de 4h até 6h), às
+   09:00 (depois da coleta das 06:00, que traz a saída dos turnos noturnos):
+
+   ```
+   schtasks /create /tn "SistemaRH\Avisar intervalos curtos 09h" /sc daily /st 09:00 /ru SYSTEM /rl HIGHEST /tr "\"C:\caminho\sistema-rh\scripts\avisar_intervalos_curtos.bat\""
+   ```
+
+   Log em `logs\avisar_intervalos_curtos.log`. Para conferir os casos de um
+   dia sem mandar nada: `manage.py avisar_intervalos_curtos --data AAAA-MM-DD --dry-run`.

@@ -14,7 +14,7 @@ from funcionarios.decorators import papel_required
 from funcionarios.models import Funcionario, Usuario
 
 from . import services
-from .calculos import calcular_periodo, situacao_do_dia
+from .calculos import calcular_periodo, situacao_do_dia, valores_do_periodo
 from .forms import (
     AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, FeriadoForm, FuncionarioJornadaForm,
     HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
@@ -260,8 +260,14 @@ def editar_horario_view(request, horario_id):
         initial = DIAS_SEMANA_INICIAIS if not horario.dias.exists() else None
         formset = HorarioDiaFormSet(instance=horario, initial=initial)
 
+    # O horário não guarda histórico: o espelho de qualquer dia é calculado com
+    # os horários atuais. Quem usa ou já usou este horário tem os dias passados
+    # recalculados se ele for alterado -- a tela avisa antes de salvar.
+    pessoas_vinculadas = FuncionarioJornada.objects.filter(horario=horario).values('funcionario').distinct().count()
+
     return render(request, 'ponto/form_horario.html', {
         'form': form, 'formset': formset, 'horario': horario, 'dias_com_forms': _dias_com_forms(formset),
+        'pessoas_vinculadas': pessoas_vinculadas,
     })
 
 
@@ -284,6 +290,10 @@ def ajustar_marcacao_view(request, funcionario_id, data):
     Cálculo. Nunca mexe na MarcacaoRelogio original -- só cria um AjustePonto
     que o motor de cálculo passa a considerar no lugar dela (ou a mais, se
     for uma batida que faltou por completo).
+
+    A `data` da URL é a linha do espelho (dia em que o turno começou) e só
+    serve de sugestão: o ajuste guarda a data e a hora REAIS da batida, que o
+    RH confirma ou troca no formulário.
     """
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
     data_convertida = date.fromisoformat(data)
@@ -303,16 +313,15 @@ def ajustar_marcacao_view(request, funcionario_id, data):
         if form.is_valid():
             ajuste = form.save(commit=False)
             ajuste.funcionario = funcionario
-            ajuste.data = data_convertida
             ajuste.marcacao_original = marcacao_original
 
             ja_existe_aprovado = AjustePonto.objects.filter(
-                funcionario=funcionario, data=data_convertida, tipo_evento=ajuste.tipo_evento, status='aprovado',
+                funcionario=funcionario, data=ajuste.data, tipo_evento=ajuste.tipo_evento, status='aprovado',
             ).exists()
             if ja_existe_aprovado:
                 messages.error(
                     request,
-                    f'Já existe um ajuste aprovado pra {funcionario.nome} em {data_convertida.strftime("%d/%m/%Y")} '
+                    f'Já existe um ajuste aprovado pra {funcionario.nome} em {ajuste.data.strftime("%d/%m/%Y")} '
                     f'({ajuste.get_tipo_evento_display()}). Corrija ou remova o ajuste existente antes de lançar outro.',
                 )
                 return redirect(url_voltar)
@@ -325,12 +334,19 @@ def ajustar_marcacao_view(request, funcionario_id, data):
             ajuste.analisado_por = request.user
             ajuste.analisado_em = timezone.now()
             ajuste.save()
-            messages.success(request, f'Ajuste de ponto de {funcionario.nome} em {data_convertida.strftime("%d/%m/%Y")} registrado.')
+            # Diz exatamente o que foi gravado, pro RH conferir a data na hora.
+            messages.success(
+                request,
+                f'Ajuste de ponto de {funcionario.nome} registrado: {ajuste.get_tipo_evento_display()} às '
+                f'{ajuste.horario_ajustado.strftime("%H:%M")} de {ajuste.data.strftime("%d/%m/%Y")}.',
+            )
             return redirect(url_voltar)
     else:
-        inicial = {'tipo_evento': request.GET.get('tipo') or 'entrada'}
+        inicial = {'tipo_evento': request.GET.get('tipo') or 'entrada', 'data': data_convertida}
         if marcacao_original:
-            inicial['horario_ajustado'] = timezone.localtime(marcacao_original.momento).time()
+            momento_original = timezone.localtime(marcacao_original.momento)
+            inicial['data'] = momento_original.date()
+            inicial['horario_ajustado'] = momento_original.time()
         form = AjustarMarcacaoForm(initial=inicial)
 
     return render(request, 'ponto/form_ajuste.html', {
@@ -352,12 +368,14 @@ def listar_calculo_view(request):
     funcionario_id = request.GET.get('funcionario')
     funcionario = None
     resultado = None
+    valores = None
     jornada_vigente = None
     numeros_dos_pares = []
 
     if funcionario_id:
         funcionario = get_object_or_404(Funcionario, id=funcionario_id)
         resultado = calcular_periodo(funcionario, data_inicio, data_fim)
+        valores = valores_do_periodo(resultado['totais'], funcionario.salario)
         jornada_vigente = FuncionarioJornada.vigente_em(funcionario, data_fim)
         numeros_dos_pares = list(range(1, resultado['pares_no_periodo'] + 1))
 
@@ -368,6 +386,7 @@ def listar_calculo_view(request):
         'data_inicio': data_inicio.isoformat(),
         'data_fim': data_fim.isoformat(),
         'resultado': resultado,
+        'valores': valores,
         'jornada_vigente': jornada_vigente,
         'jornada_form': FuncionarioJornadaForm(),
         'numeros_dos_pares': numeros_dos_pares,
@@ -382,10 +401,28 @@ def atribuir_jornada_view(request, funcionario_id):
     if request.method == 'POST':
         form = FuncionarioJornadaForm(request.POST)
         if form.is_valid():
-            jornada = form.save(commit=False)
-            jornada.funcionario = funcionario
-            jornada.save()
-            messages.success(request, f'Jornada de {funcionario.nome} definida a partir de {jornada.data_inicio}.')
+            data_inicio = form.cleaned_data['data_inicio']
+            horario = form.cleaned_data['horario']
+            data_formatada = data_inicio.strftime('%d/%m/%Y')
+            # Só pode haver uma jornada por funcionário por data (constraint do
+            # model). Mandar a mesma data de novo é o jeito de corrigir um horário
+            # escolhido errado: troca o horário daquela jornada em vez de dar erro.
+            # `get_or_create` também segura o clique duplo no botão.
+            jornada, criada = FuncionarioJornada.objects.get_or_create(
+                funcionario=funcionario, data_inicio=data_inicio, defaults={'horario': horario},
+            )
+            if criada:
+                messages.success(request, f'Jornada de {funcionario.nome} definida a partir de {data_formatada}: horário {horario}.')
+            elif jornada.horario_id == horario.id:
+                messages.success(request, f'A jornada de {funcionario.nome} a partir de {data_formatada} já era o horário {horario}. Nada mudou.')
+            else:
+                anterior = jornada.horario
+                jornada.horario = horario
+                jornada.save(update_fields=['horario'])
+                messages.success(
+                    request,
+                    f'Jornada de {funcionario.nome} a partir de {data_formatada}: horário trocado de {anterior} para {horario}.',
+                )
         else:
             messages.error(request, 'Não foi possível salvar: confira o horário e a data informados.')
 

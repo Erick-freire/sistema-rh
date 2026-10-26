@@ -139,7 +139,9 @@ document.addEventListener('DOMContentLoaded', function () {
             var titulo = el.dataset.confirmarTitulo || 'Confirmar ação';
 
             abrirModalConfirmacao(titulo, mensagem, function () {
-                var form = el.closest('form');
+                // `el.form` cobre o botão ligado a um form de fora pelo atributo form="..."
+                // (ex.: grade do fechamento de folha, um form só para todas as linhas).
+                var form = el.form || el.closest('form');
                 if (form && (el.tagName === 'BUTTON' || el.type === 'submit')) {
                     if (form.requestSubmit) {
                         form.requestSubmit(el);

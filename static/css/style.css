@@ -2161,3 +2161,130 @@ form .login-campo input#password { padding-right: 46px; }
     .modal-termo__acoes { width: 100%; }
     .modal-termo__acoes form, .modal-termo__acoes button { flex: 1; }
 }
+
+/* ---------- Fechamento de folha (folha/templates/folha/fechamento.html) ---------- */
+
+/* A grade é uma planilha larga: a página usa toda a largura da tela. */
+.content--larga .content__body { max-width: none; }
+
+.folha-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.folha-acoes form { margin: 0; }
+
+.folha-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
+.folha-filtros input[type="search"] {
+    flex: 1 1 240px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    font: inherit;
+}
+.folha-filtros__opcao { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.folha-filtros__incluir { display: flex; gap: 8px; align-items: center; margin: 0; }
+.folha-filtros__incluir select { width: auto; max-width: 340px; padding: 6px 10px; }
+
+.folha-legenda { font-size: 0.78rem; color: var(--color-text-muted); margin-bottom: 10px; }
+.folha-legenda__editada { background-color: var(--color-pending-bg); padding: 0 4px; border-radius: var(--radius-sm); }
+
+/* Rola nos dois sentidos dentro do card, com o cabeçalho e a coluna do nome fixos. */
+.grade-folha {
+    max-height: 72vh;
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+}
+.grade-folha table { border: none; border-radius: 0; overflow: visible; animation: none; }
+.grade-folha thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: center;
+    white-space: normal;
+    min-width: 72px;
+    line-height: 1.25;
+}
+.grade-folha__th--ponto { box-shadow: inset 0 -3px 0 var(--color-primary-light); }
+.grade-folha__th--regra { box-shadow: inset 0 -3px 0 var(--color-accent); }
+.grade-folha__rubrica { display: block; font-weight: 400; opacity: 0.8; }
+.grade-folha .grade-folha__fixa {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--color-surface);
+    white-space: nowrap;
+    box-shadow: inset -1px 0 0 var(--color-border);
+}
+.grade-folha thead .grade-folha__fixa { z-index: 3; background-color: var(--color-bg); text-align: left; }
+.grade-folha tbody tr:hover .grade-folha__fixa { background-color: var(--color-bg); }
+.grade-folha__nome { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.grade-folha__id { font-size: 0.7rem; color: var(--color-text-muted); }
+.grade-folha__aviso { color: var(--color-accent); display: inline-flex; cursor: help; }
+.grade-folha__aviso[hidden] { display: none; }
+.grade-folha__aviso .icon { width: 14px; height: 14px; }
+
+.grade-folha .grade-folha__celula { padding: 2px 3px; text-align: center; }
+.grade-folha__celula input[type="text"] {
+    width: 78px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font: inherit;
+    text-align: right;
+}
+.grade-folha__celula--dias input[type="text"],
+.grade-folha__celula--percentual input[type="text"] { width: 52px; }
+.grade-folha__celula input[type="text"]:hover:not(:disabled) { border-color: var(--color-border); }
+.grade-folha__celula input[type="text"]:focus { outline: none; border-color: var(--color-primary); background-color: var(--color-surface); }
+.grade-folha__celula input:disabled { color: var(--color-text); }
+.grade-folha__celula.is-editada { background-color: var(--color-pending-bg); }
+.grade-folha__celula.is-salvando input { opacity: 0.5; }
+.grade-folha__celula.is-salvo input[type="text"] { border-color: var(--color-success); }
+.grade-folha__celula.is-erro input[type="text"] { border-color: var(--color-error); background-color: var(--color-error-bg); }
+.grade-folha__celula.is-erro input[type="checkbox"] { outline: 2px solid var(--color-error); }
+
+.grade-folha__acoes { white-space: nowrap; }
+.grade-folha__acoes form { display: inline; margin: 0; }
+.grade-folha__acoes .btn-icone { color: var(--color-text-muted); padding: 2px 4px; }
+.grade-folha__acoes .btn-icone:hover { color: var(--color-text); }
+.grade-folha__acoes .icon { width: 15px; height: 15px; }
+.grade-folha tbody th {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--color-text);
+    text-align: left;
+}
+.folha-progresso { width: 100%; height: 10px; accent-color: var(--color-primary); }
+#calculo-progresso .alert[hidden] { display: none; }
+#calculo-progresso .alert { margin: 12px 0 0; }
+
+/* Escolha Sim/Não em cartões clicáveis (ex.: vale-transporte em Meu Perfil). */
+.opcoes-radio { display: flex; flex-wrap: wrap; gap: 10px; }
+.opcoes-radio__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+}
+.opcoes-radio__item:has(input:checked) { border-color: var(--color-primary); background-color: var(--color-success-bg); }
+.opcoes-radio__item input { accent-color: var(--color-primary); }
+
+/* ---------- Regras de prêmios (folha/templates/folha/premios.html) ---------- */
+
+.folha-intro { font-size: 0.88rem; color: var(--color-text-muted); margin: 16px 0 20px; max-width: 900px; }
+.folha-ajuda { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px; }
+.folha-rubrica { font-size: 0.75rem; font-weight: 400; color: var(--color-text-muted); margin-left: 6px; }
+.folha-vazio { font-size: 0.85rem; color: var(--color-text-muted); }
+.folha-regra--fora td { color: var(--color-text-muted); }
+.folha-detalhes { margin-top: 14px; }
+.folha-detalhes summary { cursor: pointer; font-weight: 600; font-size: 0.88rem; }
+.folha-detalhes[open] summary { margin-bottom: 10px; }
+.folha-detalhes table { margin-top: 8px; }
+.folha-detalhes form { margin: 0; }

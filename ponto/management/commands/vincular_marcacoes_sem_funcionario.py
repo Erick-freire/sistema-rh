@@ -1,8 +1,8 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from funcionarios.models import Funcionario
-from ponto.models import Equipamento, MarcacaoRelogio
+from ponto.models import MarcacaoRelogio
+from ponto.services import funcionario_da_marcacao, funcionarios_por_identificador
 
 
 class DryRunRollback(Exception):
@@ -13,8 +13,10 @@ class DryRunRollback(Exception):
 class Command(BaseCommand):
     help = (
         'Revincula marcações já coletadas que ficaram sem funcionário (identificador do equipamento não '
-        'batia com nenhum CPF/PIS conhecido na hora da coleta) -- útil depois de importar o PIS de mais '
-        'gente (ver importar_pis_planilha), sem precisar coletar tudo de novo do equipamento.'
+        'batia com ninguém conhecido na hora da coleta) -- útil depois de importar o PIS de mais gente '
+        '(ver importar_pis_planilha), de cadastrar quem já batia ponto ou de rodar '
+        'reconciliar_funcionarios_equipamento, sem precisar coletar tudo de novo do equipamento. '
+        'Usa a mesma regra da coleta (ver ponto.services.funcionario_da_marcacao).'
     )
 
     def add_arguments(self, parser):
@@ -27,18 +29,20 @@ class Command(BaseCommand):
         if options['equipamento']:
             marcacoes = marcacoes.filter(equipamento__nome=options['equipamento'])
 
-        funcionarios_por_identificador = {f.cpf: f.id for f in Funcionario.objects.exclude(cpf='')}
-        funcionarios_por_identificador.update(
-            {f.pis: f.id for f in Funcionario.objects.exclude(pis__isnull=True).exclude(pis='')}
-        )
+        mapas_por_equipamento = {}
 
         vinculadas = 0
         lote = []
         try:
             with transaction.atomic():
                 for marcacao in marcacoes.iterator(chunk_size=2000):
-                    identificador = (marcacao.dados_brutos or {}).get('identificador')
-                    funcionario_id = funcionarios_por_identificador.get(identificador)
+                    if marcacao.equipamento_id not in mapas_por_equipamento:
+                        mapas_por_equipamento[marcacao.equipamento_id] = funcionarios_por_identificador(
+                            marcacao.equipamento_id,
+                        )
+                    funcionario_id = funcionario_da_marcacao(
+                        marcacao.dados_brutos or {}, mapas_por_equipamento[marcacao.equipamento_id],
+                    )
                     if not funcionario_id:
                         continue
 

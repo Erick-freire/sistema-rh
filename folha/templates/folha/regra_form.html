@@ -1,0 +1,26 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Editar regra de prêmio{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'folha:premios' %}#{{ regra.tipo }}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Editar regra de prêmio
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ regra.get_tipo_display }} · {{ regra.descricao_alvo }}</p>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+        {% include 'folha/_regra_campos.html' %}
+        <p class="folha-ajuda" style="margin-top: 12px;">
+            Fechamentos já fechados não mudam. Os abertos pegam a mudança ao recalcular, sem desfazer os valores ajustados à mão na grade.
+        </p>
+        <div style="display: flex; gap: 12px; margin-top: 16px;">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <a href="{% url 'folha:premios' %}#{{ regra.tipo }}" class="btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

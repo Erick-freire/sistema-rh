@@ -1,0 +1,180 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons static %}
+
+{% block titulo %}Fechamento {{ fechamento.competencia_extenso }}{% endblock %}
+
+{% block content_classe %} content--larga{% endblock %}
+
+{% block head_extra %}
+<script src="{% static_v 'js/folha.js' %}" defer></script>
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'folha:listar' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    Fechamento de {{ fechamento.competencia_extenso }}
+    {% if fechamento.aberto %}
+        <span class="badge-status badge-status--pendente">Aberto</span>
+    {% else %}
+        <span class="badge-status badge-status--ativo">Fechado</span>
+    {% endif %}
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {{ total_linhas }} funcionário(s){% if fechamento.observacao %} · {{ fechamento.observacao }}{% endif %}
+</p>
+
+{% if pendentes %}
+<div class="card" id="calculo-progresso" data-url="{% url 'folha:calcular_lote' fechamento.id %}" data-csrf="{{ csrf_token }}"
+     data-total="{{ total_linhas }}" data-restantes="{{ pendentes }}">
+    <div class="card__header">
+        <span class="card__title">Calculando o ponto</span>
+    </div>
+    <p>Mantenha esta página aberta: leva cerca de 1 minuto para 300 pessoas. <span data-progresso-texto>Faltam {{ pendentes }} de {{ total_linhas }}.</span></p>
+    <progress class="folha-progresso" max="{{ total_linhas }}" value="0" data-progresso-barra></progress>
+    <p class="alert alert--erro" data-progresso-erro hidden></p>
+    <noscript><p class="alert alert--erro">O cálculo precisa de JavaScript ligado no navegador.</p></noscript>
+</div>
+{% endif %}
+
+{% if fechamento.aberto %}
+    {% if mes_em_andamento %}
+    <div class="alert alert--aviso">{% icon 'alert-triangle' %}
+        <span>O mês ainda não terminou: o ponto só conta os dias já encerrados. Recalcule depois do último dia do mês.</span>
+    </div>
+    {% endif %}
+    {% if not tem_regras_de_premio %}
+    <div class="alert alert--aviso alert--com-acao">
+        <span>{% icon 'alert-triangle' %} Nenhuma regra de prêmio cadastrada: prêmio programa, incentivo e safra estão em branco.</span>
+        <a href="{% url 'folha:premios' %}" class="btn-outline btn-sm">Cadastrar regras</a>
+    </div>
+    {% endif %}
+    <div class="alert alert--aviso">{% icon 'copy' %}
+        <span>
+            {% if anterior %}Vale-transporte e periculosidade vieram de {{ anterior.competencia_extenso }}.{% endif %}
+            Prêmio programa, incentivo e safra vêm das <a href="{% url 'folha:premios' %}">regras de prêmios</a>
+            (as reduções do mês, como por atestado, são feitas aqui na grade).
+            Bônus, descontos, reembolso, comissões e 13º começam em branco: lance os deste mês.
+        </span>
+    </div>
+{% else %}
+    <div class="alert alert--sucesso">{% icon 'lock' %}
+        <span>Fechado{% if fechamento.fechado_em %} em {{ fechamento.fechado_em|date:'d/m/Y H:i' }}{% endif %}. Os valores estão travados; para alterar, reabra o fechamento.</span>
+    </div>
+{% endif %}
+
+<div class="folha-acoes">
+    {% if not pendentes %}
+    <a href="{% url 'folha:exportar_xlsx' fechamento.id %}" class="btn-primario btn-novo">{% icon 'download' %} Baixar Excel</a>
+    <a href="{% url 'folha:exportar_pdf' fechamento.id %}" class="btn-primario btn-novo">{% icon 'download' %} Baixar PDF</a>
+    {% endif %}
+    {% if fechamento.aberto %}
+    {% if not pendentes %}
+    <form method="post" action="{% url 'folha:recalcular' fechamento.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline">{% icon 'clock' %} Recalcular ponto</button>
+    </form>
+    <form method="post" action="{% url 'folha:fechar' fechamento.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline" data-confirmar-titulo="Fechar a competência"
+                data-confirmar="Os valores de {{ fechamento.competencia_extenso }} ficam travados como estão agora. Dá para reabrir depois, se precisar.">{% icon 'lock' %} Fechar competência</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{% url 'folha:excluir' fechamento.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline" data-confirmar-titulo="Excluir o fechamento"
+                data-confirmar="Apaga o fechamento de {{ fechamento.competencia_extenso }} com tudo o que foi lançado nele. Não dá para desfazer.">{% icon 'trash' %} Excluir</button>
+    </form>
+    {% else %}
+    <form method="post" action="{% url 'folha:reabrir' fechamento.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline" data-confirmar-titulo="Reabrir o fechamento"
+                data-confirmar="Os valores de {{ fechamento.competencia_extenso }} voltam a poder ser editados e recalculados. Se o arquivo já foi enviado à contabilidade, avise sobre as mudanças.">Reabrir</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if not pendentes %}
+<div class="card">
+    <div class="folha-filtros">
+        <input type="search" id="busca-folha" placeholder="Buscar por nome ou matrícula" aria-label="Buscar por nome ou matrícula" autocomplete="off">
+        {% if com_avisos %}
+        <label class="folha-filtros__opcao"><input type="checkbox" id="so-com-avisos"> Só os {{ com_avisos }} com pontos a conferir</label>
+        {% endif %}
+        {% if fechamento.aberto and fora_do_fechamento %}
+        <form method="post" action="{% url 'folha:incluir_funcionario' fechamento.id %}" class="folha-filtros__incluir">
+            {% csrf_token %}
+            <select name="funcionario" aria-label="Funcionário ativo fora do fechamento" required>
+                <option value="">Incluir funcionário ({{ fora_do_fechamento|length }} ativo(s) fora)...</option>
+                {% for funcionario in fora_do_fechamento %}
+                <option value="{{ funcionario.id }}">{{ funcionario.nome }} ({{ funcionario.matricula|default:'—' }})</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-outline btn-sm">{% icon 'plus' %} Incluir</button>
+        </form>
+        {% endif %}
+    </div>
+    <p class="folha-legenda">
+        Horas em h:mm (no Excel vão como horas.minutos: 6:20 = 6,20). Valores em R$. No vale-transporte, informe
+        <strong>6%</strong> ou o valor creditado, o que for menor.
+        {% if fechamento.aberto %}Cada célula é salva ao sair dela. <span class="folha-legenda__editada">Em destaque</span>:
+        valor do ponto ou da regra de prêmios ajustado à mão, que o recálculo não altera (passe o mouse para ver o automático).{% endif %}
+    </p>
+
+    {% if fechamento.aberto %}
+    {# Um form para cada ação, compartilhado por todas as linhas (os botões apontam com form/formaction): #}
+    {# com um form por linha, a página de ~300 pessoas passava de 3 MB. #}
+    <form id="form-recalcular-linha" method="post" data-loading-form data-loading-message="Recalculando o ponto...">{% csrf_token %}</form>
+    <form id="form-remover-linha" method="post">{% csrf_token %}</form>
+    {% endif %}
+
+    <div class="grade-folha" id="grade-folha" data-csrf="{{ csrf_token }}">
+        <table class="tabela-compacta">
+            <thead>
+                <tr>
+                    <th class="grade-folha__fixa">Funcionário</th>
+                    {% for coluna in colunas %}{% if coluna.editavel %}
+                    <th class="grade-folha__th--{{ coluna.origem }}" title="{{ coluna.cabecalho }}">
+                        {{ coluna.rotulo }}{% if coluna.rubrica %}<span class="grade-folha__rubrica">{{ coluna.rubrica }}</span>{% endif %}
+                    </th>
+                    {% endif %}{% endfor %}
+                    {% if fechamento.aberto %}<th></th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% spaceless %}
+                {% for item in grade %}
+                <tr data-url="{% url 'folha:salvar_celula' item.linha.id %}" data-busca="{{ item.linha.nome|lower }} {{ item.linha.matricula }}"{% if item.avisos %} data-tem-aviso{% endif %}>
+                    <th scope="row" class="grade-folha__fixa">
+                        <div class="grade-folha__nome">
+                            <span>{{ item.linha.nome }}</span>
+                            <span class="grade-folha__aviso" data-avisos title="{{ item.avisos|join:' ' }}"{% if not item.avisos %} hidden{% endif %}>{% icon 'alert-triangle' %}</span>
+                        </div>
+                        <div class="grade-folha__id">EMP {{ item.linha.codigo_empresa|default:'—' }} · mat. {{ item.linha.matricula|default:'—' }}</div>
+                    </th>
+                    {% for celula in item.celulas %}{% if celula.coluna.editavel %}
+                    <td class="grade-folha__celula grade-folha__celula--{{ celula.coluna.tipo }}{% if celula.editado %} is-editada{% endif %}"{% if celula.titulo %} title="{{ celula.titulo }}"{% endif %}>
+                        {% if celula.coluna.tipo == 'sim' or celula.coluna.tipo == 'sim_nao' %}
+                        <input type="checkbox" data-campo="{{ celula.coluna.campo }}" aria-label="{{ celula.coluna.rotulo }}"{% if celula.marcado %} checked{% endif %}{% if not fechamento.aberto %} disabled{% endif %}>
+                        {% else %}
+                        <input type="text" data-campo="{{ celula.coluna.campo }}" value="{{ celula.texto }}" inputmode="decimal" aria-label="{{ celula.coluna.rotulo }}"{% if celula.bloqueado %} placeholder="não usa" title="Informou em Meu Perfil que não usa vale-transporte: sem desconto."{% endif %}{% if not fechamento.aberto or celula.bloqueado and not celula.texto %} disabled{% endif %}>
+                        {% endif %}
+                    </td>
+                    {% endif %}{% endfor %}
+                    {% if fechamento.aberto %}
+                    <td class="grade-folha__acoes">
+                        <button type="submit" form="form-recalcular-linha" formaction="{% url 'folha:recalcular_linha' item.linha.id %}" class="btn-icone" title="Recalcular o ponto desta pessoa">{% icon 'clock' %}</button>
+                        <button type="submit" form="form-remover-linha" formaction="{% url 'folha:remover_linha' item.linha.id %}" class="btn-icone" title="Remover deste fechamento"
+                                data-confirmar-titulo="Remover do fechamento" data-confirmar="{{ item.linha.nome }} sai do fechamento de {{ fechamento.competencia_extenso }}, com os lançamentos deste mês.">{% icon 'trash' %}</button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% empty %}
+                <tr><td colspan="{{ colunas|length }}">Nenhum funcionário neste fechamento.</td></tr>
+                {% endfor %}
+                {% endspaceless %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

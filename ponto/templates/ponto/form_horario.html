@@ -11,6 +11,18 @@
     {% if horario %}Editar horário {{ horario.numero }}{% else %}Novo horário{% endif %}
 </h1>
 
+{% if pessoas_vinculadas %}
+<div class="alert alert--aviso">
+    {% icon 'alert-triangle' %}
+    <span>
+        Este horário está ou já esteve na jornada de <strong>{{ pessoas_vinculadas }} funcionário{{ pessoas_vinculadas|pluralize }}</strong>.
+        Alterar os horários abaixo muda também o cálculo dos dias passados, porque o espelho é sempre recalculado com o horário atual.
+        Para uma mudança que vale a partir de uma data (como a redução de jornada), <a href="{% url 'ponto:cadastrar_horario' %}">crie um horário novo</a>
+        e defina a nova jornada a partir da data, na tela do espelho.
+    </span>
+</div>
+{% endif %}
+
 <div class="card">
     <form method="post">
         {% csrf_token %}
@@ -62,6 +74,7 @@
                             {{ dia_form.id }}
                             {{ dia_form.dia_semana }}
                             {{ nome_dia }}
+                            {{ dia_form.non_field_errors }}
                         </td>
                         <td>{{ dia_form.entrada1 }}{{ dia_form.entrada1.errors }}</td>
                         <td>{{ dia_form.saida1 }}{{ dia_form.saida1.errors }}</td>

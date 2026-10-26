@@ -31,12 +31,15 @@ class Command(BaseCommand):
             itens = self._pendencias(usuario.funcionario)
             if not itens:
                 continue
+            # Espera cada envio terminar: o comando encerra logo depois, e o
+            # envio em segundo plano (thread daemon) seria cortado no meio.
             notificacoes.notificar(
                 [usuario.user],
                 'Você tem pendências no RH',
                 _juntar(itens).capitalize() + '.',
                 reverse('meus_documentos'),
                 tag='lembrete-pendencias',
+                em_segundo_plano=False,
             )
             avisados += 1
 

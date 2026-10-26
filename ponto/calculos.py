@@ -10,10 +10,30 @@ Regras (confirmadas com o usuário):
   qual dia é decidido pela diferença de dias desde `data_inicio` da jornada
   (que é sempre um dia de trabalho), não pelo dia da semana nem pelo dia do
   mês -- ver `FuncionarioJornada.trabalha_no_dia_12x36`.
+- Tolerância diária, igual pros dois lados: falta/atraso ou hora extra de até
+  15 minutos no dia (somando o dia todo) não conta -- o saldo do dia fica zero.
+  É o saldo líquido: chegar 30 min atrasado e sair 20 min depois dá 10 min, que
+  ficam na tolerância. Passou disso, conta inteiro: 20 minutos de atraso são 20
+  minutos de falta, e 16 minutos a mais são 16 minutos de extra (não 5 nem 1).
+  "Normais" continua sendo só o tempo realmente trabalhado. Só vale em dia com
+  horário previsto: em folga, domingo de folga e feriado todo minuto trabalhado
+  é extra.
 - Compensação: dentro do período calculado, hora extra compensa falta/atraso
   primeiro pelas horas de 50%; só depois de esgotar essas é que consome as
   de 100%. Só o saldo depois de compensar vira "extra a pagar" ou "falta a
   descontar".
+- Dia Falta: dia de trabalho já encerrado sem nenhuma batida. Não entra na
+  compensação (hora extra não abate dia inteiro), desconta o DSR da semana
+  (segunda a domingo; várias faltas na mesma semana perdem um DSR só) e tira a
+  assiduidade do período. Atestado, férias, feriado e folga nunca são Dia Falta.
+- Hora noturna: o tempo entre 22:00 e 05:00 conta na hora de 52min30s (7h de
+  relógio = 8h), tanto no trabalhado quanto no esperado do horário -- é assim
+  que a jornada fica proporcional no noturno. Esperado, normais, saldo, faltas
+  e extras são todos nessa hora "computada"; `segundos_trabalhados` continua
+  sendo o relógio (é o que vale pro intervalo mínimo). A tolerância olha o
+  relógio: ela é sobre a variação na hora de bater. `segundos_noturnos` é a
+  base do adicional noturno (ver `turnos.segundos_noturnos`).
+- Valores em R$ (`valores_do_periodo`): ver as constantes lá.
 
 Turno que atravessa a meia-noite (ex.: 12x36 noturno 18:00-06:00, horário
 1003): a batida inteira fica no dia em que o turno COMEÇOU, nunca dividida
@@ -25,17 +45,26 @@ Como as batidas são encaixadas nos dias: em vez de buscar "as batidas do dia"
 batida no turno a que pertence (ver `turnos.agrupar_batidas_em_turnos`). Cada
 turno tem uma janela com margem antes e depois, o que cobre entrada
 antecipada e saída tardia, inclusive em turno noturno. Batida que não cai em
-nenhum turno (folga, sem jornada) fica no dia em que foi batida.
+nenhum turno (folga, sem jornada) fica no dia em que foi batida. Batida do
+relógio repetida no mesmo minuto conta uma vez só (ver `_sem_batidas_repetidas`).
+
+Ajustes manuais aprovados entram como uma batida a mais, na data e hora
+lançadas (`AjustePonto.data` + `horario_ajustado`, sem deduzir nada), e passam
+pelo mesmo encaixe.
 """
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio
-from .turnos import agrupar_batidas_em_turnos, turno_previsto_do_dia
+from .turnos import (
+    agrupar_batidas_em_turnos, em_hora_noturna, segundos_computados, segundos_noturnos, turno_previsto_do_dia,
+)
 from .utils import intervalo_do_dia
 
 # `funcionario.solicitacoes_ferias`/`funcionario.atestados` são relations
@@ -106,6 +135,34 @@ def _diferenca_horario(entrada, saida):
     return fim - inicio
 
 
+def _segundos_noturnos_esperados(horario_dia):
+    """Segundos de relógio do horário previsto que caem entre 22:00 e 05:00."""
+    if horario_dia is None:
+        return 0
+
+    total = 0
+    # A faixa noturna se repete todo dia, então qualquer data serve de base pra cada par.
+    base = datetime(2000, 1, 3)
+    for entrada, saida in (
+        (horario_dia.entrada1, horario_dia.saida1),
+        (horario_dia.entrada2, horario_dia.saida2),
+        (horario_dia.entrada3, horario_dia.saida3),
+    ):
+        if entrada and saida:
+            inicio = datetime.combine(base, entrada)
+            total += segundos_noturnos(inicio, inicio + _diferenca_horario(entrada, saida))
+    return total
+
+
+def _segundos_noturnos_trabalhados(eventos):
+    """Segundos de relógio entre 22:00 e 05:00 nos pares completos de batidas (mesmo pareamento de `_parear_eventos`)."""
+    total = 0
+    for i in range(0, len(eventos) - 1, 2):
+        inicio, fim = timezone.localtime(eventos[i].momento), timezone.localtime(eventos[i + 1].momento)
+        total += segundos_noturnos(inicio, fim)
+    return total
+
+
 def _horario_do_dia(jornada, data):
     """Sempre retorna um HorarioDia (ou None se folga) -- é lá que ficam os campos de entrada/saída."""
     horario = jornada.horario
@@ -167,6 +224,11 @@ def _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem):
 
 MAX_PARES_EXIBIDOS = 5  # mesmo limite do espelho do Secullum (Ent.1..Ent.5/Saí.1..Saí.5)
 
+# Vale para falta/atraso e para hora extra. Valor provisório: mais adiante vai
+# para a tela de parâmetros do RH (igual às margens de `turnos.py`). Inclusivo:
+# 15 minutos exatos ainda ficam na tolerância.
+TOLERANCIA_DIARIA_SEGUNDOS = 15 * 60
+
 
 def _horarios_em_ordem(horario_dia):
     """Os horários do HorarioDia na ordem em que acontecem (entrada1, saída1, entrada2...), sem os vazios."""
@@ -224,18 +286,37 @@ def _info_dos_dias(funcionario, data_inicio, data_fim, dias_ferias, dias_atestad
     return info
 
 
+def _sem_batidas_repetidas(marcacoes):
+    """
+    Tira da conta a batida do relógio repetida no mesmo minuto da anterior: a
+    pessoa bateu duas vezes e o relógio gravou as duas (NSRs seguidos). Fica a
+    primeira; a repetida continua gravada, só não entra no cálculo. Sem isso, uma
+    batida a mais desloca todos os pares do dia (o almoço vira tempo trabalhado).
+
+    Só o mesmo minuto (confirmado com o usuário): batida 1 minuto depois já conta.
+    Precisa rodar ANTES de tirar as batidas corrigidas por ajuste -- se o RH
+    corrigir a batida que ficou, a repetida não pode voltar no lugar dela.
+    `marcacoes` em ordem cronológica.
+    """
+    ultimo_minuto = None
+    for marcacao in marcacoes:
+        minuto = marcacao.momento.replace(second=0, microsecond=0)
+        if minuto != ultimo_minuto:
+            yield marcacao
+        ultimo_minuto = minuto
+
+
 def _eventos_por_data(funcionario, data_inicio, data_fim, info=None):
     """
     {dia: [eventos em ordem cronológica]} para cada dia de `data_inicio` a `data_fim`.
 
-    Marcações reais encaixadas no turno de cada dia + ajustes manuais aprovados.
-    Um ajuste com `marcacao_original` substitui a marcação real que corrige (a
-    MarcacaoRelogio em si nunca é alterada/apagada, só sai da conta); sem
-    `marcacao_original` é uma batida que faltou e vira um evento a mais.
-
-    Os ajustes continuam presos ao dia indicado em `AjustePonto.data`, como antes.
-    Uma saída de turno noturno que acontece depois da meia-noite ainda precisa
-    ser tratada na tela de ajuste (data real da batida).
+    Marcações reais + ajustes manuais aprovados, todos encaixados juntos no turno
+    a que pertencem. Um ajuste com `marcacao_original` substitui a marcação real
+    que corrige (a MarcacaoRelogio em si nunca é alterada/apagada, só sai da
+    conta); sem `marcacao_original` é uma batida que faltou e vira um evento a
+    mais. Nos dois casos o ajuste vale na data e hora em que foi lançado: quem
+    lança (RH ou colaborador) informa o dia real da batida, inclusive depois da
+    meia-noite.
     """
     if info is None:
         inicio_info, fim_info = data_inicio - timedelta(days=2), data_fim + timedelta(days=2)
@@ -254,39 +335,45 @@ def _eventos_por_data(funcionario, data_inicio, data_fim, info=None):
 
     inicio_busca = intervalo_do_dia(data_inicio - timedelta(days=1))[0]
     fim_busca = intervalo_do_dia(data_fim + timedelta(days=1))[1]
-    reais = [
-        _Evento(momento=m.momento, manual=False, marcacao_id=m.id)
-        for m in (
-            MarcacaoRelogio.objects
-            .filter(funcionario=funcionario, momento__gte=inicio_busca, momento__lt=fim_busca)
-            .order_by('momento')
+
+    # Mesma janela das batidas reais. A correção também vem pela batida original,
+    # pra ela sair da conta mesmo que a data lançada caia fora da janela.
+    ajustes = list(
+        AjustePonto.objects
+        .filter(funcionario=funcionario, status='aprovado')
+        .filter(
+            Q(data__gte=data_inicio - timedelta(days=1), data__lte=data_fim + timedelta(days=1))
+            | Q(marcacao_original__momento__gte=inicio_busca, marcacao_original__momento__lt=fim_busca)
         )
+    )
+    ids_corrigidos = {a.marcacao_original_id for a in ajustes if a.marcacao_original_id}
+
+    reais = (
+        MarcacaoRelogio.objects
+        .filter(funcionario=funcionario, momento__gte=inicio_busca, momento__lt=fim_busca)
+        .order_by('momento', 'id')
+    )
+    eventos = [
+        _Evento(momento=m.momento, manual=False, marcacao_id=m.id)
+        for m in _sem_batidas_repetidas(reais)
+        if m.id not in ids_corrigidos
     ]
-
-    reais_por_data = defaultdict(list)
-    for turno in agrupar_batidas_em_turnos(previstos, reais, tzinfo=tz, chave=lambda e: e.momento):
-        reais_por_data[turno.data].extend(turno.momentos)
-
-    ajustes_por_data = defaultdict(list)
-    for ajuste in AjustePonto.objects.filter(
-        funcionario=funcionario, data__gte=data_inicio, data__lte=data_fim, status='aprovado'
-    ):
-        ajustes_por_data[ajuste.data].append(ajuste)
+    eventos.extend(
+        _Evento(momento=timezone.make_aware(datetime.combine(a.data, a.horario_ajustado)), manual=True)
+        for a in ajustes
+    )
 
     resultado = {}
     dia = data_inicio
     while dia <= data_fim:
-        ajustes = ajustes_por_data.get(dia, [])
-        ids_corrigidos = {a.marcacao_original_id for a in ajustes if a.marcacao_original_id}
-
-        eventos = [e for e in reais_por_data.get(dia, []) if e.marcacao_id not in ids_corrigidos]
-        for ajuste in ajustes:
-            momento = timezone.make_aware(datetime.combine(dia, ajuste.horario_ajustado))
-            eventos.append(_Evento(momento=momento, manual=True))
-        eventos.sort(key=lambda evento: evento.momento)
-
-        resultado[dia] = eventos
+        resultado[dia] = []
         dia += timedelta(days=1)
+
+    for turno in agrupar_batidas_em_turnos(previstos, eventos, tzinfo=tz, chave=lambda e: e.momento):
+        if turno.data in resultado:
+            resultado[turno.data].extend(turno.momentos)
+    for eventos_do_dia in resultado.values():
+        eventos_do_dia.sort(key=lambda evento: evento.momento)
     return resultado
 
 
@@ -335,6 +422,7 @@ def _horario_dia_de(funcionario, data):
 
 def calcular_periodo(funcionario, data_inicio, data_fim):
     dias = []
+    hoje = timezone.localdate()
     dias_ferias = _dias_ferias_aprovadas(funcionario)
     dias_atestado = _dias_atestado(funcionario)
 
@@ -354,6 +442,7 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         em_ferias = dados['em_ferias']
         em_atestado = dados['em_atestado']
         marcacoes, pares, segundos_trabalhados, marcacao_impar = _parear_eventos(eventos_por_data[dia_atual])
+        noturnos_trabalhados = _segundos_noturnos_trabalhados(marcacoes)
 
         if jornada is None:
             # Sem jornada cadastrada não quer dizer que o funcionário não bateu
@@ -364,18 +453,30 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
                 'entrada_esperada': None, 'saida_esperada': None,
                 'segundos_esperados': 0, 'segundos_trabalhados': segundos_trabalhados, 'saldo_segundos': 0,
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
+                'segundos_noturnos': em_hora_noturna(noturnos_trabalhados),
                 'marcacao_impar': marcacao_impar, 'taxa_extra': None, 'folga': False,
-                'ferias': em_ferias, 'atestado': em_atestado, 'feriado': False,
+                'ferias': em_ferias, 'atestado': em_atestado, 'feriado': False, 'dia_falta': False,
             })
             dia_atual += timedelta(days=1)
             continue
 
         horario_dia = dados['horario_dia']
         em_12x36 = dados['em_12x36']
-        segundos_esperados = _segundos_esperados(horario_dia)
+        esperado_relogio = _segundos_esperados(horario_dia)
+        # Esperado e trabalhado na hora computada (noturno em 52min30s).
+        segundos_esperados = segundos_computados(esperado_relogio, _segundos_noturnos_esperados(horario_dia))
+        trabalhado_computado = segundos_computados(segundos_trabalhados, noturnos_trabalhados)
         entrada_esperada = _primeira_entrada(horario_dia) if horario_dia else None
         saida_esperada = _ultima_saida(horario_dia) if horario_dia else None
-        saldo_segundos = segundos_trabalhados - segundos_esperados
+        saldo_segundos = trabalhado_computado - segundos_esperados
+        # Dentro da tolerância (pra menos ou pra mais) o dia fecha zerado: não
+        # aparece como falta nem como extra, não entra na compensação e não vira
+        # "Falta/atraso" na tela do colaborador. `segundos_normais` não muda.
+        # Sem horário previsto (folga, feriado, férias, atestado) não há horário
+        # pra variar: todo minuto trabalhado conta como extra. A tolerância é
+        # medida no relógio; passou dela, conta o saldo na hora computada.
+        if esperado_relogio and abs(segundos_trabalhados - esperado_relogio) <= TOLERANCIA_DIARIA_SEGUNDOS:
+            saldo_segundos = 0
         taxa_extra = _taxa_extra_do_dia(dia_atual, em_12x36)
 
         dias.append({
@@ -399,11 +500,16 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
             'saldo_segundos': saldo_segundos,
             # "Normais" (igual ao espelho do Secullum) nunca passa do esperado
             # do dia -- o que passar disso é que conta como extra, em separado.
-            'segundos_normais': min(segundos_trabalhados, segundos_esperados),
+            'segundos_normais': min(trabalhado_computado, segundos_esperados),
+            # Base do adicional noturno: todo o trabalho entre 22:00 e 05:00,
+            # normal ou extra, na hora de 52min30s.
+            'segundos_noturnos': em_hora_noturna(noturnos_trabalhados),
             'segundos_falta_dia': max(0, -saldo_segundos),
             'segundos_extra_50_dia': max(0, saldo_segundos) if taxa_extra == 50 else 0,
             'segundos_extra_100_dia': max(0, saldo_segundos) if taxa_extra == 100 else 0,
             'taxa_extra': taxa_extra,
+            # Hoje ainda pode chegar batida: só dia já encerrado vira Dia Falta.
+            'dia_falta': bool(segundos_esperados) and not marcacoes and dia_atual < hoje,
         })
         dia_atual += timedelta(days=1)
 
@@ -417,21 +523,67 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
 
     superavit_50 = sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 50)
     superavit_100 = sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 100)
-    deficit = -sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] < 0)
+    # Dia Falta fica fora da compensação: é descontado como dia, não como horas.
+    deficit = -sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] < 0 and not d['dia_falta'])
 
     consumo_50 = min(deficit, superavit_50)
     deficit_restante = deficit - consumo_50
     consumo_100 = min(deficit_restante, superavit_100)
 
+    dias_falta = [d['data'] for d in dias if d['dia_falta']]
     totais = {
         'extra_50_segundos': superavit_50 - consumo_50,
         'extra_100_segundos': superavit_100 - consumo_100,
         'falta_segundos': deficit_restante - consumo_100,
+        # Dia sem jornada fica de fora, como no resto dos totais (ele é sinalizado à parte).
+        'noturno_segundos': sum(d['segundos_noturnos'] for d in dias if not d['sem_jornada']),
+        'dias_falta': len(dias_falta),
+        'dsr_perdidos': len({dia.isocalendar()[:2] for dia in dias_falta}),  # um por semana (ano, semana ISO)
+        'perdeu_assiduidade': bool(dias_falta),
         'dias_sem_jornada': sum(1 for d in dias if d['sem_jornada']),
         'dias_com_marcacao_impar': sum(1 for d in dias if d['marcacao_impar']),
     }
 
     return {'dias': dias, 'totais': totais, 'pares_no_periodo': pares_no_periodo}
+
+
+# Provisórios -- confirmados com o usuário, ainda a validar com o DP: o divisor
+# 220 vale também para meio período, e o Dia Falta e o DSR perdido valem 1/30
+# do salário cada.
+DIVISOR_SALARIO_HORA = 220
+DIAS_DO_MES = 30
+# Confirmado com o usuário: 20% do valor da hora, por hora noturna trabalhada.
+ADICIONAL_NOTURNO = Decimal('0.20')
+
+
+def valores_do_periodo(totais, salario):
+    """
+    Os totais de `calcular_periodo` em R$, a partir do salário base; None sem salário
+    cadastrado. Hora: salário / 220. Extra 50%: hora x 1,5 x horas; extra 100%: hora
+    x 2 x horas; falta/atraso: hora x horas; adicional noturno: hora x 20% x horas
+    noturnas (já na hora de 52min30s). Cada linha é arredondada no centavo.
+    """
+    if salario is None:
+        return None
+    valor_hora = Decimal(salario) / DIVISOR_SALARIO_HORA
+    valor_dia = Decimal(salario) / DIAS_DO_MES
+
+    def horas(segundos):
+        return Decimal(segundos) / 3600
+
+    valores = {
+        'extra_50': valor_hora * Decimal('1.5') * horas(totais['extra_50_segundos']),
+        'extra_100': valor_hora * 2 * horas(totais['extra_100_segundos']),
+        'adicional_noturno': valor_hora * ADICIONAL_NOTURNO * horas(totais['noturno_segundos']),
+        'falta': valor_hora * horas(totais['falta_segundos']),
+        'dias_falta': valor_dia * totais['dias_falta'],
+        'dsr': valor_dia * totais['dsr_perdidos'],
+    }
+    valores = {chave: valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) for chave, valor in valores.items()}
+    valores['valor_hora'] = valor_hora.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    valores['a_pagar'] = valores['extra_50'] + valores['extra_100'] + valores['adicional_noturno']
+    valores['a_descontar'] = valores['falta'] + valores['dias_falta'] + valores['dsr']
+    return valores
 
 
 def situacao_do_dia(dia, hoje):
@@ -470,3 +622,44 @@ def situacao_do_dia(dia, hoje):
         return 'Em andamento', 'inativo', False
 
     return texto, cor, True
+
+
+# CLT art. 71: até 4h trabalhadas no dia não exige intervalo; acima de 4h até
+# 6h, 15 min; acima de 6h (12x36 inclusive), 1h.
+JORNADA_QUE_EXIGE_15_MIN_SEGUNDOS = 4 * 3600
+JORNADA_QUE_EXIGE_1H_SEGUNDOS = 6 * 3600
+
+
+def intervalo_minimo(segundos_trabalhados):
+    """Intervalo mínimo exigido, em segundos, para o tempo trabalhado no dia (0 = nenhum)."""
+    if segundos_trabalhados > JORNADA_QUE_EXIGE_1H_SEGUNDOS:
+        return 60 * 60
+    if segundos_trabalhados > JORNADA_QUE_EXIGE_15_MIN_SEGUNDOS:
+        return 15 * 60
+    return 0
+
+
+def intervalo_curto(dia):
+    """
+    (saída, volta) do maior intervalo de um dia de `calcular_periodo`, se ele ficou
+    abaixo do mínimo (`intervalo_minimo`); senão None. Quem usa: o aviso diário ao
+    RH e ao gestor (`manage.py avisar_intervalos_curtos`).
+
+    Vale o MAIOR intervalo entre os pares de batidas do dia -- assim o café de
+    20 min não é confundido com o almoço. Fica de fora (decisões do usuário):
+    - dia com até 4h trabalhadas (não exige intervalo);
+    - marcação ímpar (não dá pra saber o que é saída e o que é volta);
+    - dia sem nenhum intervalo batido (pode ser só esquecimento de bater).
+    Sem tolerância: 59 minutos já é curto num dia de mais de 6h.
+    """
+    minimo = intervalo_minimo(dia['segundos_trabalhados'])
+    if dia['marcacao_impar'] or not minimo:
+        return None
+    eventos = dia['marcacoes']
+    intervalos = [(eventos[i], eventos[i + 1]) for i in range(1, len(eventos) - 1, 2)]
+    if not intervalos:
+        return None
+    saida, volta = max(intervalos, key=lambda par: par[1].momento - par[0].momento)
+    if (volta.momento - saida.momento).total_seconds() >= minimo:
+        return None
+    return saida, volta

@@ -1,0 +1,4 @@
+<div class="tabs">
+    <a href="{% url 'folha:listar' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar' %} is-ativo{% endif %}">Fechamentos</a>
+    <a href="{% url 'folha:premios' %}" class="tabs__link{% if request.resolver_match.url_name == 'premios' or request.resolver_match.url_name == 'editar_regra' %} is-ativo{% endif %}">Regras de prêmios</a>
+</div>

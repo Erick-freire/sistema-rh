@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from django.db import close_old_connections, connection, transaction
 from django.db.models import Q
@@ -209,6 +210,64 @@ def processar_pendencias(equipamento=None):
 TAMANHO_LOTE_COLETA = 2000  # ver docstring de `coletar_marcacoes`
 
 
+def _como_numero(valor):
+    """Só os dígitos, como número: '070819163171' e '70819163171' são o mesmo identificador. None sem dígitos."""
+    digitos = re.sub(r'\D', '', str(valor or ''))
+    return int(digitos) if digitos else None
+
+
+def funcionarios_por_identificador(equipamento):
+    """
+    Os dois mapas {identificador: funcionario_id} usados pra achar o dono das
+    marcações deste equipamento (ver `funcionario_da_marcacao`): o identificador
+    que o próprio equipamento usa pra pessoa (`id_usuario_dispositivo`, gravado
+    pela reconciliação/sincronização) e o CPF/PIS do cadastro.
+
+    O primeiro existe por causa do relógio ADM: pra quem não tem PIS, o Secullum
+    cadastrou lá um "PIS" de 12 dígitos começando com 8, parecido com o CPF mas
+    nem sempre igual (CPF 70819163171, no relógio 870819163173). Só com o CPF/PIS
+    do cadastro as batidas dessas pessoas ficavam sem funcionário.
+    """
+    from funcionarios.models import Funcionario
+
+    por_dispositivo = {}
+    for funcionario_id, identificador in SincronizacaoFuncionario.objects.filter(
+        equipamento=equipamento,
+    ).values_list('funcionario_id', 'id_usuario_dispositivo'):
+        numero = _como_numero(identificador)
+        if numero:
+            por_dispositivo[numero] = funcionario_id
+
+    por_documento = {}
+    for funcionario_id, cpf, pis, status in Funcionario.objects.values_list('id', 'cpf', 'pis', 'status'):
+        for valor in (cpf, pis):
+            numero = _como_numero(valor)
+            # Mesmo CPF em dois cadastros (ex.: readmissão): fica o ativo.
+            if numero and (numero not in por_documento or status == 'ativo'):
+                por_documento[numero] = funcionario_id
+
+    return por_dispositivo, por_documento
+
+
+def funcionario_da_marcacao(registro, mapas):
+    """
+    funcionario_id do dono de um registro do AFD (de `parse_afd`, ou o
+    `dados_brutos` já gravado), ou None. O AFD traz o identificador em 12
+    posições: num CPF a primeira é um 0 de preenchimento, mas no "PIS" de 12
+    dígitos do ADM ela faz parte do número -- por isso o número inteiro vem antes
+    dos 11 últimos dígitos. O identificador do equipamento vem antes do CPF/PIS.
+    """
+    candidatos = [
+        _como_numero((registro.get('prefixo') or '') + (registro.get('identificador') or '')),
+        _como_numero(registro.get('identificador')),
+    ]
+    for mapa in mapas:
+        for numero in candidatos:
+            if numero and numero in mapa:
+                return mapa[numero]
+    return None
+
+
 def coletar_marcacoes(equipamento):
     """
     Coleta incremental e idempotente: só pede eventos com NSR maior que o
@@ -246,19 +305,9 @@ def coletar_marcacoes(equipamento):
         equipamento.save(update_fields=['status_conexao', 'ultima_comunicacao', 'atualizado_em'])
         return 0
 
-    from funcionarios.models import Funcionario
-
-    # O AFD não traz matrícula, só o CPF ou PIS de 11 dígitos (com zeros à
-    # esquerda preservados) -- alguns equipamentos (ex.: ADM) identificam por
-    # PIS em vez de CPF, então casa pelos dois campos.
-    identificadores = {r['identificador'] for r in registros}
-    funcionarios_por_cpf = {f.cpf: f for f in Funcionario.objects.filter(cpf__in=identificadores)}
-    funcionarios_por_pis = {
-        f.pis: f for f in Funcionario.objects.filter(pis__in=identificadores).exclude(pis__isnull=True)
-    }
-
-    def _funcionario_do_identificador(identificador):
-        return funcionarios_por_cpf.get(identificador) or funcionarios_por_pis.get(identificador)
+    # O AFD não traz matrícula, só o identificador da pessoa no equipamento
+    # (CPF, PIS, ou o "PIS" gerado do ADM) -- ver `funcionario_da_marcacao`.
+    mapas = funcionarios_por_identificador(equipamento)
 
     total_novas = 0
     for inicio in range(0, len(registros), TAMANHO_LOTE_COLETA):
@@ -266,7 +315,7 @@ def coletar_marcacoes(equipamento):
         marcacoes = [
             MarcacaoRelogio(
                 equipamento=equipamento,
-                funcionario=_funcionario_do_identificador(registro['identificador']),
+                funcionario_id=funcionario_da_marcacao(registro, mapas),
                 id_evento_dispositivo=str(registro['nsr']),
                 momento=registro['momento'],
                 tipo_evento='desconhecido',

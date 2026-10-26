@@ -4,6 +4,8 @@ from django.db import models
 from funcionarios.models import Funcionario
 from integracao_gov.fields import EncryptedTextField
 
+from .turnos import DURACAO_MAXIMA_TURNO, duracao_do_turno
+
 
 class Equipamento(models.Model):
     STATUS_CONEXAO_CHOICES = [
@@ -258,6 +260,10 @@ class Horario(models.Model):
     def __str__(self):
         return f'{self.numero} - {self.nome}' if self.nome else str(self.numero)
 
+    @property
+    def tem_turno_longo_demais(self):
+        return any(dia.turno_longo_demais for dia in self.dias.all())
+
 
 class HorarioDia(models.Model):
     DIA_SEMANA_CHOICES = [
@@ -292,6 +298,12 @@ class HorarioDia(models.Model):
     @property
     def folga(self):
         return not any([self.entrada1, self.saida1, self.entrada2, self.saida2, self.entrada3, self.saida3])
+
+    @property
+    def turno_longo_demais(self):
+        """Saída digitada antes da entrada (ver `turnos.DURACAO_MAXIMA_TURNO`): o cálculo esperaria um dia de 20h, 30h..."""
+        horas = [self.entrada1, self.saida1, self.entrada2, self.saida2, self.entrada3, self.saida3]
+        return duracao_do_turno([hora for hora in horas if hora]) > DURACAO_MAXIMA_TURNO
 
 
 class Feriado(models.Model):

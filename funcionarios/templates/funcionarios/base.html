@@ -99,6 +99,9 @@
                         {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
                     </a>
                 </li>
+                <li class="{% if request.resolver_match.app_name == 'folha' %}active{% endif %}">
+                    <a href="{% url 'folha:listar' %}">{% icon 'table' %} Fechamento de folha</a>
+                </li>
                 <li class="{% if request.resolver_match.app_name == 'terceiros' %}active{% endif %}">
                     <a href="{% url 'terceiros:listar_empresas' %}">
                         {% icon 'briefcase' %} Terceiros

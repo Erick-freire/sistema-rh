@@ -9,12 +9,22 @@ from django.forms import BaseInlineFormSet, inlineformset_factory
 class MeuPerfilForm(forms.ModelForm):
     CAMPOS_OBRIGATORIOS = [c for c in Funcionario.CAMPOS_PESSOAIS_OBRIGATORIOS if c != 'cpf']
 
+    # Escolha obrigatória (Sim/Não), e não uma caixinha: o "não" também precisa
+    # ser uma resposta dada, não a ausência de marcação.
+    usa_vale_transporte = forms.TypedChoiceField(
+        label='Vale-transporte',
+        choices=[(True, 'Sim, vou usar o vale-transporte'), (False, 'Não vou usar')],
+        coerce=lambda valor: valor == 'True',
+        widget=forms.RadioSelect,
+        error_messages={'required': 'Informe se você vai usar o vale-transporte.'},
+    )
+
     class Meta:
         model = Funcionario
         fields = [
             'telefone', 'endereco', 'pis',
             'sexo', 'estado_civil', 'tem_filho_menor_idade',
-            'email', 'banco', 'agencia', 'numero_conta',
+            'email', 'banco', 'agencia', 'numero_conta', 'usa_vale_transporte',
         ]
 
     def __init__(self, *args, **kwargs):
@@ -62,7 +72,7 @@ class DadosCadastraisForm(forms.ModelForm):
 
     class Meta:
         model = Funcionario
-        fields = ['matricula', 'cargo', 'setor', 'data_admissao', 'salario']
+        fields = ['matricula', 'codigo_empresa', 'cargo', 'setor', 'data_admissao', 'salario']
         widgets = {
             # Texto livre com sugestões: o <datalist> é renderizado no template a partir de `cargos_existentes`.
             'cargo': forms.TextInput(attrs={'list': 'cargos-existentes', 'autocomplete': 'off'}),

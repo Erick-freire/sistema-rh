@@ -1,0 +1,161 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Regras de prêmios{% endblock %}
+
+{% block conteudo %}
+<h1>Fechamento de folha</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">A planilha mensal que vai para o escritório de contabilidade.</p>
+{% include 'folha/_subnav.html' %}
+
+<p class="folha-intro">
+    Quem recebe cada prêmio fixo e quanto. Uma regra vale para um setor inteiro, para um cargo de um setor ou para uma
+    pessoa; a mais específica vence (pessoa, depois setor e cargo, depois setor). Ao abrir um fechamento, as regras
+    preenchem as colunas, e o RH ainda ajusta caso a caso na grade.
+</p>
+
+<div class="card" id="nova-regra">
+    <div class="card__header"><span class="card__title">Nova regra</span></div>
+    <form method="post" action="{% url 'folha:premios' %}">
+        {% csrf_token %}
+        {% include 'folha/_regra_campos.html' %}
+        <button type="submit" class="btn-primario" style="margin-top: 16px;">{% icon 'plus' %} Criar regra</button>
+    </form>
+</div>
+
+{% for secao in secoes %}
+<div class="card" id="{{ secao.tipo }}">
+    <div class="card__header">
+        <span class="card__title">{{ secao.rotulo }}{% if secao.rubrica %} <span class="folha-rubrica">rubrica {{ secao.rubrica }}</span>{% endif %}</span>
+        <a href="?tipo={{ secao.tipo }}#nova-regra" class="btn-outline btn-sm">{% icon 'plus' %} Regra</a>
+    </div>
+    <p class="folha-ajuda" style="margin-bottom: 12px;">{{ secao.descricao }}</p>
+
+    {% if secao.regras %}
+    <div class="table-responsive">
+        <table class="tabela-compacta">
+            <thead>
+                <tr><th>Vale para</th><th>Valor</th><th>Vigência</th><th>Recebem em {{ competencia|date:'m/Y' }}</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for regra in secao.regras %}
+                <tr{% if not regra.vale_neste_mes %} class="folha-regra--fora"{% endif %}>
+                    <td>
+                        {% if regra.funcionario_id %}{% icon 'user' %} {% endif %}{{ regra.descricao_alvo }}
+                    </td>
+                    <td>{{ regra.valor_texto }}</td>
+                    <td>{{ regra.descricao_vigencia }}{% if not regra.vale_neste_mes %} <span class="badge-status badge-status--inativo">fora da vigência</span>{% endif %}</td>
+                    <td>{{ regra.pessoas_no_mes }}</td>
+                    <td style="white-space: nowrap; text-align: right;">
+                        <a href="{% url 'folha:editar_regra' regra.id %}" class="btn-outline btn-sm">Editar</a>
+                        <form method="post" action="{% url 'folha:excluir_regra' regra.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-outline btn-sm" data-confirmar-titulo="Excluir regra"
+                                    data-confirmar="A regra de {{ regra.descricao_alvo }} deixa de valer. Fechamentos já fechados não mudam.">{% icon 'trash' %}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="folha-vazio">Nenhuma regra ainda.</p>
+    {% endif %}
+
+    {% if secao.sugestoes %}
+    <div class="alert alert--aviso alert--com-acao" style="margin-top: 14px;">
+        <span>{% icon 'copy' %} {{ secao.sugestoes|length }} grupo(s) de setor e cargo de {{ base.competencia_extenso }} ainda sem regra, em que a maioria recebeu o mesmo valor.</span>
+        <form method="post" action="{% url 'folha:sugerir_regras' %}">
+            {% csrf_token %}
+            <input type="hidden" name="tipo" value="{{ secao.tipo }}">
+            <button type="submit" class="btn-outline btn-sm" data-confirmar-titulo="Criar regras a partir de {{ base.competencia_extenso }}"
+                    data-confirmar="Cria {{ secao.sugestoes|length }} regra(s) de setor e cargo com o valor que a maioria de cada grupo recebeu. Quem recebeu outro valor aparece nas diferenças, para você decidir.">Criar {{ secao.sugestoes|length }} regra(s)</button>
+        </form>
+    </div>
+    <details class="folha-detalhes">
+        <summary>Ver as {{ secao.sugestoes|length }} sugestões</summary>
+        <table class="tabela-compacta">
+            <thead><tr><th>Setor</th><th>Cargo</th><th>Valor</th></tr></thead>
+            <tbody>
+                {% for sugestao in secao.sugestoes %}
+                <tr><td>{{ sugestao.setor.nome }}</td><td>{{ sugestao.cargo }}</td><td>{{ sugestao.valor }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+
+    <details class="folha-detalhes">
+        <summary>Quem recebe em {{ competencia|date:'m/Y' }}: {{ secao.quem_recebe|length }} pessoa(s)</summary>
+        {% if secao.quem_recebe %}
+        <table class="tabela-compacta">
+            <thead><tr><th>Funcionário</th><th>Setor</th><th>Cargo</th><th>Valor</th><th>Pela regra de</th></tr></thead>
+            <tbody>
+                {% for item in secao.quem_recebe %}
+                <tr>
+                    <td>{{ item.funcionario.nome }}</td>
+                    <td>{{ item.funcionario.setor.nome }}</td>
+                    <td>{{ item.funcionario.cargo }}</td>
+                    <td>{{ item.valor }}</td>
+                    <td>{{ item.regra.descricao_alvo }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="folha-vazio">Ninguém.</p>
+        {% endif %}
+    </details>
+
+    {% if base %}
+    <details class="folha-detalhes"{% if secao.diferencas and secao.regras %} open{% endif %}>
+        <summary>Diferenças com {{ base.competencia_extenso }}: {{ secao.diferencas|length }} pessoa(s)</summary>
+        {% if secao.diferencas %}
+        <p class="folha-ajuda">
+            Quem recebeu em {{ base.competencia_extenso }} um valor diferente do que as regras dão.
+            {% if secao.tipo == 'premio_programa' %}Pode ser redução do mês (atestado, faltas): essas o RH faz na grade e não viram regra.{% endif %}
+            {% if secao.cria_em_lote %}Se for um valor fixo da pessoa, crie a regra dela com um clique.{% else %}Cadastre as regras pelo formulário, com a vigência da safra.{% endif %}
+        </p>
+        <table class="tabela-compacta">
+            <thead><tr><th>Funcionário</th><th>Setor · cargo</th><th>Em {{ base.competencia_extenso }}</th><th>Pelas regras</th><th></th></tr></thead>
+            <tbody>
+                {% for item in secao.diferencas %}
+                <tr>
+                    <td>{{ item.linha.nome }}</td>
+                    <td>{{ item.linha.funcionario.setor.nome }} · {{ item.linha.funcionario.cargo }}</td>
+                    <td>{{ item.no_fechamento_texto }}</td>
+                    <td>{{ item.pela_regra_texto }}</td>
+                    <td style="text-align: right;">
+                        {% if secao.cria_em_lote and item.linha.funcionario.status == 'ativo' %}
+                        <form method="post" action="{% url 'folha:fixar_regra' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="tipo" value="{{ secao.tipo }}">
+                            <input type="hidden" name="funcionario" value="{{ item.linha.funcionario_id }}">
+                            <input type="hidden" name="valor" value="{{ item.no_fechamento|stringformat:'s' }}">
+                            <button type="submit" class="btn-outline btn-sm">{% if item.no_fechamento %}Fixar {{ item.no_fechamento_texto }} para a pessoa{% else %}Não recebe{% endif %}</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="folha-vazio">Nenhuma: as regras reproduzem {{ base.competencia_extenso }}.</p>
+        {% endif %}
+    </details>
+    {% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+    <div class="card__header"><span class="card__title">Prêmio bônus <span class="folha-rubrica">rubrica 1592</span></span></div>
+    <p class="folha-ajuda">
+        Não tem regra fixa: o RH lança o valor de cada pessoa, mês a mês, na grade do fechamento. Começa em branco todo mês.
+    </p>
+    {% if fechamento_aberto %}
+    <a href="{% url 'folha:detalhe' fechamento_aberto.id %}" class="btn-outline btn-sm" style="margin-top: 10px; display: inline-flex;">Lançar no fechamento de {{ fechamento_aberto.competencia_extenso }}</a>
+    {% endif %}
+</div>
+{% endblock %}

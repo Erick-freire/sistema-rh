@@ -1,3 +1,5 @@
+import base64
+import sys
 from pathlib import Path
 from decouple import config, Csv
 
@@ -72,6 +74,7 @@ INSTALLED_APPS = [
     'integracao_gov',
     'ponto',
     'terceiros',
+    'folha',
 ]
 
 MIDDLEWARE = [
@@ -176,6 +179,13 @@ AUTHENTICATION_BACKENDS = ['funcionarios.backends.CpfOuLoginGestorBackend']
 # protege Equipamento.senha_admin (app ponto). Vazia = deriva uma chave a
 # partir da SECRET_KEY.
 CHAVE_CIFRA_SEGREDOS = config('CHAVE_CIFRA_SEGREDOS', default='')
+
+# `manage.py test` força DEBUG=False, e sem chave dedicada o EncryptedTextField
+# recusa cifrar (é a proteção de produção). Só nesse comando, e só se nenhuma
+# chave foi configurada, usa esta chave de teste: tudo o que ela cifra vai pro
+# banco de teste, que é criado e destruído na rodada. Fora do `test` nada muda.
+if not CHAVE_CIFRA_SEGREDOS and sys.argv[1:2] == ['test']:
+    CHAVE_CIFRA_SEGREDOS = base64.urlsafe_b64encode(b'chave-de-teste-nao-usar-em-prod!').decode()
 
 
 # Secullum Ponto 4 (SQL Server) -- usado só como referência de leitura para

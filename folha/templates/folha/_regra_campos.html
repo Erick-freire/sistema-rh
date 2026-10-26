@@ -1,0 +1,71 @@
+{% comment %}
+Campos da regra de prêmio (criar em premios.html, editar em regra_form.html).
+Setor, cargo e pessoa aparecem conforme o "Vale para" -- ver o script no fim.
+{% endcomment %}
+{% if form.non_field_errors %}<div class="alert alert--erro">{{ form.non_field_errors|join:' ' }}</div>{% endif %}
+<div class="form-grid" data-regra-premio>
+    <div>
+        <label for="{{ form.tipo.id_for_label }}">{{ form.tipo.label }}</label>
+        {{ form.tipo }}
+        {{ form.tipo.errors }}
+    </div>
+    <div>
+        <label for="{{ form.valor.id_for_label }}">{{ form.valor.label }}</label>
+        {{ form.valor }}
+        <p class="folha-ajuda">Zero = não recebe (use para tirar uma pessoa de uma regra do setor).</p>
+        {{ form.valor.errors }}
+    </div>
+    <div class="span-2">
+        <label>{{ form.alvo.label }}</label>
+        <div class="opcoes-radio">
+            {% for opcao in form.alvo %}
+            <label class="opcoes-radio__item">{{ opcao.tag }} {{ opcao.choice_label }}</label>
+            {% endfor %}
+        </div>
+        {{ form.alvo.errors }}
+    </div>
+    <div data-alvo="setor setor_cargo">
+        <label for="{{ form.setor.id_for_label }}">Setor</label>
+        {{ form.setor }}
+        {{ form.setor.errors }}
+    </div>
+    <div data-alvo="setor_cargo">
+        <label for="{{ form.cargo.id_for_label }}">Cargo</label>
+        {{ form.cargo }}
+        <datalist id="cargos-existentes">{% for cargo in cargos_existentes %}<option value="{{ cargo }}">{% endfor %}</datalist>
+        <p class="folha-ajuda">Maiúsculas e acentos não importam.</p>
+        {{ form.cargo.errors }}
+    </div>
+    <div class="span-2" data-alvo="pessoa">
+        <label for="{{ form.funcionario.id_for_label }}">{{ form.funcionario.label }}</label>
+        {{ form.funcionario }}
+        {{ form.funcionario.errors }}
+    </div>
+    <div>
+        <label for="{{ form.vigente_de.id_for_label }}">{{ form.vigente_de.label }}</label>
+        {{ form.vigente_de }}
+        <p class="folha-ajuda">Conta o mês inteiro da data escolhida. Vazio = desde sempre.</p>
+        {{ form.vigente_de.errors }}
+    </div>
+    <div>
+        <label for="{{ form.vigente_ate.id_for_label }}">{{ form.vigente_ate.label }}</label>
+        {{ form.vigente_ate }}
+        <p class="folha-ajuda">Vale até o fim do mês da data escolhida. Vazio = sem fim. No safra, o último mês da safra.</p>
+        {{ form.vigente_ate.errors }}
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-regra-premio]').forEach(function (grade) {
+        var mostrar = function () {
+            var marcado = grade.querySelector('input[name="alvo"]:checked');
+            var alvo = marcado ? marcado.value : '';
+            grade.querySelectorAll('[data-alvo]').forEach(function (campo) {
+                campo.hidden = campo.dataset.alvo.split(' ').indexOf(alvo) === -1;
+            });
+        };
+        grade.addEventListener('change', mostrar);
+        mostrar();
+    });
+});
+</script>

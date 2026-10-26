@@ -32,6 +32,7 @@ def _dados_perfil(**kwargs):
     dados = dict(
         pis='12345678901', sexo='masculino', estado_civil='solteiro',
         email='colaborador@sotrigo.com.br', banco='Banco X', agencia='0001', numero_conta='12345',
+        usa_vale_transporte='True',
     )
     dados.update(kwargs)
     return dados
@@ -96,6 +97,39 @@ class MeuPerfilFormPisTests(TestCase):
         funcionario = form.save()
 
         self.assertEqual(funcionario.pis, '12345678901')
+
+
+class MeuPerfilValeTransporteTests(TestCase):
+    """O próprio colaborador responde em Meu Perfil se usa vale-transporte (quem não usa não tem desconto na folha)."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='11122233396', cargo='Analista', setor=self.setor,
+        )
+
+    def test_resposta_e_obrigatoria(self):
+        form = MeuPerfilForm(_dados_perfil(usa_vale_transporte=''), instance=self.funcionario)
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('usa_vale_transporte', form.errors)
+
+    def test_nao_usar_fica_gravado_como_resposta(self):
+        form = MeuPerfilForm(_dados_perfil(usa_vale_transporte='False'), instance=self.funcionario)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIs(form.save().usa_vale_transporte, False)
+
+    def test_painel_pede_a_resposta_ate_ser_dada(self):
+        user = User.objects.create_user(username='colab', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='colab', password='senha123')
+
+        self.assertContains(self.client.get(reverse('dashboard')), 'Informar se vai usar o vale-transporte')
+
+        self.funcionario.usa_vale_transporte = False
+        self.funcionario.save()
+        self.assertNotContains(self.client.get(reverse('dashboard')), 'Informar se vai usar o vale-transporte')
 
 
 class ImportarPisPlanilhaTests(TestCase):

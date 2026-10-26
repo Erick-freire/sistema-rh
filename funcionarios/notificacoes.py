@@ -21,6 +21,7 @@ from django.contrib.auth.models import User
 from django.db import connections, transaction
 from django.db.models import Q
 from django.urls import reverse
+from django.utils import timezone
 from pywebpush import WebPushException, webpush
 
 from .models import InscricaoPush
@@ -55,12 +56,16 @@ def endpoint_permitido(endpoint):
     )
 
 
-def notificar(usuarios, titulo, corpo, url, tag='', exceto=None):
+def notificar(usuarios, titulo, corpo, url, tag='', exceto=None, em_segundo_plano=True):
     """Manda a notificação para todos os aparelhos inscritos de `usuarios`.
 
     `usuarios` é uma lista/queryset de `User`. `tag` faz o aparelho trocar a
     notificação anterior com a mesma tag em vez de empilhar outra.
     `exceto` tira quem fez a ação da lista.
+
+    `em_segundo_plano=False` espera o envio terminar. É para os comandos
+    agendados: a thread é daemon, e o processo do comando encerra logo depois
+    do último aviso -- o que mataria o envio no meio.
     """
     if not push_configurado():
         return
@@ -78,7 +83,7 @@ def notificar(usuarios, titulo, corpo, url, tag='', exceto=None):
         )
         if not inscricoes:
             return
-        if settings.PUSH_EM_SEGUNDO_PLANO:
+        if settings.PUSH_EM_SEGUNDO_PLANO and em_segundo_plano:
             threading.Thread(target=_enviar_em_thread, args=(inscricoes, payload), daemon=True).start()
         else:
             _enviar(inscricoes, payload)
@@ -160,6 +165,19 @@ def _gestores_do_setor(setor_id):
     return User.objects.filter(
         usuario__papel='gestor', usuario__funcionario__setor_id=setor_id, is_active=True,
     )
+
+
+def _gestores_da_equipe(funcionario):
+    # Mesma regra do "Ponto da equipe" (`ponto.views._funcionarios_da_equipe`):
+    # gestor do mesmo setor ou o responsável pelo setor -- os dois enxergam o
+    # ponto dessa pessoa. Ser `Setor.gestor` sem papel de gestor não conta.
+    if funcionario.setor_id is None:
+        return User.objects.none()
+    return User.objects.filter(
+        Q(usuario__funcionario__setor_id=funcionario.setor_id)
+        | Q(usuario__funcionario__setores_gerenciados=funcionario.setor_id),
+        usuario__papel='gestor', is_active=True,
+    ).distinct()
 
 
 def _periodo(data, dias):
@@ -353,4 +371,36 @@ def ajuste_ponto_analisado(ajuste):
         corpo,
         reverse('ponto:meus_ajustes'),
         tag=f'ajuste-{ajuste.id}',
+    )
+
+
+def intervalo_curto(funcionario, data, saida, volta, minimo_segundos=60 * 60, em_segundo_plano=True):
+    """
+    Intervalo abaixo do mínimo -- 1h ou 15 min, conforme as horas trabalhadas
+    (regra em `ponto.calculos.intervalo_minimo`): um aviso por caso para o RH/DP e
+    para o gestor da equipe. Cada um abre a tela onde pode conferir o dia -- o RH
+    o espelho, o gestor o ponto da equipe.
+    """
+    saida, volta = timezone.localtime(saida), timezone.localtime(volta)
+    minutos = int((volta - saida).total_seconds() // 60)
+    if minimo_segundos >= 60 * 60:
+        titulo = 'Intervalo de almoço abaixo de 1h'
+    else:
+        titulo = f'Intervalo abaixo de {minimo_segundos // 60} min'
+    corpo = f'{funcionario.nome} tirou {minutos} min de intervalo em {data:%d/%m} ({saida:%H:%M} às {volta:%H:%M}).'
+    tag = f'intervalo-{funcionario.id}-{data:%Y%m%d}'
+    periodo = f'data_inicio={data.isoformat()}&data_fim={data.isoformat()}'
+
+    rh = list(_usuarios_rh_dp())
+    notificar(
+        rh, titulo, corpo,
+        reverse('ponto:listar_calculo') + f'?funcionario={funcionario.id}&{periodo}',
+        tag=tag, exceto=_user_de(funcionario), em_segundo_plano=em_segundo_plano,
+    )
+    # Quem é RH e gestor ao mesmo tempo já recebeu acima.
+    ids_rh = {user.pk for user in rh}
+    notificar(
+        [user for user in _gestores_da_equipe(funcionario) if user.pk not in ids_rh], titulo, corpo,
+        reverse('ponto:ponto_equipe_funcionario', args=[funcionario.id]) + f'?{periodo}',
+        tag=tag, exceto=_user_de(funcionario), em_segundo_plano=em_segundo_plano,
     )

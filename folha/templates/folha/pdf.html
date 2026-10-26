@@ -1,0 +1,85 @@
+{% comment %}
+PDF do fechamento para a contabilidade (xhtml2pdf): A4 deitado, as mesmas
+colunas e a mesma ordem do .xlsx, com o código da rubrica embaixo do nome.
+{% endcomment %}
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: a4 landscape;
+        margin: 1.4cm 0.8cm 1.3cm 0.8cm;
+        @frame rodape { -pdf-frame-content: rodape; bottom: 0.4cm; margin-left: 0.8cm; margin-right: 0.8cm; height: 0.7cm; }
+    }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 6.5pt; color: #222; }
+    .topo td { vertical-align: middle; border: none; padding: 0; }
+    .logo { width: 70px; }
+    h1 { font-size: 12pt; margin: 0; padding: 0; }
+    .subtitulo { font-size: 8pt; color: #555; }
+    .previa { color: #B3261E; font-weight: bold; font-size: 9pt; }
+    table.folha { border-collapse: collapse; margin-top: 8px; }
+    /* Só padding vertical: com padding lateral o xhtml2pdf ignora a largura das colunas. */
+    table.folha th {
+        background-color: #4472C4; color: #FFFFFF; font-weight: bold; font-size: 5.5pt;
+        border: 0.5px solid #8EA9DB; text-align: center; vertical-align: middle; padding-top: 2px; padding-bottom: 1px;
+    }
+    table.folha td {
+        border: 0.5px solid #BFBFBF; text-align: center; vertical-align: middle; padding-top: 2px; padding-bottom: 1px;
+    }
+    table.folha td.nome { text-align: left; font-weight: bold; }
+    table.folha tr.par td { background-color: #F2F5FB; }
+    table.folha tr.total td { font-weight: bold; background-color: #E8ECF5; border-top: 1px solid #4472C4; }
+    .rubrica { font-weight: normal; }
+    #rodape { font-size: 6.5pt; color: #555; }
+</style>
+</head>
+<body>
+
+<table class="topo">
+    <tr>
+        <td style="width: 80px;"><img class="logo" src="{{ caminho_logo }}"></td>
+        <td>
+            <h1>Fechamento de folha &mdash; {{ fechamento.competencia_extenso|capfirst }}</h1>
+            <div class="subtitulo">SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA &middot; {{ linhas|length }} funcionário(s)</div>
+        </td>
+        <td style="text-align: right; width: 260px;">
+            {% if fechamento.aberto %}
+            <span class="previa">PRÉVIA &mdash; competência ainda em aberto</span>
+            {% else %}
+            <span class="subtitulo">Fechado em {{ fechamento.fechado_em|date:'d/m/Y H:i'|default:'—' }}</span>
+            {% endif %}
+        </td>
+    </tr>
+</table>
+
+<table class="folha" repeat="1">
+    <thead>
+        <tr>
+            {% for coluna, largura in cabecalhos %}
+            <th style="width: {{ largura|stringformat:'.2f' }}cm;">{{ coluna.rotulo }}{% if coluna.rubrica %}<br><span class="rubrica">{{ coluna.rubrica }}</span>{% endif %}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for valores in linhas %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="par"{% endif %}>
+            {% for valor in valores %}
+            {% if forloop.counter == 3 %}<td class="nome">&nbsp;{{ valor }}</td>{% else %}<td>{{ valor }}</td>{% endif %}
+            {% endfor %}
+        </tr>
+        {% endfor %}
+        <tr class="total">
+            {% for valor in totais %}
+            {% if forloop.counter == 3 %}<td class="nome">&nbsp;Total</td>{% else %}<td>{{ valor }}</td>{% endif %}
+            {% endfor %}
+        </tr>
+    </tbody>
+</table>
+
+<div id="rodape">
+    Horas em h:mm (6:20 = 6 horas e 20 minutos). Valores em R$. Gerado em {{ gerado_em|date:'d/m/Y H:i' }} por {{ gerado_por }}.
+    &nbsp;&nbsp; Página <pdf:pagenumber> de <pdf:pagecount>
+</div>
+
+</body>
+</html>

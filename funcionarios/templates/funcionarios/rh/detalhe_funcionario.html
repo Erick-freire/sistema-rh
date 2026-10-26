@@ -44,6 +44,11 @@
                     {{ dados_form.matricula }}
                 </div>
                 {{ dados_form.matricula.errors }}
+                <div class="linha-dado" title="{{ dados_form.codigo_empresa.help_text }}">
+                    <span class="linha-dado__rotulo">Empresa (folha)</span>
+                    {{ dados_form.codigo_empresa }}
+                </div>
+                {{ dados_form.codigo_empresa.errors }}
                 <div class="linha-dado">
                     <span class="linha-dado__rotulo">Setor</span>
                     {{ dados_form.setor }}
@@ -78,6 +83,10 @@
                 <div class="linha-dado">
                     <span class="linha-dado__rotulo">Endereço</span>
                     <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
+                </div>
+                <div class="linha-dado" title="Respondido pelo próprio colaborador em Meu Perfil.">
+                    <span class="linha-dado__rotulo">Vale-transporte</span>
+                    <span class="linha-dado__valor">{% if funcionario.usa_vale_transporte %}Usa{% elif funcionario.usa_vale_transporte is False %}Não usa (sem desconto){% else %}Ainda não respondeu{% endif %}</span>
                 </div>
                 <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar</button>
             </form>

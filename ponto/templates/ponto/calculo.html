@@ -79,14 +79,42 @@
         <div class="totais-grid__tile">
             <div class="totais-grid__rotulo">Extra 50%</div>
             <div class="totais-grid__valor">{{ resultado.totais.extra_50_segundos|horas }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.extra_50|moeda }}</div>{% endif %}
         </div>
         <div class="totais-grid__tile">
             <div class="totais-grid__rotulo">Extra 100%</div>
             <div class="totais-grid__valor">{{ resultado.totais.extra_100_segundos|horas }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.extra_100|moeda }}</div>{% endif %}
         </div>
         <div class="totais-grid__tile">
             <div class="totais-grid__rotulo">Falta/atraso a descontar</div>
             <div class="totais-grid__valor totais-grid__valor--alerta">{{ resultado.totais.falta_segundos|horas }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.falta|moeda }}</div>{% endif %}
+        </div>
+        <div class="totais-grid__tile" title="Dia de trabalho sem nenhuma batida. Não é compensado com hora extra.">
+            <div class="totais-grid__rotulo">Dias falta</div>
+            <div class="totais-grid__valor {% if resultado.totais.dias_falta %}totais-grid__valor--alerta{% endif %}">{{ resultado.totais.dias_falta }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.dias_falta|moeda }}</div>{% endif %}
+        </div>
+        <div class="totais-grid__tile" title="Um DSR por semana (segunda a domingo) com Dia Falta.">
+            <div class="totais-grid__rotulo">DSR perdidos</div>
+            <div class="totais-grid__valor {% if resultado.totais.dsr_perdidos %}totais-grid__valor--alerta{% endif %}">{{ resultado.totais.dsr_perdidos }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.dsr|moeda }}</div>{% endif %}
+        </div>
+    </div>
+    <div class="totais-grid">
+        <div class="totais-grid__tile" title="Trabalho entre 22:00 e 05:00, na hora de 52min30s. Base do adicional noturno de 20%.">
+            <div class="totais-grid__rotulo">Horas noturnas</div>
+            <div class="totais-grid__valor">{{ resultado.totais.noturno_segundos|horas }}</div>
+            {% if valores %}<div class="totais-grid__rotulo">{{ valores.adicional_noturno|moeda }}</div>{% endif %}
+        </div>
+        <div class="totais-grid__tile">
+            <div class="totais-grid__rotulo">Assiduidade</div>
+            {% if resultado.totais.perdeu_assiduidade %}
+                <div class="totais-grid__valor totais-grid__valor--alerta">Perdida</div>
+            {% else %}
+                <div class="totais-grid__valor">Mantida</div>
+            {% endif %}
         </div>
         <div class="totais-grid__tile">
             <div class="totais-grid__rotulo">Dias sem jornada</div>
@@ -97,6 +125,18 @@
             <div class="totais-grid__valor">{{ resultado.totais.dias_com_marcacao_impar }}</div>
         </div>
     </div>
+    {% if valores %}
+        <p>
+            A pagar: <strong>{{ valores.a_pagar|moeda }}</strong> · A descontar: <strong>{{ valores.a_descontar|moeda }}</strong>
+        </p>
+        <p style="font-size: 0.78rem; color: var(--color-text-muted);">
+            Salário base {{ funcionario.salario|moeda }}; hora {{ valores.valor_hora|moeda }} (salário ÷ 220).
+            Extra 50% = hora × 1,5; extra 100% = hora × 2; adicional noturno = hora × 20% por hora noturna.
+            Dia falta e DSR = salário ÷ 30 cada.
+        </p>
+    {% else %}
+        <p style="font-size: 0.78rem; color: var(--color-text-muted);">Sem salário cadastrado: os valores em R$ não são calculados.</p>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -116,6 +156,7 @@
                         <th>Ent.{{ n }}</th><th>Saí.{{ n }}</th>
                     {% endfor %}
                     <th>Normais</th>
+                    <th title="Trabalho entre 22:00 e 05:00, na hora de 52min30s (base do adicional noturno). Já está somado em Normais/Extras.">Not.</th>
                     <th>Faltas</th>
                     <th>Ex50%</th>
                     <th>Ex100%</th>
@@ -124,20 +165,21 @@
             <tbody>
                 {% for dia in resultado.dias %}
                 <tr {% if dia.sem_jornada %}style="background-color: var(--color-error-bg);"{% elif dia.folga %}style="background-color: var(--color-neutral-bg);"{% elif dia.marcacao_impar %}style="background-color: var(--color-pending-bg);"{% endif %}
-                    title="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.sem_jornada %}Sem jornada cadastrada{% elif dia.folga %}Folga{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
+                    title="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.sem_jornada %}Sem jornada cadastrada{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% elif dia.dia_falta %}Dia falta{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
                     <td>{{ dia.data|date:'d/m' }} - {{ dia.data|date:'D' }}</td>
                     {% for entrada, saida in dia.pares %}
                         <td class="celula-ponto">
-                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.folga %}Folga{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.id %}&marcacao_original={{ entrada.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
+                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{{ entrada.momento|marca_dia_turno:dia.data }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
+                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.marcacao_id %}&marcacao_original={{ entrada.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                         <td class="celula-ponto">
-                            {% if saida %}{{ saida.momento|time:'H:i' }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.folga %}Folga{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.id %}&marcacao_original={{ saida.id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
+                            {% if saida %}{{ saida.momento|time:'H:i' }}{{ saida.momento|marca_dia_turno:dia.data }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
+                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.marcacao_id %}&marcacao_original={{ saida.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
                         </td>
                     {% endfor %}
                     <td>{{ dia.segundos_normais|horas }}</td>
-                    <td {% if dia.segundos_falta_dia %}style="color: var(--color-error);"{% endif %}>{{ dia.segundos_falta_dia|horas }}</td>
+                    <td>{{ dia.segundos_noturnos|horas }}</td>
+                    <td {% if dia.segundos_falta_dia %}style="color: var(--color-error);"{% endif %}>{% if dia.dia_falta %}Dia falta{% else %}{{ dia.segundos_falta_dia|horas }}{% endif %}</td>
                     <td>{{ dia.segundos_extra_50_dia|horas }}</td>
                     <td>{{ dia.segundos_extra_100_dia|horas }}</td>
                 </tr>

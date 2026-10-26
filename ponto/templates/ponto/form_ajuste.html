@@ -11,9 +11,9 @@
 
 <div class="card">
     <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 20px;">
-        {{ data|date:'d/m/Y' }} --
+        Linha de {{ data|date:'d/m/Y' }} do espelho --
         {% if marcacao_original %}
-            corrigindo a batida das <strong>{{ marcacao_original.momento|time:'H:i' }}</strong> registrada pelo relógio.
+            corrigindo a batida de <strong>{{ marcacao_original.momento|date:'d/m' }} às {{ marcacao_original.momento|time:'H:i' }}</strong> registrada pelo relógio.
             A batida original não é apagada, só deixa de entrar na conta a partir deste ajuste.
         {% else %}
             lançando uma batida que não veio do relógio (esquecimento, por exemplo).
@@ -24,17 +24,23 @@
         {% csrf_token %}
         {% if marcacao_original %}<input type="hidden" name="marcacao_original" value="{{ marcacao_original.id }}">{% endif %}
         <input type="hidden" name="voltar" value="{{ voltar }}">
-        <div class="form-grid">
+        <div class="form-grid form-grid--3">
             <div>
                 <label for="{{ form.tipo_evento.id_for_label }}">Tipo</label>
                 {{ form.tipo_evento }}
                 {{ form.tipo_evento.errors }}
             </div>
             <div>
+                <label for="{{ form.data.id_for_label }}">Data da batida</label>
+                {{ form.data }}
+                {{ form.data.errors }}
+            </div>
+            <div>
                 <label for="{{ form.horario_ajustado.id_for_label }}">Horário</label>
                 {{ form.horario_ajustado }}
                 {{ form.horario_ajustado.errors }}
             </div>
+            <p class="span-2" style="font-size: 0.78rem; color: var(--color-text-muted); margin: 0;">{{ form.data.help_text }}</p>
             <div class="span-2">
                 <label for="{{ form.motivo.id_for_label }}">Motivo</label>
                 {{ form.motivo }}

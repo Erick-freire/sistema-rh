@@ -1,0 +1,71 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}Fechamento de folha{% endblock %}
+
+{% block conteudo %}
+<h1>Fechamento de folha</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">A planilha mensal que vai para o escritório de contabilidade.</p>
+{% include 'folha/_subnav.html' %}
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Abrir competência</span>
+    </div>
+    <form method="post" action="{% url 'folha:abrir' %}" class="form-grid" data-loading-form
+          data-loading-message="Abrindo o fechamento...">
+        {% csrf_token %}
+        <div>
+            <label for="competencia">Mês (escolha qualquer dia dele)</label>
+            {# type="date" e não "month": no Firefox e no Safari o "month" vira texto, sem calendário. #}
+            <input type="date" name="competencia" id="competencia" value="{{ sugestao }}" max="{{ maximo }}" required>
+        </div>
+        <div style="align-self: end;">
+            <button type="submit" class="btn-primario">{% icon 'plus' %} Abrir fechamento</button>
+        </div>
+    </form>
+    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+        Entram todos os funcionários ativos. As horas vêm do cálculo do ponto do dia 1 ao último dia do mês; prêmio
+        programa, incentivo e safra, das <a href="{% url 'folha:premios' %}">regras de prêmios</a>; vale-transporte e
+        periculosidade, do fechamento anterior. Bônus, descontos, reembolso, comissões e 13º começam em branco.
+    </p>
+</div>
+
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Competência</th>
+                <th>Funcionários</th>
+                <th>Status</th>
+                <th>Aberto em</th>
+                <th>Fechado em</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fechamento in fechamentos %}
+            <tr class="tabela-linha--link" data-href="{% url 'folha:detalhe' fechamento.id %}">
+                <td><strong style="text-transform: capitalize;">{{ fechamento.competencia_extenso }}</strong></td>
+                <td>{{ fechamento.total_linhas }}</td>
+                <td>
+                    {% if fechamento.aberto %}
+                        <span class="badge-status badge-status--pendente">Aberto</span>
+                    {% else %}
+                        <span class="badge-status badge-status--ativo">Fechado</span>
+                    {% endif %}
+                </td>
+                <td>{{ fechamento.criado_em|date:'d/m/Y H:i' }}</td>
+                <td>{{ fechamento.fechado_em|date:'d/m/Y H:i'|default:'—' }}</td>
+                <td style="white-space: nowrap;">
+                    <a href="{% url 'folha:exportar_xlsx' fechamento.id %}" class="btn-outline btn-sm">{% icon 'download' %} Excel</a>
+                    <a href="{% url 'folha:exportar_pdf' fechamento.id %}" class="btn-outline btn-sm">{% icon 'download' %} PDF</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Nenhum fechamento ainda.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

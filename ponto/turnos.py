@@ -34,6 +34,16 @@ MARGEM_MAXIMA = timedelta(hours=6)
 # cortado em dois grupos. Só vale para batidas FORA de escala; as de turno previsto
 # não passam por esta regra.
 INTERVALO_MAXIMO_ENTRE_BATIDAS = timedelta(hours=14)
+# Nenhum turno real passa disso (o 12x36 tem 12h). Um dia mais longo é saída
+# digitada antes da entrada: 15:20-15:00 vira um par que atravessa a meia-noite.
+DURACAO_MAXIMA_TURNO = timedelta(hours=16)
+
+# Hora noturna (CLT art. 73, regra do RH): das 22:00 às 05:00, e cada hora
+# noturna tem 52min30s -- 7h de relógio valem 8h. Só a faixa 22-05 conta: o
+# trabalho depois das 05:00 é diurno, mesmo emendado num turno da noite toda.
+INICIO_NOTURNO = time(22, 0)
+FIM_NOTURNO = time(5, 0)
+HORA_NOTURNA_SEGUNDOS = 52 * 60 + 30
 
 
 @dataclass
@@ -66,6 +76,36 @@ def turno_previsto_do_dia(data: date, horas: List[time], tzinfo=None) -> Optiona
             candidato += timedelta(days=1)
         atual = candidato
     return TurnoPrevisto(data=data, inicio=inicio, fim=atual)
+
+
+def duracao_do_turno(horas: List[time]) -> timedelta:
+    """Da primeira entrada à última saída, contando a virada da meia-noite (`horas` como em `turno_previsto_do_dia`)."""
+    turno = turno_previsto_do_dia(date(2000, 1, 3), horas)
+    return turno.fim - turno.inicio if turno else timedelta()
+
+
+def segundos_noturnos(inicio: datetime, fim: datetime) -> int:
+    """Segundos de relógio de `inicio` a `fim` que caem entre 22:00 e 05:00 (no fuso das datas recebidas)."""
+    total = timedelta()
+    dia = inicio.date() - timedelta(days=1)
+    while dia <= fim.date():
+        janela_inicio = datetime.combine(dia, INICIO_NOTURNO, tzinfo=inicio.tzinfo)
+        janela_fim = datetime.combine(dia + timedelta(days=1), FIM_NOTURNO, tzinfo=inicio.tzinfo)
+        sobreposicao = min(fim, janela_fim) - max(inicio, janela_inicio)
+        if sobreposicao > timedelta():
+            total += sobreposicao
+        dia += timedelta(days=1)
+    return int(total.total_seconds())
+
+
+def em_hora_noturna(segundos_noturnos_relogio: int) -> int:
+    """Segundos de relógio no noturno convertidos para a hora de 52min30s (7h viram 8h)."""
+    return round(segundos_noturnos_relogio * 3600 / HORA_NOTURNA_SEGUNDOS)
+
+
+def segundos_computados(segundos_relogio: int, segundos_noturnos_relogio: int) -> int:
+    """Tempo total com a parte noturna (já contida em `segundos_relogio`) na hora de 52min30s."""
+    return segundos_relogio - segundos_noturnos_relogio + em_hora_noturna(segundos_noturnos_relogio)
 
 
 def _janelas(previstos, margem_maxima):

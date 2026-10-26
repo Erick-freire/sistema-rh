@@ -120,6 +120,20 @@ Meu Perfil
                     </div>
                 </div>
 
+                <div class="card__title" style="margin: 20px 0 8px;" id="vale-transporte">Vale-transporte</div>
+                {% if funcionario.usa_vale_transporte is None %}
+                <div class="alert alert--aviso">{% icon 'alert-triangle' %}<span>Responda se você vai usar o vale-transporte.</span></div>
+                {% endif %}
+                <div class="opcoes-radio">
+                    {% for opcao in form.usa_vale_transporte %}
+                    <label class="opcoes-radio__item">{{ opcao.tag }} {{ opcao.choice_label }}</label>
+                    {% endfor %}
+                </div>
+                <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">
+                    Quem usa tem desconto no salário de até 6%. Quem não usa não tem desconto. Dá para mudar depois, aqui mesmo.
+                </p>
+                {{ form.usa_vale_transporte.errors }}
+
                 <div style="display: flex; gap: 12px; margin-top: 20px;">
                     <button type="submit" class="btn-primario">Salvar alterações</button>
                     <a href="{% url 'meu_perfil' %}" class="btn-outline">Cancelar</a>

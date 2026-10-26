@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django import forms
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .turnos import DURACAO_MAXIMA_TURNO, duracao_do_turno
 from .utils import intervalo_do_dia
 
 
@@ -47,8 +48,28 @@ class HorarioForm(forms.ModelForm):
 
 _TIME_WIDGET = forms.TimeInput(attrs={'type': 'time'})
 
+_CAMPOS_HORARIO_DIA = ('entrada1', 'saida1', 'entrada2', 'saida2', 'entrada3', 'saida3')
+
+
+class HorarioDiaForm(forms.ModelForm):
+    def clean(self):
+        cleaned_data = super().clean()
+        horas = [cleaned_data.get(campo) for campo in _CAMPOS_HORARIO_DIA if cleaned_data.get(campo)]
+        duracao = duracao_do_turno(horas)
+        # Um par com saída antes da entrada é lido como turno que atravessa a
+        # meia-noite -- certo no noturno (22:00-00:00), errado num 15:20-15:00.
+        if duracao > DURACAO_MAXIMA_TURNO:
+            minutos = int(duracao.total_seconds() // 60)
+            raise forms.ValidationError(
+                f'Da primeira entrada à última saída dá {minutos // 60}h{minutos % 60:02d}. '
+                'Confira se alguma saída ficou antes da entrada (ex.: 15:20 às 15:00).'
+            )
+        return cleaned_data
+
+
 HorarioDiaFormSet = inlineformset_factory(
     Horario, HorarioDia,
+    form=HorarioDiaForm,
     fields=['dia_semana', 'entrada1', 'saida1', 'entrada2', 'saida2', 'entrada3', 'saida3'],
     extra=7, max_num=7, can_delete=False,
     widgets={
@@ -108,15 +129,27 @@ class JornadaOpcionalForm(forms.Form):
 
 
 class AjustarMarcacaoForm(forms.ModelForm):
+    """
+    Lançamento do RH. A data é a data REAL da batida, livre: vem preenchida pela
+    view (dia da batida original na correção, dia da linha do espelho na batida
+    que faltou) e o RH troca quando precisa -- ex.: saída depois da meia-noite.
+    """
     class Meta:
         model = AjustePonto
-        fields = ['tipo_evento', 'horario_ajustado', 'motivo']
-        widgets = {'horario_ajustado': forms.TimeInput(attrs={'type': 'time'})}
+        fields = ['data', 'tipo_evento', 'horario_ajustado', 'motivo']
+        widgets = {
+            'data': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'horario_ajustado': forms.TimeInput(attrs={'type': 'time'}),
+        }
+        help_texts = {
+            'data': 'Data em que a batida realmente aconteceu. Para uma saída depois da meia-noite, use o dia seguinte.',
+        }
 
 
 class MarcacaoOriginalChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, obj):
-        return f'{timezone.localtime(obj.momento):%H:%M} ({obj.get_tipo_evento_display()})'
+        # Com data: a lista tem batidas de três dias (ver SolicitarAjusteForm).
+        return f'{timezone.localtime(obj.momento):%d/%m %H:%M} ({obj.get_tipo_evento_display()})'
 
 
 class SolicitarAjusteForm(forms.ModelForm):
@@ -125,11 +158,14 @@ class SolicitarAjusteForm(forms.ModelForm):
     com status='pendente', só passa a valer pro cálculo depois que o RH
     aprovar (ver `ajustes_pendentes_view`/`aprovar_ajuste_view`).
 
-    `marcacao_original` só oferece as batidas do próprio funcionário no dia
-    informado (nunca um dropdown livre) -- restrição de segurança (não vaza
-    batida de outro funcionário) e de corretude: sem isso, corrigir uma
-    batida existente sem referenciá-la faria o motor de cálculo contar as
-    duas (a errada e a corrigida) em vez de uma substituir a outra.
+    `marcacao_original` só oferece as batidas do próprio funcionário do dia
+    anterior ao dia seguinte à data informada (nunca um dropdown livre) --
+    restrição de segurança (não vaza batida de outro funcionário) e de
+    corretude: sem isso, corrigir uma batida existente sem referenciá-la faria
+    o motor de cálculo contar as duas (a errada e a corrigida) em vez de uma
+    substituir a outra. Os dias vizinhos entram por causa do turno noturno: a
+    saída das 06:03 é do dia seguinte ao turno, e uma volta às 23:58 corrigida
+    para 00:05 tem a data (real) do dia seguinte ao da batida original.
     """
     class Meta:
         model = AjustePonto
@@ -140,6 +176,9 @@ class SolicitarAjusteForm(forms.ModelForm):
             'horario_ajustado': forms.TimeInput(attrs={'type': 'time'}),
         }
         labels = {'marcacao_original': 'Corrigindo uma batida existente?'}
+        help_texts = {
+            'data': 'Informe a data em que a batida realmente aconteceu. Para uma saída depois da meia-noite, use o dia seguinte.',
+        }
 
     def __init__(self, *args, funcionario, **kwargs):
         super().__init__(*args, **kwargs)
@@ -157,7 +196,8 @@ class SolicitarAjusteForm(forms.ModelForm):
             # Range de datetime (não `momento__date=`) -- ver ponto/utils.py:
             # esse lookup depende de tabela de timezone do MySQL que pode não
             # estar carregada no servidor.
-            inicio, fim = intervalo_do_dia(data_inicial)
+            inicio = intervalo_do_dia(data_inicial - timedelta(days=1))[0]
+            fim = intervalo_do_dia(data_inicial + timedelta(days=1))[1]
             self.fields['marcacao_original'].queryset = MarcacaoRelogio.objects.filter(
                 funcionario=funcionario, momento__gte=inicio, momento__lt=fim,
             ).order_by('momento')
@@ -167,10 +207,10 @@ class SolicitarAjusteForm(forms.ModelForm):
         data = cleaned_data.get('data')
         tipo_evento = cleaned_data.get('tipo_evento')
 
-        # Não precisa checar aqui se `marcacao_original` é do mesmo dia que
-        # `data`: a queryset do campo já é escopada pelo `data` submetido (ver
-        # __init__), então um valor de outro dia já cai como "opção inválida"
-        # antes de chegar aqui.
+        # Não precisa checar aqui se `marcacao_original` é perto de `data`: a
+        # queryset do campo já é escopada pelo `data` submetido (ver __init__),
+        # então uma batida mais longe já cai como "opção inválida" antes de
+        # chegar aqui.
         if data and tipo_evento and AjustePonto.objects.filter(
             funcionario=self.funcionario, data=data, tipo_evento=tipo_evento, status='pendente',
         ).exists():

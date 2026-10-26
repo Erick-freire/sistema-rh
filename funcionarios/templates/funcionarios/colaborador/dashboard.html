@@ -91,9 +91,21 @@ Início
                 </a>
                 {% endif %}
 
-                {% if not aviso_pendente or tem_ativa %}{% if solicitacao_ferias.status != 'sugestao_gestor' %}{% if funcionario.status != 'pendente_documentos' or not tipos_pendentes %}{% if funcionario.status != 'aguardando_assinatura' and not documentos_rejeitados %}
+                {% if funcionario.usa_vale_transporte is None %}
+                <a href="{% url 'meu_perfil' %}#vale-transporte" class="lista-agrupada__item">
+                    <span class="lista-agrupada__icone">{% icon 'user' %}</span>
+                    <span class="lista-agrupada__corpo">
+                        <span class="lista-agrupada__titulo">Informar se vai usar o vale-transporte</span>
+                        <span class="lista-agrupada__sub">Quem não usa não tem desconto no salário</span>
+                    </span>
+                    <span class="lista-agrupada__acao">Resolver</span>
+                    {% icon 'chevron-right' 'lista-agrupada__seta' %}
+                </a>
+                {% endif %}
+
+                {% if not aviso_pendente or tem_ativa %}{% if solicitacao_ferias.status != 'sugestao_gestor' %}{% if funcionario.status != 'pendente_documentos' or not tipos_pendentes %}{% if funcionario.status != 'aguardando_assinatura' and not documentos_rejeitados %}{% if funcionario.usa_vale_transporte is not None %}
                 <div class="lista-agrupada__vazio">{% icon 'check-circle' %} Tudo em dia por aqui.</div>
-                {% endif %}{% endif %}{% endif %}{% endif %}
+                {% endif %}{% endif %}{% endif %}{% endif %}{% endif %}
             </div>
         </section>
 

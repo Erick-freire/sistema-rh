@@ -13,7 +13,8 @@ from django.urls import reverse
 from django.utils import timezone
 from pywebpush import WebPushException
 
-from ponto.models import AjustePonto
+from ponto.models import AjustePonto, FuncionarioJornada
+from ponto.tests import _bater_ponto, _criar_equipamento, _criar_horario_util
 
 from .models import (
     Documento, FichaEPI, Funcionario, InscricaoPush, Setor, SolicitacaoFerias, TermoComodato, TipoDocumento, Usuario,
@@ -303,6 +304,21 @@ class DocumentosEComodatoPushTests(BasePush):
             self._payloads()[0]['corpo'], '2 documentos para enviar e 1 termo de comodato para assinar.',
         )
 
+    def test_lembrete_espera_o_envio_terminar(self):
+        # Em produção o push sai numa thread daemon; num comando ela morreria
+        # junto com o processo, então o lembrete envia sem thread.
+        TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme', data_emprestimo=date.today(),
+        )
+
+        with override_settings(PUSH_EM_SEGUNDO_PLANO=True), \
+                mock.patch('funcionarios.notificacoes.threading.Thread') as thread, \
+                self.captureOnCommitCallbacks(execute=True):
+            call_command('lembrar_pendencias', stdout=StringIO())
+
+        thread.assert_not_called()
+        self.assertEqual(self._destinatarios(), [self.colaborador.username])
+
     def test_lembrete_nao_avisa_quem_esta_em_dia(self):
         with self.captureOnCommitCallbacks(execute=True):
             call_command('lembrar_pendencias', stdout=StringIO())
@@ -344,6 +360,96 @@ class AjustePontoPushTests(BasePush):
         self.assertEqual(self._destinatarios(), [self.colaborador.username])
         self.assertEqual(self._payloads()[0]['titulo'], 'Ajuste de ponto recusado')
         self.assertIn('Sem justificativa', self._payloads()[0]['corpo'])
+
+
+@PUSH_LIGADO
+class IntervaloCurtoPushTests(BasePush):
+    """`manage.py avisar_intervalos_curtos`: um aviso por almoço abaixo de 1h, pro RH e pro gestor da equipe."""
+
+    def setUp(self):
+        super().setUp()
+        self.funcionario = self.colaborador.usuario.funcionario
+        self.equipamento = _criar_equipamento()
+        FuncionarioJornada.objects.create(
+            funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=_criar_horario_util(4801),
+        )
+        self.dia = date(2026, 8, 3)
+        for user in (self.colaborador, self.gestor, self.gestor_outro_setor, self.rh):
+            self._inscrever(user)
+
+    def _rodar(self, *argumentos):
+        saida = StringIO()
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('avisar_intervalos_curtos', '--data', self.dia.isoformat(), *argumentos, stdout=saida)
+        return saida.getvalue()
+
+    def test_almoco_curto_avisa_o_rh_e_o_gestor_da_equipe(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '12:40', '17:20')
+
+        self._rodar()
+
+        self.assertCountEqual(self._destinatarios(), [self.rh.username, self.gestor.username])
+        payloads = {p['url'].split('?')[0]: p for p in self._payloads()}
+        rh = payloads[reverse('ponto:listar_calculo')]
+        gestor = payloads[reverse('ponto:ponto_equipe_funcionario', args=[self.funcionario.id])]
+        self.assertEqual(rh['corpo'], 'Ana Colaboradora tirou 40 min de intervalo em 03/08 (12:00 às 12:40).')
+        self.assertIn(f'funcionario={self.funcionario.id}', rh['url'])
+        self.assertIn('data_inicio=2026-08-03', gestor['url'])
+
+    def test_responsavel_pelo_setor_tambem_recebe(self):
+        # Carla é gestora de outro setor, mas é a responsável pelo setor da Ana.
+        self.setor.gestor = self.gestor_outro_setor.usuario.funcionario
+        self.setor.save()
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '12:40', '17:20')
+
+        self._rodar()
+
+        self.assertCountEqual(
+            self._destinatarios(), [self.rh.username, self.gestor.username, self.gestor_outro_setor.username],
+        )
+
+    def test_quem_e_rh_e_gestor_recebe_uma_vez(self):
+        Usuario.objects.filter(user=self.gestor).update(acesso_rh=True)
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '12:40', '17:20')
+
+        self._rodar()
+
+        self.assertCountEqual(self._destinatarios(), [self.rh.username, self.gestor.username])
+
+    def test_jornada_de_ate_6h_avisa_abaixo_de_15_min(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '11:00', '11:10', '13:30')  # 5h20
+
+        saida = self._rodar()
+
+        self.assertEqual({p['titulo'] for p in self._payloads()}, {'Intervalo abaixo de 15 min'})
+        self.assertIn('Ana Colaboradora: 10 min (11:00 às 11:10), mínimo 15 min', saida)
+
+    def test_almoco_de_1h_nao_avisa(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '13:00', '17:00')
+
+        saida = self._rodar()
+
+        self.webpush.assert_not_called()
+        self.assertIn('0 caso(s)', saida)
+
+    def test_dry_run_so_lista(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '12:40', '17:20')
+
+        saida = self._rodar('--dry-run')
+
+        self.webpush.assert_not_called()
+        self.assertIn('Ana Colaboradora: 40 min (12:00 às 12:40)', saida)
+
+    def test_comando_espera_o_envio_terminar(self):
+        # Em produção o push sai numa thread daemon; num comando ela morreria
+        # junto com o processo, então o comando envia sem thread.
+        _bater_ponto(self.funcionario, self.equipamento, self.dia, '08:00', '12:00', '12:40', '17:20')
+
+        with override_settings(PUSH_EM_SEGUNDO_PLANO=True), mock.patch('funcionarios.notificacoes.threading.Thread') as thread:
+            self._rodar()
+
+        thread.assert_not_called()
+        self.assertEqual(self.webpush.call_count, 2)
 
 
 @PUSH_LIGADO
