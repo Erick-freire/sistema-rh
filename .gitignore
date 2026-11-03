@@ -1,10 +1,61 @@
-__pycache__/
-*.pyc
+# --- Segredos e configuração local ---
+# .env tem senha do banco, do Secullum, CHAVE_CIFRA_SEGREDOS, VAPID e reCAPTCHA.
 .env
-db.sqlite3
-*.log
+.env.*
+!.env.example
+# Certificados e chaves privadas (ICP-Brasil/gov.br, TLS do proxy).
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+.claude/settings.local.json
+
+# --- Dados de funcionários e terceiros ---
+# Uploads do sistema: documentos, contratos, comodatos, fotos, EPI.
 media/
+# Exportações do Secullum e planilhas de carga (CPF, salário, horários).
 importacoes/
 # Planilhas com dados reais (modelos de folha etc.)
 *.xlsx
+*.xlsm
 *.xls
+*.ods
+*.csv
+# PDFs aqui são sempre de pessoas (espelho de ponto, fechamento, contratos).
+*.pdf
+# Exportações .txt soltas na raiz (ex.: admissao_secullum.txt).
+/*.txt
+!/requirements.txt
+# Arquivo de bloqueio do Office aberto ("~$FOLHA ....xlsx").
+~$*
+
+# --- Banco de dados e backups ---
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+*.sql
+*.sql.gz
+*.dump
+*.bak
+
+# --- Logs (scripts/*.bat gravam em logs\) ---
+*.log
+logs/
+
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+staticfiles/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# --- Editor / sistema operacional ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -4,16 +4,18 @@ import tempfile
 import openpyxl
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
 from datetime import date
+from decimal import Decimal
 
 from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
 from .models import (
-    Atestado, Documento, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, SolicitacaoSenha,
+    Atestado, Documento, FichaEPI, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, SolicitacaoSenha,
     TermoComodato, TipoDocumento, Usuario,
 )
 from . import views
@@ -62,7 +64,7 @@ class PreCadastroFuncionarioFormTests(TestCase):
 
 
 class MeuPerfilFormPisTests(TestCase):
-    """PIS agora é informado pelo próprio funcionário em Meu Perfil, como um campo comum -- não mais um documento."""
+    """PIS é informado pelo próprio funcionário em Meu Perfil (não mais um documento), uma vez só: depois trava."""
 
     def setUp(self):
         self.setor = Setor.objects.create(nome='RH')
@@ -97,6 +99,28 @@ class MeuPerfilFormPisTests(TestCase):
         funcionario = form.save()
 
         self.assertEqual(funcionario.pis, '12345678901')
+
+    def test_pis_ja_informado_nao_muda(self):
+        self.funcionario.pis = '12345678901'
+        self.funcionario.save()
+
+        form = MeuPerfilForm(_dados_perfil(pis='99999999999'), instance=self.funcionario)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.pis, '12345678901')
+
+    def test_pis_recem_digitado_nao_trava_se_outro_campo_tiver_erro(self):
+        user = User.objects.create_user(username='colab', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.funcionario, papel='colaborador')
+        self.client.login(username='colab', password='senha123')
+
+        resposta = self.client.post(reverse('meu_perfil'), _dados_perfil(email=''))
+
+        self.assertContains(resposta, 'name="pis"')
+        self.funcionario.refresh_from_db()
+        self.assertIsNone(self.funcionario.pis)
 
 
 class MeuPerfilValeTransporteTests(TestCase):
@@ -677,9 +701,13 @@ class RecuperarAcessoTests(TestCase):
 
 
 class AssinaturaGovViewTests(TestCase):
-    """Tela "Assinar com Gov.br" -- só link externo + reenvio do contrato assinado, sem API."""
+    """Tela "Assinar com Gov.br" -- link externo + download/reenvio de tudo que espera assinatura, sem API."""
 
     def setUp(self):
+        self.override = self.settings(MEDIA_ROOT=tempfile.mkdtemp())
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
         setor = Setor.objects.create(nome='Produção')
         self.tipo_contrato = TipoDocumento.objects.create(
             nome='Contrato de Trabalho', obrigatorio=True, eh_contrato=True,
@@ -695,12 +723,12 @@ class AssinaturaGovViewTests(TestCase):
     def _arquivo(self, nome='arquivo.pdf'):
         return SimpleUploadedFile(nome, b'conteudo', content_type='application/pdf')
 
-    def test_mostra_link_externo_e_estado_vazio_sem_contrato(self):
+    def test_mostra_link_externo_e_estado_vazio_sem_nada_para_assinar(self):
         response = self.client.get(reverse('minhas_assinaturas'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'https://assinador.iti.br/')
-        self.assertContains(response, 'ainda não foi gerado pelo RH')
+        self.assertContains(response, 'Nenhum documento esperando a sua assinatura')
 
     def test_mostra_card_de_download_e_reenvio_quando_ha_contrato(self):
         Documento.objects.create(
@@ -712,7 +740,73 @@ class AssinaturaGovViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Contrato de Trabalho')
-        self.assertNotContains(response, 'ainda não foi gerado pelo RH')
+        self.assertNotContains(response, 'Nenhum documento esperando a sua assinatura')
+
+    def test_mostra_so_comodatos_e_fichas_de_epi_esperando_assinatura(self):
+        comodato = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme', data_emprestimo=date(2026, 10, 1),
+            status='aguardando_assinatura', motivo_rejeicao='Assinatura ilegível',
+        )
+        comodato.arquivo_gerado.save('termo.pdf', ContentFile(b'%PDF-1.4'))
+        ficha = FichaEPI.objects.create(funcionario=self.funcionario, data_entrega=date(2026, 10, 2))
+        ficha.arquivo_gerado.save('ficha.pdf', ContentFile(b'%PDF-1.4'))
+        # Ainda sem PDF gerado e já enviado: nenhum dos dois tem o que assinar.
+        sem_pdf = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='equipamento', data_emprestimo=date(2026, 10, 3),
+            status='aguardando_assinatura',
+        )
+        enviado = FichaEPI.objects.create(
+            funcionario=self.funcionario, data_entrega=date(2026, 10, 4), status='em_validacao',
+        )
+        enviado.arquivo_gerado.save('ficha2.pdf', ContentFile(b'%PDF-1.4'))
+
+        response = self.client.get(reverse('minhas_assinaturas'))
+
+        self.assertEqual(list(response.context['comodatos']), [comodato])
+        self.assertEqual(list(response.context['fichas_epi']), [ficha])
+        self.assertContains(response, reverse('ver_comodato', args=[comodato.id, 'gerado']))
+        self.assertContains(response, reverse('ver_ficha_epi', args=[ficha.id, 'gerado']))
+        self.assertContains(response, 'Assinatura ilegível')
+        self.assertNotContains(response, reverse('reenviar_comodato_assinado', args=[sem_pdf.id]))
+        self.assertNotContains(response, reverse('reenviar_epi_assinado', args=[enviado.id]))
+        self.assertNotContains(response, 'Nenhum documento esperando a sua assinatura')
+
+    def test_envio_do_comodato_assinado_pela_tela_volta_para_ela(self):
+        comodato = TermoComodato.objects.create(
+            funcionario=self.funcionario, modalidade='uniforme', data_emprestimo=date(2026, 10, 1),
+            status='aguardando_assinatura',
+        )
+        comodato.arquivo_gerado.save('termo.pdf', ContentFile(b'%PDF-1.4'))
+
+        response = self.client.post(reverse('reenviar_comodato_assinado', args=[comodato.id]), {
+            'arquivo_assinado': self._arquivo('assinado.pdf'), 'origem': 'assinatura_gov',
+        })
+
+        self.assertRedirects(response, reverse('minhas_assinaturas'))
+        comodato.refresh_from_db()
+        self.assertEqual(comodato.status, 'em_validacao')
+
+    def test_envio_da_ficha_de_epi_assinada_pela_tela_volta_para_ela(self):
+        ficha = FichaEPI.objects.create(funcionario=self.funcionario, data_entrega=date(2026, 10, 1))
+        ficha.arquivo_gerado.save('ficha.pdf', ContentFile(b'%PDF-1.4'))
+
+        response = self.client.post(reverse('reenviar_epi_assinado', args=[ficha.id]), {
+            'arquivo_assinado': self._arquivo('assinada.pdf'), 'origem': 'assinatura_gov',
+        })
+
+        self.assertRedirects(response, reverse('minhas_assinaturas'))
+        ficha.refresh_from_db()
+        self.assertEqual(ficha.status, 'em_validacao')
+
+    def test_envio_sem_origem_continua_voltando_para_meus_documentos(self):
+        ficha = FichaEPI.objects.create(funcionario=self.funcionario, data_entrega=date(2026, 10, 1))
+        ficha.arquivo_gerado.save('ficha.pdf', ContentFile(b'%PDF-1.4'))
+
+        response = self.client.post(reverse('reenviar_epi_assinado', args=[ficha.id]), {
+            'arquivo_assinado': self._arquivo('assinada.pdf'),
+        })
+
+        self.assertRedirects(response, reverse('meus_documentos'))
 
     def test_reenvio_com_origem_assinatura_gov_redireciona_de_volta_e_avanca_status(self):
         Documento.objects.create(
@@ -737,6 +831,86 @@ class AssinaturaGovViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'funcionarios/sem_perfil.html')
+
+
+class EditarDadosFuncionarioViewTests(TestCase):
+    """RH edita matrícula, empresa, setor, cargo, salário e admissão na ficha do funcionário."""
+
+    def setUp(self):
+        self.setor = Setor.objects.create(nome='Produção')
+        self.outro_setor = Setor.objects.create(nome='Moinho')
+        self.funcionario = Funcionario.objects.create(
+            nome='Colaborador Teste', cpf='12345678901', matricula='100', cargo='AUXILIAR DE PRODUCAO',
+            setor=self.setor, status='ativo',
+        )
+        self.colega = Funcionario.objects.create(
+            nome='Colega Teste', cpf='12345678902', matricula='200', cargo='AUXILIAR DE PRODUCAO',
+            setor=self.setor, status='ativo',
+        )
+        funcionario_rh = Funcionario.objects.create(
+            nome='RH Teste', cpf='98765432100', cargo='RH', setor=self.setor, status='ativo',
+        )
+        self.user_rh = User.objects.create_user(username='98765432100', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
+        self.url = reverse('editar_dados_funcionario', args=[self.funcionario.id])
+        self.client.force_login(self.user_rh)
+
+    def _dados(self, **kwargs):
+        dados = {
+            'matricula': '100', 'codigo_empresa': '453', 'setor': self.setor.id,
+            'cargo': 'AUXILIAR DE PRODUCAO', 'salario': '', 'data_admissao': '',
+        }
+        dados.update(kwargs)
+        return dados
+
+    def test_salva_todos_os_campos(self):
+        response = self.client.post(self.url, self._dados(
+            matricula='101', codigo_empresa='460', setor=self.outro_setor.id, cargo='Moleiro',
+            salario='2500.50', data_admissao='2024-03-01',
+        ))
+
+        self.assertRedirects(response, reverse('detalhe_funcionario', args=[self.funcionario.id]))
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.matricula, '101')
+        self.assertEqual(self.funcionario.codigo_empresa, 460)
+        self.assertEqual(self.funcionario.setor, self.outro_setor)
+        self.assertEqual(self.funcionario.cargo, 'Moleiro')
+        self.assertEqual(self.funcionario.salario, Decimal('2500.50'))
+        self.assertEqual(self.funcionario.data_admissao, date(2024, 3, 1))
+
+    def test_correcao_de_grafia_do_proprio_cargo_e_salva(self):
+        # Antes, a busca por cargo igual (sem caixa/acento) achava o próprio cadastro e desfazia a correção.
+        self.client.post(self.url, self._dados(cargo='Auxiliar de Produção'))
+
+        self.funcionario.refresh_from_db()
+        self.colega.refresh_from_db()
+        self.assertEqual(self.funcionario.cargo, 'Auxiliar de Produção')
+        self.assertEqual(self.colega.cargo, 'AUXILIAR DE PRODUCAO')
+
+    def test_cargo_de_outra_pessoa_reaproveita_a_grafia_cadastrada(self):
+        Funcionario.objects.create(nome='Operador', cpf='12345678903', cargo='Operador de Máquina', setor=self.setor)
+
+        self.client.post(self.url, self._dados(cargo='operador de  máquina'))
+
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.cargo, 'Operador de Máquina')
+
+    def test_erro_volta_para_a_ficha_com_o_erro_e_o_que_foi_digitado(self):
+        response = self.client.post(self.url, self._dados(matricula='200', cargo='Moleiro'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['dados_form'].errors['matricula'])
+        self.assertContains(response, 'value="Moleiro"')
+        self.assertContains(response, 'data-avisar-nao-salvo="pendente"')
+        self.funcionario.refresh_from_db()
+        self.assertEqual(self.funcionario.matricula, '100')
+        self.assertEqual(self.funcionario.cargo, 'AUXILIAR DE PRODUCAO')
+
+    def test_ficha_mostra_botao_salvar(self):
+        response = self.client.get(reverse('detalhe_funcionario', args=[self.funcionario.id]))
+
+        self.assertContains(response, 'Salvar alterações')
+        self.assertContains(response, 'data-avisar-nao-salvo=""')
 
 
 class AtestadoFormTests(TestCase):
@@ -780,6 +954,23 @@ class LancarAtestadoViewTests(TestCase):
         atestado = Atestado.objects.get(funcionario=self.funcionario)
         self.assertEqual(atestado.data_inicio, date(2026, 8, 5))
         self.assertEqual(atestado.data_fim, date(2026, 8, 7))
+
+    def test_gestor_ve_salario_e_lanca_atestado_na_ficha_da_equipe(self):
+        self.funcionario.salario = Decimal('2500.00')
+        self.funcionario.save()
+        gestor = Funcionario.objects.create(nome='Gestor Teste', cpf='55544433322', cargo='Gerente', setor=self.setor, status='ativo')
+        user_gestor = User.objects.create_user(username='55544433322', password='senha123')
+        Usuario.objects.create(user=user_gestor, funcionario=gestor, papel='gestor')
+        self.client.force_login(user_gestor)
+
+        ficha = self.client.get(reverse('detalhe_funcionario', args=[self.funcionario.id]))
+        self.client.post(reverse('lancar_atestado', args=[self.funcionario.id]), {
+            'data_inicio': '2026-08-05', 'data_fim': '2026-08-07', 'motivo': 'Gripe',
+        })
+
+        self.assertContains(ficha, 'R$ 2.500,00')
+        self.assertContains(ficha, 'Lançar atestado')
+        self.assertEqual(Atestado.objects.get(funcionario=self.funcionario).lancado_por, user_gestor)
 
     def test_colaborador_comum_nao_lanca_atestado_de_terceiros(self):
         self.client.force_login(self.user_colaborador)
@@ -1175,3 +1366,71 @@ class VerComodatoViewTests(TestCase):
         self.assertEqual(reverse('aprovar_comodato', args=[1]), '/comodatos/1/aprovar/')
         from django.urls import resolve
         self.assertEqual(resolve('/comodatos/1/aprovar/').url_name, 'aprovar_comodato')
+
+
+class GestorVeEquipeDeOutrosSetoresTests(TestCase):
+    """
+    Gestor responsável por setores em que não está lotado (ex.: gerente de
+    produção que responde pela Moagem e pelo Envase) vê a ficha e a lista de
+    Funcionários da equipe toda -- a mesma regra do ponto e da folha.
+    """
+
+    def setUp(self):
+        self.producao = Setor.objects.create(nome='Produção')
+        self.moagem = Setor.objects.create(nome='Moagem')
+        self.gestora = Funcionario.objects.create(nome='Jô Gerente', cpf='31100000000', cargo='Gerente', setor=self.producao)
+        for setor in (self.producao, self.moagem):
+            setor.gestor = self.gestora
+            setor.save()
+        self.user_gestora = User.objects.create_user(username='31100000000', password='senha123')
+        Usuario.objects.create(user=self.user_gestora, funcionario=self.gestora, papel='gestor')
+        self.moleiro = Funcionario.objects.create(nome='Moleiro da Moagem', cpf='31100000001', cargo='Moleiro', setor=self.moagem)
+        self.de_fora = Funcionario.objects.create(
+            nome='Caio Financeiro', cpf='31100000002', cargo='Analista', setor=Setor.objects.create(nome='Financeiro'),
+        )
+        self.client.force_login(self.user_gestora)
+
+    def test_lista_mostra_os_setores_que_ela_responde_sem_ela_mesma(self):
+        resposta = self.client.get(reverse('listar_funcionarios'))
+
+        self.assertEqual(list(resposta.context['pagina']), [self.moleiro])
+
+    def test_abre_a_ficha_de_quem_esta_noutro_setor_dela(self):
+        self.assertEqual(self.client.get(reverse('detalhe_funcionario', args=[self.moleiro.id])).status_code, 200)
+        resposta = self.client.get(reverse('detalhe_funcionario', args=[self.de_fora.id]))
+        self.assertRedirects(resposta, reverse('listar_funcionarios'), fetch_redirect_response=False)
+
+    def test_gera_acesso_so_da_equipe(self):
+        self.client.post(reverse('gerar_acesso_funcionario', args=[self.moleiro.id]))
+        self.client.post(reverse('gerar_acesso_funcionario', args=[self.de_fora.id]))
+
+        self.assertTrue(Usuario.objects.filter(funcionario=self.moleiro).exists())
+        self.assertFalse(Usuario.objects.filter(funcionario=self.de_fora).exists())
+
+    def test_ve_documento_da_equipe(self):
+        tipo = TipoDocumento.objects.create(nome='RG')
+        with self.settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            documento, de_fora = (
+                Documento.objects.create(
+                    funcionario=funcionario, tipo_documento=tipo,
+                    arquivo=SimpleUploadedFile('rg.pdf', b'%PDF-1.4 teste', content_type='application/pdf'),
+                )
+                for funcionario in (self.moleiro, self.de_fora)
+            )
+
+            resposta = self.client.get(reverse('ver_documento', args=[documento.id]))
+            resposta_de_fora = self.client.get(reverse('ver_documento', args=[de_fora.id]))
+
+            self.assertEqual(resposta.status_code, 200)
+            resposta.close()
+            self.assertRedirects(resposta_de_fora, reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_rh_com_filtro_meu_setor_continua_vendo_so_o_proprio_setor(self):
+        rh = Funcionario.objects.create(nome='Rita RH', cpf='31100000003', cargo='Analista de RH', setor=self.moagem)
+        user_rh = User.objects.create_user(username='31100000003', password='senha123')
+        Usuario.objects.create(user=user_rh, funcionario=rh, papel='rh')
+        self.client.force_login(user_rh)
+
+        resposta = self.client.get(reverse('listar_funcionarios') + '?escopo=meu_setor')
+
+        self.assertCountEqual(resposta.context['pagina'], [self.moleiro, rh])

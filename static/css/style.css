@@ -244,7 +244,10 @@ a.sidebar__user:hover { background-color: rgba(255, 255, 255, 0.08); text-decora
     padding: 36px 48px 56px;
     max-width: 1180px;
     width: 100%;
-    animation: entrarSuave 0.32s var(--easing) both;
+    /* `backwards`, não `both`: animação de transform que segue "em efeito" depois
+       de terminar faz do .content__body o bloco de contenção dos `position: fixed`
+       de dentro dele, e aí os modais se centralizam na página inteira em vez da tela. */
+    animation: entrarSuave 0.32s var(--easing) backwards;
 }
 
 /* ---------- Cabeçalho de página (saudação + ação principal) ---------- */
@@ -753,6 +756,7 @@ button:focus-visible, .btn:focus-visible {
 .acoes-linha .form-busca { margin: 0; flex: 1; }
 .acoes-linha .filtros-status { margin: 0; }
 .acoes-linha__espaco { flex: 1; }
+.aviso-nao-salvo { font-size: 0.82rem; font-weight: 600; color: var(--color-accent-dark); }
 
 /* ---------- Chips ---------- */
 
@@ -992,6 +996,9 @@ a.item-card:hover, button.item-card:hover {
 
 .item-card--ponto { flex-wrap: wrap; row-gap: 10px; }
 .item-card--ponto .item-card__corpo { flex: 1 1 110px; }
+/* Selo em cima do "Pedir correção"/"Corrigir": lado a lado, os dois roubavam
+   largura das batidas, que quebravam em duas linhas. */
+.item-card--ponto .item-card__extra { flex-direction: column; align-items: flex-end; gap: 6px; }
 /* Termo (comodato / ficha de EPI): selo + botões não cabem ao lado do título
    no celular -- sem quebra, o título vira uma coluna de uma letra e os botões
    vazam do card. Com quebra, as ações descem para a linha de baixo. */
@@ -1053,6 +1060,8 @@ a.item-card:hover, button.item-card:hover {
 }
 
 .alert .icon { flex-shrink: 0; margin-top: 1px; }
+/* O display: flex acima venceria o atributo hidden: alerta preenchido por JS começa escondido. */
+.alert[hidden] { display: none; }
 
 .alert--com-acao { align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .alert--com-acao > span { display: flex; align-items: center; gap: 12px; }
@@ -1163,62 +1172,6 @@ a.item-card:hover, button.item-card:hover {
     margin-bottom: 6px;
 }
 .setor-item__valor { font-weight: 700; }
-
-/* ---------- Indicadores do dashboard RH ---------- */
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.stat-card {
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-left: 4px solid var(--color-accent);
-    border-radius: var(--radius);
-    padding: 16px 20px;
-    transition: transform 0.2s var(--easing), box-shadow 0.2s var(--easing), border-color 0.2s var(--easing);
-    animation: entrarSuave 0.34s var(--easing) both;
-}
-
-a.stat-card, button.stat-card {
-    display: block;
-    text-align: left;
-    width: 100%;
-    cursor: pointer;
-}
-
-a.stat-card:hover, button.stat-card:hover {
-    text-decoration: none;
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--color-border-strong);
-}
-
-.stats-grid .stat-card:nth-child(2) { animation-delay: 0.04s; }
-.stats-grid .stat-card:nth-child(3) { animation-delay: 0.08s; }
-.stats-grid .stat-card:nth-child(4) { animation-delay: 0.12s; }
-
-.stat-card .valor {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--color-primary-dark);
-}
-
-.stat-card .rotulo {
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-}
-
-.stat-card__sub {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    margin-top: 4px;
-}
-.stat-card__sub--positivo { color: var(--color-success); font-weight: 600; }
-.stat-card__sub--alerta { color: var(--color-pending); font-weight: 600; }
 
 .duas-colunas {
     display: grid;
@@ -1412,9 +1365,10 @@ a.stat-card:hover, button.stat-card:hover {
     position: fixed;
     inset: 0;
     background-color: rgba(43, 43, 39, 0.45);
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: 20px;
+    padding: 10vh 20px 20px;
+    overflow-y: auto;
     z-index: 40;
 }
 
@@ -2024,7 +1978,6 @@ form .login-campo input#password { padding-right: 46px; }
     .lista-agrupada--acoes .lista-agrupada__acao { display: none; }
     .lista-agrupada--acoes .lista-agrupada__seta { display: block; }
 
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .duas-colunas { grid-template-columns: minmax(0, 1fr); }
     .form-grid { grid-template-columns: 1fr; }
     .totais-grid, .totais-grid--5 { grid-template-columns: repeat(2, 1fr); }
@@ -2255,8 +2208,16 @@ form .login-campo input#password { padding-right: 46px; }
     color: var(--color-text);
     text-align: left;
 }
+/* No celular o nome sem quebra tomava quase a tela toda e sobrava uma fresta
+   para as células: a coluna fixa fica estreita e o nome quebra em linhas. */
+@media (max-width: 768px) {
+    .grade-folha .grade-folha__fixa { white-space: normal; line-height: 1.25; }
+    .grade-folha tbody .grade-folha__fixa { padding: 4px 6px; }
+    .grade-folha__fixa > * { width: min(32vw, 130px); overflow-wrap: anywhere; }
+    .grade-folha__nome { font-size: 0.74rem; align-items: flex-start; }
+    .grade-folha__aviso { flex-shrink: 0; }
+}
 .folha-progresso { width: 100%; height: 10px; accent-color: var(--color-primary); }
-#calculo-progresso .alert[hidden] { display: none; }
 #calculo-progresso .alert { margin: 12px 0 0; }
 
 /* Escolha Sim/Não em cartões clicáveis (ex.: vale-transporte em Meu Perfil). */
@@ -2288,3 +2249,36 @@ form .login-campo input#password { padding-right: 46px; }
 .folha-detalhes[open] summary { margin-bottom: 10px; }
 .folha-detalhes table { margin-top: 8px; }
 .folha-detalhes form { margin: 0; }
+
+/* Prêmio programa: criar regra, botões "colocar na regra" e a lista de quem escolher (regra_programa.html) */
+.folha-nova-regra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-top: 16px; }
+.folha-nova-regra > div { flex: 1 1 200px; }
+.folha-nova-regra > .alert { flex-basis: 100%; }
+/* Regras com lista (programa e safra): os setores vão embaixo do nome da regra e quebram linha, para a tabela caber sem rolar para o lado. */
+.folha-regras-lista td:first-child { white-space: normal; width: 100%; }
+.folha-regras-lista td:not(:first-child), .folha-regras-lista th:not(:first-child) { text-align: right; }
+.folha-regras-lista__sub { display: block; font-size: 0.72rem; color: var(--color-text-muted); }
+.folha-colocar { white-space: nowrap; }
+.folha-colocar form { display: inline-block; margin: 0 4px 0 0; }
+.folha-escolha {
+    list-style: none;
+    max-height: 420px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    margin-top: 10px;
+}
+.folha-escolha li { border-bottom: 1px solid var(--color-border); }
+.folha-escolha li:last-child { border-bottom: none; }
+.folha-escolha li[hidden] { display: none; }
+.folha-escolha label { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; cursor: pointer; }
+.folha-escolha label:hover { background-color: var(--color-bg); }
+.folha-escolha input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+.folha-escolha__nome { display: block; font-size: 0.9rem; font-weight: 600; }
+.folha-escolha__sub { display: block; font-size: 0.78rem; color: var(--color-text-muted); overflow-wrap: anywhere; }
+
+/* ---------- Espelho de ponto em PDF (ponto/templates/ponto/exportar_espelho.html) ---------- */
+
+.espelho-ajuda { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px; }
+.espelho-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 18px; }
+[data-filtro][hidden] { display: none; }

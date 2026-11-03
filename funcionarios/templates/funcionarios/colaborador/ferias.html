@@ -72,10 +72,10 @@ Minhas Férias
 {% else %}
 <div class="card">
     <div class="card__header"><span class="card__title">Nova solicitação</span></div>
-    <p class="item-card__subtitulo" style="margin: -8px 0 16px;">Escolha quando quer começar e quantos dias. O gestor analisa e o RH conclui. A data de início deve ser pelo menos 30 dias após hoje.</p>
+    <p class="item-card__subtitulo" style="margin: -8px 0 16px;">Escolha quando quer começar e quantos dias, a data de início deve ser pelo menos 30 dias após hoje. Após a solicitação seu pedido passará por análise, fique atento as notificações para acompanhar o resultado!.</p>
     <form method="post">
         {% csrf_token %}
-        <label for="{{ form.data_solicitada.id_for_label }}">Primeiro dia de férias</label>
+        <label for="{{ form.data_solicitada.id_for_label }}">Início das férias</label>
         {{ form.data_solicitada }}
         {{ form.data_solicitada.errors }}
 

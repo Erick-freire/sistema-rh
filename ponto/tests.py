@@ -21,7 +21,9 @@ from .models import (
 from .services import (
     _hash_dados_funcionario,
     coletar_marcacoes,
+    inicio_da_revinculacao,
     processar_pendencias,
+    resumo_marcacoes_sem_funcionario,
     sincronizar_funcionario_no_equipamento,
 )
 
@@ -363,6 +365,48 @@ class ColetaMarcacoesTests(TestCase):
 
         self.assertEqual(MarcacaoRelogio.objects.get(equipamento=equipamento).funcionario, funcionario)
 
+    @patch('ponto.services.client.login', return_value='sessao-fake')
+    def test_coleta_vincula_marcacao_recente_que_ficou_sem_dono(self, mock_login):
+        # Caso real (matrícula 1473, 22/10/2026): batidas gravadas sem dono não
+        # voltavam a ser olhadas -- coletar de novo não mudava nada, porque a
+        # coleta só pede NSR novo e não mexe no que já existe.
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario(cpf='70819163171')
+        SincronizacaoFuncionario.objects.update_or_create(
+            funcionario=funcionario, equipamento=equipamento,
+            defaults={'id_usuario_dispositivo': '870819163173', 'status': 'sincronizado'},
+        )
+        dados = {'prefixo': '8', 'identificador': '70819163173'}
+        recente = MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=None, id_evento_dispositivo='1',
+            momento=timezone.now() - timedelta(hours=1), dados_brutos=dados,
+        )
+        antiga = MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=None, id_evento_dispositivo='2',
+            momento=inicio_da_revinculacao() - timedelta(minutes=1), dados_brutos=dados,
+        )
+
+        with patch('ponto.services.client.get_afd', return_value=''):  # nada novo no relógio
+            coletar_marcacoes(equipamento)
+
+        recente.refresh_from_db(); antiga.refresh_from_db()
+        self.assertEqual(recente.funcionario, funcionario)
+        self.assertIsNone(antiga.funcionario)  # fora da janela: só pelo comando
+
+    @patch('ponto.services.client.login', side_effect=ControlIdAPIError('equipamento indisponível'))
+    def test_relogio_offline_ainda_vincula_marcacao_sem_dono(self, mock_login):
+        equipamento = _criar_equipamento()
+        funcionario = _criar_funcionario(cpf='12345678901')
+        marcacao = MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=None, id_evento_dispositivo='1',
+            momento=timezone.now(), dados_brutos={'prefixo': '0', 'identificador': '12345678901'},
+        )
+
+        coletar_marcacoes(equipamento)
+
+        marcacao.refresh_from_db()
+        self.assertEqual(marcacao.funcionario, funcionario)
+
     @patch('ponto.services.client.login', side_effect=ControlIdAPIError('equipamento indisponível'))
     def test_relogio_offline_durante_coleta_nao_derruba_e_nao_perde_checkpoint(self, mock_login):
         equipamento = _criar_equipamento(ultimo_nsr_coletado=10)
@@ -435,6 +479,25 @@ class EquipamentoViewsTests(TestCase):
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=funcionario, papel='rh')
         self.client.login(username='rhteste', password='senha123')
+
+    def test_lista_quem_bate_ponto_sem_cadastro(self):
+        equipamento = _criar_equipamento()
+        MarcacaoRelogio.objects.create(
+            equipamento=equipamento, funcionario=None, id_evento_dispositivo='1', momento=timezone.now(),
+            dados_brutos={'prefixo': '0', 'identificador': '23776484426'},
+        )
+
+        resposta = self.client.get(reverse('ponto:listar_equipamentos'))
+
+        self.assertContains(resposta, 'Batidas sem funcionário')
+        self.assertContains(resposta, '23776484426')
+
+    def test_sem_batidas_sem_dono_nao_mostra_o_quadro(self):
+        _criar_equipamento()
+
+        resposta = self.client.get(reverse('ponto:listar_equipamentos'))
+
+        self.assertNotContains(resposta, 'Batidas sem funcionário')
 
     def test_alternar_status_desativa_e_reativa(self):
         equipamento = _criar_equipamento()
@@ -914,6 +977,33 @@ class VincularMarcacoesSemFuncionarioTests(TestCase):
         m1.refresh_from_db(); m2.refresh_from_db()
         self.assertEqual(m1.funcionario, funcionario)
         self.assertIsNone(m2.funcionario)
+
+    def test_inicio_da_revinculacao_e_o_primeiro_dia_do_mes_anterior(self):
+        self.assertEqual(timezone.localtime(inicio_da_revinculacao(date(2026, 10, 27))).date(), date(2026, 9, 1))
+        self.assertEqual(timezone.localtime(inicio_da_revinculacao(date(2026, 1, 1))).date(), date(2025, 12, 1))
+
+    def test_resumo_agrupa_por_equipamento_e_identificador(self):
+        adm = _criar_equipamento(nome='PONTO ADM', ip='192.168.1.71')
+        funcionario = _criar_funcionario(cpf='11111111111')
+        agora = timezone.now()
+        for nsr, prefixo, identificador in [
+            ('1', '0', '23776484426'), ('2', '0', '23776484426'), ('3', '8', '70819163173'),
+        ]:
+            MarcacaoRelogio.objects.create(
+                equipamento=adm, funcionario=None, id_evento_dispositivo=nsr, momento=agora,
+                dados_brutos={'prefixo': prefixo, 'identificador': identificador},
+            )
+        MarcacaoRelogio.objects.create(  # com dono: não entra
+            equipamento=adm, funcionario=funcionario, id_evento_dispositivo='4', momento=agora,
+            dados_brutos={'prefixo': '0', 'identificador': '11111111111'},
+        )
+
+        resumo = resumo_marcacoes_sem_funcionario(agora - timedelta(days=1))
+
+        self.assertEqual(
+            [(linha['equipamento'], linha['identificador'], linha['quantidade']) for linha in resumo],
+            [('PONTO ADM', '23776484426', 2), ('PONTO ADM', '870819163173', 1)],
+        )
 
 
 class EnfileirarFuncionariosExistentesTests(TestCase):
@@ -1452,10 +1542,13 @@ class DiaFaltaTests(TestCase):
 
 
 class HoraNoturnaTests(TestCase):
-    """Trabalho entre 22:00 e 05:00 na hora de 52min30s, no trabalhado e no esperado."""
+    """
+    Trabalho entre 22:00 e 05:00: no relógio no dia (esperado, saldo, extras, faltas),
+    na hora de 52min30s só no total convertido do período.
+    """
 
-    # As 6h de relógio no noturno do `_criar_horario_12x36_noturno` (23:00-05:00) = 6h51min26s.
-    NOTURNAS_DO_TURNO = round(6 * 3600 * 3600 / (52 * 60 + 30))
+    # As 6h de relógio no noturno do `_criar_horario_12x36_noturno` (23:00-05:00).
+    NOTURNAS_DO_TURNO = 6 * 3600
 
     def setUp(self):
         self.equipamento = _criar_equipamento()
@@ -1470,27 +1563,26 @@ class HoraNoturnaTests(TestCase):
         _bater_ponto(self.funcionario, self.equipamento, self.dia + timedelta(days=1), saida)
         return calcular_periodo(self.funcionario, self.dia, self.dia)['dias'][0]
 
-    def test_esperado_do_turno_noturno_fica_proporcional(self):
+    def test_turno_noturno_fica_no_relogio(self):
         dia = self._turno_noturno('18:00', '22:00', '23:00')
 
-        self.assertEqual(dia['segundos_trabalhados'], 11 * 3600)  # relógio
-        # 5h diurnas (18-22 e 05-06) + as 6h noturnas na hora de 52min30s.
-        self.assertEqual(dia['segundos_esperados'], 5 * 3600 + self.NOTURNAS_DO_TURNO)
-        self.assertEqual(dia['segundos_normais'], 5 * 3600 + self.NOTURNAS_DO_TURNO)
+        self.assertEqual(dia['segundos_trabalhados'], 11 * 3600)
+        self.assertEqual(dia['segundos_esperados'], 11 * 3600)
+        self.assertEqual(dia['segundos_normais'], 11 * 3600)
         self.assertEqual(dia['segundos_noturnos'], self.NOTURNAS_DO_TURNO)
         self.assertEqual(dia['saldo_segundos'], 0)
 
-    def test_tolerancia_no_noturno_olha_o_relogio(self):
-        # Voltou do intervalo às 23:14: 14 min de relógio (16 na hora noturna) -- fica na tolerância.
+    def test_tolerancia_no_noturno(self):
+        # Voltou do intervalo às 23:14: 14 min de atraso -- fica na tolerância.
         dia = self._turno_noturno('18:00', '22:00', '23:14')
 
         self.assertEqual(dia['saldo_segundos'], 0)
 
-    def test_atraso_no_noturno_acima_da_tolerancia_conta_na_hora_noturna(self):
-        # Voltou às 23:35: 35 min de relógio no noturno = 40 min na hora de 52min30s.
+    def test_atraso_no_noturno_conta_no_relogio(self):
+        # Voltou às 23:35: 35 min de falta, sem a redução da hora noturna.
         dia = self._turno_noturno('18:00', '22:00', '23:35')
 
-        self.assertEqual(dia['segundos_falta_dia'], 40 * 60)
+        self.assertEqual(dia['segundos_falta_dia'], 35 * 60)
 
     def test_trabalho_depois_das_5h_e_diurno(self):
         # Esticou até 07:00: a 1h a mais é depois das 05:00, então é extra diurna.
@@ -1499,7 +1591,7 @@ class HoraNoturnaTests(TestCase):
         self.assertEqual(dia['segundos_noturnos'], self.NOTURNAS_DO_TURNO)
         self.assertEqual(dia['segundos_extra_50_dia'], 3600)
 
-    def test_hora_extra_noturna_conta_na_hora_de_52min30s(self):
+    def test_hora_extra_noturna_conta_no_relogio_e_o_total_convertido_na_hora_de_52min30s(self):
         FuncionarioJornada.objects.create(
             funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=_criar_horario_util(4602),
         )
@@ -1509,9 +1601,10 @@ class HoraNoturnaTests(TestCase):
         resultado = calcular_periodo(self.funcionario, self.dia, self.dia)
 
         dia = resultado['dias'][0]
-        self.assertEqual(dia['segundos_extra_50_dia'], 2 * 3600)  # 1h45 x 8/7
-        self.assertEqual(dia['segundos_noturnos'], 2 * 3600)
-        self.assertEqual(resultado['totais']['noturno_segundos'], 2 * 3600)
+        self.assertEqual(dia['segundos_extra_50_dia'], 105 * 60)
+        self.assertEqual(dia['segundos_noturnos'], 105 * 60)
+        self.assertEqual(resultado['totais']['noturno_segundos'], 105 * 60)
+        self.assertEqual(resultado['totais']['noturno_convertido_segundos'], 2 * 3600)  # 1h45 x 8/7
 
 
 class ValoresDoPeriodoTests(SimpleTestCase):
@@ -1519,14 +1612,16 @@ class ValoresDoPeriodoTests(SimpleTestCase):
 
     def _totais(self, **valores):
         totais = {
-            'extra_50_segundos': 0, 'extra_100_segundos': 0, 'noturno_segundos': 0, 'falta_segundos': 0,
-            'dias_falta': 0, 'dsr_perdidos': 0,
+            'extra_50_segundos': 0, 'extra_100_segundos': 0, 'noturno_segundos': 0,
+            'noturno_convertido_segundos': 0, 'falta_segundos': 0, 'dias_falta': 0, 'dsr_perdidos': 0,
         }
         totais.update(valores)
         return totais
 
-    def test_adicional_noturno_e_20_por_cento_da_hora(self):
-        valores = valores_do_periodo(self._totais(noturno_segundos=8 * 3600), Decimal('2200.00'))
+    def test_adicional_noturno_e_20_por_cento_da_hora_convertida(self):
+        valores = valores_do_periodo(
+            self._totais(noturno_segundos=7 * 3600, noturno_convertido_segundos=8 * 3600), Decimal('2200.00'),
+        )
 
         self.assertEqual(valores['adicional_noturno'], Decimal('16.00'))  # 10 x 20% x 8h
         self.assertEqual(valores['a_pagar'], Decimal('16.00'))
@@ -2028,7 +2123,8 @@ class EspelhoCalculoViewTests(TestCase):
 
         resposta = self._espelho(dia)
 
-        self.assertContains(resposta, '06:51')  # 6h noturnas de relógio, na hora de 52min30s
+        self.assertContains(resposta, '<div class="totais-grid__valor">06:00</div>')  # 6h noturnas de relógio
+        self.assertContains(resposta, '06:51')  # as mesmas 6h, convertidas na hora de 52min30s
         self.assertContains(resposta, 'R$ 13,71')  # 10 x 20% x 6,857h
 
     def test_sem_salario_nao_mostra_valores(self):
@@ -2384,3 +2480,181 @@ class AprovarRejeitarAjusteViewTests(TestCase):
         self.assertEqual(ajuste.status, 'rejeitado')
         self.assertEqual(ajuste.observacao_rh, 'Bateu certo, sem erro.')
         self.assertEqual(ajuste.analisado_por, self.rh_user)
+
+
+class GestorOperaPontoDaEquipeTests(TestCase):
+    """O gestor corrige o ponto e analisa os pedidos de ajuste como o RH, mas só da equipe dele."""
+
+    def setUp(self):
+        self.producao = Setor.objects.create(nome='Produção')
+        self.envase = Setor.objects.create(nome='Envase')
+        self.gestor = Funcionario.objects.create(
+            nome='Gil Gestor', matricula='3101', cargo='Gerente', setor=self.producao, cpf='78811111111',
+        )
+        self.producao.gestor = self.gestor
+        self.producao.save()
+        self.envase.gestor = self.gestor  # responde também pelo Envase, sem estar lotado nele
+        self.envase.save()
+        self.gestor_user = User.objects.create_user(username='gilgestor', password='senha123')
+        Usuario.objects.create(user=self.gestor_user, funcionario=self.gestor, papel='gestor')
+        self.client.login(username='gilgestor', password='senha123')
+
+        self.equipamento = _criar_equipamento()
+        horario = _criar_horario_util(4301)
+        self.bia = Funcionario.objects.create(
+            nome='Bia Operadora', matricula='3102', cargo='Operadora', setor=self.producao, cpf='78822222222',
+            salario=Decimal('3000.00'),
+        )
+        self.davi = Funcionario.objects.create(
+            nome='Davi Envase', matricula='3103', cargo='Operador', setor=self.envase, cpf='78833333333',
+        )
+        for funcionario in (self.bia, self.davi):
+            FuncionarioJornada.objects.create(funcionario=funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        outra_gestora = Funcionario.objects.create(
+            nome='Eva Supervisora', matricula='3104', cargo='Supervisora', setor=self.producao, cpf='78844444444',
+        )
+        Usuario.objects.create(
+            user=User.objects.create_user(username='evagestora', password='senha123'), funcionario=outra_gestora, papel='gestor',
+        )
+        self.financeiro = Setor.objects.create(nome='Financeiro')
+        self.de_fora = Funcionario.objects.create(
+            nome='Caio Financeiro', matricula='3105', cargo='Analista', setor=self.financeiro, cpf='78855555555',
+        )
+
+    def _pedido(self, funcionario, dia=date(2026, 8, 3)):
+        return AjustePonto.objects.create(
+            funcionario=funcionario, data=dia, tipo_evento='entrada', horario_ajustado='08:00', motivo='Esqueci.',
+        )
+
+    def test_equipe_e_o_setor_dele_e_os_que_ele_responde_sem_gestores(self):
+        usuario = self.gestor_user.usuario
+        self.assertCountEqual(usuario.equipe(), [self.bia, self.davi])
+        self.assertCountEqual(usuario.funcionarios_que_opera(), [self.bia, self.davi])
+        self.assertCountEqual(usuario.setores_da_equipe(), [self.producao, self.envase])
+
+    def test_dp_e_rh_operam_todos(self):
+        Usuario.objects.filter(user=self.gestor_user).update(acesso_rh=True)
+        usuario = Usuario.objects.get(user=self.gestor_user)
+        self.assertIn(self.de_fora, usuario.funcionarios_que_opera())
+        self.assertNotIn(self.de_fora, usuario.equipe())  # o "Ponto da Equipe" dele continua só com a equipe
+
+    def test_espelho_so_da_equipe_com_valores_do_salario(self):
+        url = reverse('ponto:listar_calculo')
+        periodo = 'data_inicio=2026-08-03&data_fim=2026-08-07'
+
+        resposta = self.client.get(f'{url}?funcionario={self.bia.id}&{periodo}')
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertIsNotNone(resposta.context['valores'])
+        self.assertContains(resposta, 'Salário base R$ 3.000,00')
+        self.assertContains(resposta, 'Equipe no dia')
+        self.assertNotContains(resposta, reverse('ponto:listar_equipamentos'))
+        self.assertCountEqual([f['id'] for f in resposta.context['funcionarios_busca']], [self.bia.id, self.davi.id])
+        self.assertCountEqual(
+            resposta.context['filtro_form'].fields['setor'].queryset, [self.producao, self.envase],
+        )
+        self.assertEqual(self.client.get(f'{url}?funcionario={self.de_fora.id}&{periodo}').status_code, 404)
+
+    def test_corrige_batida_da_equipe_ja_aprovada(self):
+        dia = date(2026, 8, 3)
+        dados = {'data': dia.isoformat(), 'tipo_evento': 'saida', 'horario_ajustado': '17:00', 'motivo': 'Esqueceu.'}
+
+        self.client.post(reverse('ponto:ajustar_marcacao', args=[self.bia.id, dia.isoformat()]), dados)
+        resposta_de_fora = self.client.post(reverse('ponto:ajustar_marcacao', args=[self.de_fora.id, dia.isoformat()]), dados)
+
+        ajuste = AjustePonto.objects.get(funcionario=self.bia)
+        self.assertEqual(ajuste.status, 'aprovado')
+        self.assertEqual(ajuste.analisado_por, self.gestor_user)
+        self.assertEqual(resposta_de_fora.status_code, 404)
+        self.assertFalse(AjustePonto.objects.filter(funcionario=self.de_fora).exists())
+
+    def test_define_jornada_so_da_equipe(self):
+        horario = _criar_horario_util(4302, saida2='16:00')
+        dados = {'data_inicio': '2026-09-01', 'horario': horario.id}
+
+        self.client.post(reverse('ponto:atribuir_jornada', args=[self.davi.id]), dados)
+        resposta = self.client.post(reverse('ponto:atribuir_jornada', args=[self.de_fora.id]), dados)
+
+        self.assertTrue(FuncionarioJornada.objects.filter(funcionario=self.davi, horario=horario).exists())
+        self.assertEqual(resposta.status_code, 404)
+        self.assertFalse(FuncionarioJornada.objects.filter(funcionario=self.de_fora).exists())
+
+    def test_pdf_de_quem_e_de_fora_e_recusado(self):
+        url = reverse('ponto:exportar_espelho')
+        periodo = 'data_inicio=2026-08-03&data_fim=2026-08-07'
+
+        for filtro in (f'filtro=setor&setor={self.financeiro.id}', f'filtro=funcionario&funcionario={self.de_fora.id}'):
+            with self.subTest(filtro=filtro):
+                resposta = self.client.get(f'{url}?{filtro}&{periodo}')
+                self.assertEqual(resposta.status_code, 302)
+                self.assertNotEqual(resposta.get('Content-Type'), 'application/pdf')
+
+    def test_fila_de_ajustes_so_da_equipe(self):
+        da_equipe = self._pedido(self.bia)
+        de_fora = self._pedido(self.de_fora)
+
+        resposta = self.client.get(reverse('ponto:ajustes_pendentes'))
+
+        self.assertEqual(list(resposta.context['ajustes']), [da_equipe])
+        self.assertEqual(resposta.context['badge_ajustes_pendentes'], 1)
+        self.assertEqual(self.client.post(reverse('ponto:aprovar_ajuste', args=[de_fora.id])).status_code, 404)
+        self.assertEqual(
+            self.client.post(reverse('ponto:rejeitar_ajuste', args=[de_fora.id]), {'observacao_rh': 'Não.'}).status_code, 404,
+        )
+        de_fora.refresh_from_db()
+        self.assertEqual(de_fora.status, 'pendente')
+
+    def test_aprova_pedido_da_equipe(self):
+        ajuste = self._pedido(self.davi)
+
+        resposta = self.client.post(reverse('ponto:aprovar_ajuste', args=[ajuste.id]))
+
+        self.assertRedirects(resposta, reverse('ponto:ajustes_pendentes'))
+        ajuste.refresh_from_db()
+        self.assertEqual(ajuste.status, 'aprovado')
+        self.assertEqual(ajuste.analisado_por, self.gestor_user)
+
+    def test_dia_com_batida_faltando_tem_corrigir_na_equipe_do_dia(self):
+        segunda = date(2026, 8, 3)
+        _bater_ponto(self.bia, self.equipamento, segunda, '08:00', '12:00', '13:00')
+
+        resposta = self.client.get(reverse('ponto:ponto_equipe') + f'?data={segunda.isoformat()}')
+
+        self.assertContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.bia.id, segunda.isoformat()]) + '?tipo=saida')
+        self.assertNotContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.davi.id, segunda.isoformat()]) + '?tipo=saida')
+
+    def test_atestado_lancado_pelo_gestor_abona_a_falta_e_mantem_a_assiduidade(self):
+        url = reverse('ponto:listar_calculo') + f'?funcionario={self.bia.id}&data_inicio=2026-08-03&data_fim=2026-08-07'
+        for dia in (3, 5, 6, 7):  # na terça, 04/08, a Bia não bateu
+            _bater_ponto(self.bia, self.equipamento, date(2026, 8, dia), '08:00', '12:00', '13:00', '17:00')
+        self.assertTrue(self.client.get(url).context['resultado']['totais']['perdeu_assiduidade'])
+
+        resposta = self.client.post(
+            reverse('lancar_atestado', args=[self.bia.id]),
+            {'data_inicio': '2026-08-04', 'data_fim': '2026-08-04', 'motivo': 'Consulta', 'proxima': url},
+        )
+
+        self.assertRedirects(resposta, url, fetch_redirect_response=False)
+        self.assertEqual(Atestado.objects.get(funcionario=self.bia).lancado_por, self.gestor_user)
+        espelho = self.client.get(url)
+        totais = espelho.context['resultado']['totais']
+        self.assertFalse(totais['perdeu_assiduidade'])
+        self.assertEqual(totais['dias_falta'], 0)
+        self.assertContains(espelho, 'lançado por Gil Gestor')
+
+    def test_gestor_nao_lanca_atestado_de_quem_e_de_fora(self):
+        resposta = self.client.post(
+            reverse('lancar_atestado', args=[self.de_fora.id]), {'data_inicio': '2026-08-04', 'data_fim': '2026-08-04'},
+        )
+
+        self.assertRedirects(resposta, reverse('dashboard'), fetch_redirect_response=False)
+        self.assertFalse(Atestado.objects.filter(funcionario=self.de_fora).exists())
+
+    def test_colaborador_continua_sem_acesso(self):
+        user = User.objects.create_user(username='biaoperadora', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.bia, papel='colaborador')
+        self.client.login(username='biaoperadora', password='senha123')
+
+        for nome in ('ponto:listar_calculo', 'ponto:ajustes_pendentes'):
+            with self.subTest(nome=nome):
+                self.assertRedirects(self.client.get(reverse(nome)), reverse('dashboard'), fetch_redirect_response=False)

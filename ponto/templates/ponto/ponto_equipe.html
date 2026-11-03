@@ -4,9 +4,11 @@
 {% block titulo %}Ponto da Equipe{% endblock %}
 
 {% block conteudo %}
-<h1>Ponto da equipe</h1>
-<p class="item-card__subtitulo" style="margin-bottom: 20px;">
-    Batidas de cada funcionário do seu setor no dia. Toque no nome para ver o espelho completo. Correções são pedidas pelo próprio colaborador e analisadas pelo RH.
+{% include 'ponto/_ponto_header.html' %}
+{% include 'ponto/_subnav.html' %}
+<p class="item-card__subtitulo" style="margin-bottom: 16px;">
+    Toque no nome para ver o período. Em <strong>Corrigir</strong> você lança a batida que faltou ou estava errada,
+    e ela já vale no espelho; para corrigir uma batida específica, use a aba Espelho e cálculo.
 </p>
 
 <div class="card">
@@ -37,6 +39,9 @@
             </div>
             <div class="item-card__extra">
                 <span class="badge-status badge-status--{{ linha.situacao_cor }}">{{ linha.situacao_texto }}</span>
+                {% if linha.dia.pode_corrigir %}
+                <a href="{% url 'ponto:ajustar_marcacao' linha.funcionario.id linha.dia.data|date:'Y-m-d' %}?tipo={{ linha.dia.tipo_sugerido }}&voltar={{ request.get_full_path|urlencode }}" class="btn-outline btn-sm">Corrigir</a>
+                {% endif %}
             </div>
         </div>
         {% empty %}

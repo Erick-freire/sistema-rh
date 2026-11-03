@@ -1,0 +1,40 @@
+{% comment %}
+Quem está numa regra com lista (programa ou safra). Recebe: membros, regra,
+url_remover (nome da URL que tira a pessoa) e premio (nome do prêmio, para o
+aviso). `membro.aviso`, se houver, aparece como etiqueta ao lado do cargo.
+{% endcomment %}
+<div class="card">
+    <div class="card__header"><span class="card__title">Quem recebe ({{ membros|length }})</span></div>
+    {% if membros %}
+    <div class="table-responsive">
+        <table class="tabela-compacta">
+            <thead><tr><th>Funcionário</th><th>Matrícula</th><th>Setor</th><th>Cargo</th><th></th></tr></thead>
+            <tbody>
+                {% for membro in membros %}
+                <tr>
+                    <td>
+                        {{ membro.funcionario.nome }}
+                        {% if membro.funcionario.status != 'ativo' %}<span class="badge-status badge-status--inativo">{{ membro.funcionario.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td>{{ membro.funcionario.matricula|default:'—' }}</td>
+                    <td>{{ membro.funcionario.setor.nome|default:'—' }}</td>
+                    <td>
+                        {{ membro.funcionario.cargo|default:'—' }}
+                        {% if membro.aviso %}<span class="badge-status badge-status--pendente" title="{{ membro.aviso_titulo }}">{{ membro.aviso }}</span>{% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        <form method="post" action="{% url url_remover regra.id membro.funcionario_id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-outline btn-sm" data-confirmar-titulo="Tirar da regra"
+                                    data-confirmar="{{ membro.funcionario.nome }} deixa de receber {{ premio }}.">Tirar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="folha-vazio">Ninguém ainda. Escolha abaixo quem recebe.</p>
+    {% endif %}
+</div>

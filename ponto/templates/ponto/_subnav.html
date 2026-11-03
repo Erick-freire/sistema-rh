@@ -1,10 +1,15 @@
 {% load rh_icons %}
 <div class="tabs">
+    {% if not usuario_atual.eh_dp_ou_rh %}
+    <a href="{% url 'ponto:ponto_equipe' %}" class="tabs__link{% if request.resolver_match.url_name == 'ponto_equipe' %} is-ativo{% endif %}">Equipe no dia</a>
+    {% endif %}
     <a href="{% url 'ponto:listar_calculo' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_calculo' %} is-ativo{% endif %}">Espelho e cálculo</a>
     <a href="{% url 'ponto:ajustes_pendentes' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_pendentes' %} is-ativo{% endif %}">
         Ajustes pendentes
         {% if badge_ajustes_pendentes %}<span class="tabs__badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
     </a>
+    {% if usuario_atual.eh_dp_ou_rh %}
     <a href="{% url 'ponto:listar_equipamentos' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_equipamentos' or request.resolver_match.url_name == 'cadastrar_equipamento' or request.resolver_match.url_name == 'editar_equipamento' %} is-ativo{% endif %}">Equipamentos</a>
     <a href="{% url 'ponto:listar_horarios' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_horarios' or request.resolver_match.url_name == 'cadastrar_horario' or request.resolver_match.url_name == 'editar_horario' or request.resolver_match.url_name == 'listar_feriados' or request.resolver_match.url_name == 'cadastrar_feriado' %} is-ativo{% endif %}">Horários e feriados</a>
+    {% endif %}
 </div>

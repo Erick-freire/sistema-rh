@@ -3,21 +3,24 @@ from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import ProtectedError, Q
+from django.db.models import ProtectedError
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 
 from funcionarios import notificacoes
 from funcionarios.decorators import papel_required
-from funcionarios.models import Funcionario, Usuario
+from funcionarios.forms import AtestadoForm
+from funcionarios.models import Usuario
 
-from . import services
+from . import espelho_pdf, services
 from .calculos import calcular_periodo, situacao_do_dia, valores_do_periodo
 from .forms import (
-    AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, FeriadoForm, FuncionarioJornadaForm,
-    HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
+    AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, ExportarEspelhoForm, FeriadoForm,
+    FuncionarioJornadaForm, HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
 )
 from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
 from .utils import intervalo_do_dia
@@ -48,12 +51,20 @@ def _dias_com_forms(formset):
     return list(zip(nomes, formset.forms))
 
 
+def _funcionarios_permitidos(request):
+    """De quem esta tela mostra e corrige o ponto: todos para DP/RH, só a equipe para o gestor."""
+    return request.user.usuario.funcionarios_que_opera()
+
+
 @login_required
 @papel_required('rh', 'dp')
 def listar_equipamentos_view(request):
     equipamentos = Equipamento.objects.all()
+    desde = services.inicio_da_revinculacao()
     return render(request, 'ponto/listar_equipamentos.html', {
         'equipamentos': equipamentos,
+        'sem_funcionario_desde': desde,
+        'sem_funcionario': services.resumo_marcacoes_sem_funcionario(desde),
     })
 
 
@@ -282,7 +293,7 @@ def excluir_horario_view(request, horario_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
 def ajustar_marcacao_view(request, funcionario_id, data):
     """
     Lançamento manual de uma marcação (batida esquecida ou correção de uma
@@ -293,9 +304,10 @@ def ajustar_marcacao_view(request, funcionario_id, data):
 
     A `data` da URL é a linha do espelho (dia em que o turno começou) e só
     serve de sugestão: o ajuste guarda a data e a hora REAIS da batida, que o
-    RH confirma ou troca no formulário.
+    RH confirma ou troca no formulário. O gestor lança do mesmo jeito, só
+    para a equipe dele.
     """
-    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+    funcionario = get_object_or_404(_funcionarios_permitidos(request), id=funcionario_id)
     data_convertida = date.fromisoformat(data)
 
     marcacao_original = None
@@ -326,8 +338,8 @@ def ajustar_marcacao_view(request, funcionario_id, data):
                 )
                 return redirect(url_voltar)
 
-            # Lançado direto pelo RH: já sai aprovado, sem passar por fila de
-            # solicitação -- é o mesmo fluxo de sempre, só ganhou os campos novos.
+            # Lançado direto pelo RH ou pelo gestor: já sai aprovado, sem passar
+            # por fila de solicitação. Quem lançou fica em `analisado_por`.
             ajuste.usuario = request.user
             ajuste.status = 'aprovado'
             ajuste.solicitado_por = request.user
@@ -359,8 +371,9 @@ def ajustar_marcacao_view(request, funcionario_id, data):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
 def listar_calculo_view(request):
+    usuario = request.user.usuario
     hoje = timezone.now().date()
     data_inicio = date.fromisoformat(request.GET.get('data_inicio') or hoje.replace(day=1).isoformat())
     data_fim = date.fromisoformat(request.GET.get('data_fim') or hoje.isoformat())
@@ -370,17 +383,36 @@ def listar_calculo_view(request):
     resultado = None
     valores = None
     jornada_vigente = None
+    atestados = []
     numeros_dos_pares = []
 
-    if funcionario_id:
-        funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+    filtro = request.GET.get('filtro') or 'funcionario'
+    if funcionario_id and filtro == 'funcionario':
+        funcionario = get_object_or_404(usuario.funcionarios_que_opera(), id=funcionario_id)
         resultado = calcular_periodo(funcionario, data_inicio, data_fim)
         valores = valores_do_periodo(resultado['totais'], funcionario.salario)
         jornada_vigente = FuncionarioJornada.vigente_em(funcionario, data_fim)
+        # Atestados que tocam o período: é o abono dos dias (sem falta, sem perder a assiduidade).
+        atestados = funcionario.atestados.filter(data_inicio__lte=data_fim, data_fim__gte=data_inicio).select_related(
+            'lancado_por__usuario__funcionario',
+        )
         numeros_dos_pares = list(range(1, resultado['pares_no_periodo'] + 1))
 
+    # O filtro da tela serve aos dois botões: Calcular (este espelho na tela) e
+    # Gerar PDF (o mesmo funcionário, ou o setor inteiro -- ver exportar_espelho_view).
+    filtro_form = ExportarEspelhoForm(usuario=usuario, initial={
+        'data_inicio': data_inicio, 'data_fim': data_fim, 'filtro': filtro,
+        'funcionario': funcionario_id or None, 'setor': request.GET.get('setor') or None,
+    })
     return render(request, 'ponto/calculo.html', {
-        'funcionarios': Funcionario.objects.order_by('nome'),
+        'filtro_form': filtro_form,
+        'funcionarios_busca': [
+            {
+                'id': f.id, 'nome': f.nome if f.status != 'inativo' else f'{f.nome} (inativo)',
+                'matricula': f.matricula or '', 'cpf': f.cpf or '',
+            }
+            for f in filtro_form.fields['funcionario'].queryset.only('id', 'nome', 'matricula', 'cpf', 'status')
+        ],
         'funcionario': funcionario,
         'funcionario_id': funcionario_id or '',
         'data_inicio': data_inicio.isoformat(),
@@ -389,14 +421,46 @@ def listar_calculo_view(request):
         'valores': valores,
         'jornada_vigente': jornada_vigente,
         'jornada_form': FuncionarioJornadaForm(),
+        'atestados': atestados,
+        'atestado_form': AtestadoForm(auto_id='atestado_%s'),  # a jornada também tem `data_inicio`
         'numeros_dos_pares': numeros_dos_pares,
     })
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
+def exportar_espelho_view(request):
+    """
+    Espelho de ponto em PDF de um funcionário ou do setor inteiro, no período
+    escolhido -- o botão Gerar PDF da tela Espelho e cálculo, que abre o
+    arquivo em outra aba (para imprimir ou baixar). Com o filtro incompleto,
+    volta para a tela com o motivo.
+    """
+    form = ExportarEspelhoForm(request.GET, usuario=request.user.usuario)
+    if form.is_valid():
+        dados = form.cleaned_data
+        try:
+            gerado_por = request.user.usuario.funcionario.nome
+        except Usuario.DoesNotExist:
+            gerado_por = request.user.get_username()
+        pdf = espelho_pdf.gerar_pdf(dados['funcionarios'], dados['data_inicio'], dados['data_fim'], gerado_por)
+        if pdf is not None:
+            alvo = dados['setor'].nome if dados['filtro'] == 'setor' else dados['funcionario'].nome
+            nome = f'espelho_ponto_{slugify(alvo)}_{dados["data_inicio"]:%d-%m-%Y}_a_{dados["data_fim"]:%d-%m-%Y}.pdf'
+            resposta = HttpResponse(pdf, content_type='application/pdf')
+            resposta['Content-Disposition'] = f'inline; filename="{nome}"'
+            return resposta
+        messages.error(request, 'Não foi possível gerar o PDF. Tente novamente.')
+    else:
+        erros = [erro for lista in form.errors.values() for erro in lista]
+        messages.error(request, 'Não foi possível gerar o PDF: ' + ' '.join(erros))
+    return redirect(f"{reverse('ponto:listar_calculo')}?{request.GET.urlencode()}")
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
 def atribuir_jornada_view(request, funcionario_id):
-    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+    funcionario = get_object_or_404(_funcionarios_permitidos(request), id=funcionario_id)
 
     if request.method == 'POST':
         form = FuncionarioJornadaForm(request.POST)
@@ -555,7 +619,7 @@ def solicitar_ajuste_ponto_view(request):
             ajuste.status = 'pendente'
             ajuste.save()
             notificacoes.ajuste_ponto_solicitado(ajuste)
-            messages.success(request, 'Solicitação enviada. Acompanhe em "Meus Ajustes" -- o RH vai analisar.')
+            messages.success(request, 'Solicitação enviada. Acompanhe em "Meus Ajustes" -- o RH ou o gestor do seu setor vai analisar.')
             return redirect('ponto:meus_ajustes')
     else:
         inicial = {
@@ -585,20 +649,20 @@ def meus_ajustes_view(request):
 
 # ---------- Gestor: ponto da equipe ----------
 # Gestor não bate ponto (cargo de confiança) -- no lugar do "Meu Ponto" ele vê
-# as batidas de quem trabalha nos setores dele. Só leitura: correção continua
-# sendo pedida pelo próprio colaborador e analisada pelo RH.
+# as batidas de quem trabalha nos setores dele (`Usuario.equipe`). E opera o
+# ponto da equipe como o RH: corrige batidas e analisa os pedidos de ajuste
+# nas mesmas telas (Espelho e cálculo, Ajustes pendentes), que só mostram a
+# equipe dele (`Usuario.funcionarios_que_opera`).
 
 def _funcionarios_da_equipe(usuario):
-    """Setor do próprio gestor + setores em que ele é o responsável, sem outros gestores (que também não batem ponto)."""
-    gestor = usuario.funcionario
-    return (
-        Funcionario.objects
-        .filter(Q(setor_id=gestor.setor_id) | Q(setor__gestor=gestor), status='ativo')
-        .exclude(id=gestor.id)
-        .exclude(usuario__papel='gestor')
-        .select_related('setor')
-        .order_by('nome')
-    )
+    return usuario.equipe().filter(status='ativo').select_related('setor').order_by('nome')
+
+
+def _com_correcao(dia, hoje):
+    """Situação do dia e, se tiver o que corrigir, o tipo de batida que provavelmente falta."""
+    dia['situacao_texto'], dia['situacao_cor'], dia['pode_corrigir'] = situacao_do_dia(dia, hoje)
+    dia['tipo_sugerido'] = 'saida' if dia['marcacao_impar'] else 'entrada'
+    return dia
 
 
 @login_required
@@ -609,9 +673,11 @@ def ponto_equipe_view(request):
 
     linhas = []
     for funcionario in _funcionarios_da_equipe(request.user.usuario):
-        dia = calcular_periodo(funcionario, data, data)['dias'][0]
-        texto, cor, _ = situacao_do_dia(dia, hoje)
-        linhas.append({'funcionario': funcionario, 'dia': dia, 'situacao_texto': texto, 'situacao_cor': cor})
+        dia = _com_correcao(calcular_periodo(funcionario, data, data)['dias'][0], hoje)
+        linhas.append({
+            'funcionario': funcionario, 'dia': dia,
+            'situacao_texto': dia['situacao_texto'], 'situacao_cor': dia['situacao_cor'],
+        })
 
     return render(request, 'ponto/ponto_equipe.html', {
         'data': data,
@@ -630,7 +696,7 @@ def ponto_equipe_funcionario_view(request, funcionario_id):
     hoje, data_inicio, data_fim = _periodo_meu_ponto(request)
     resultado = calcular_periodo(funcionario, data_inicio, data_fim)
     for dia in resultado['dias']:
-        dia['situacao_texto'], dia['situacao_cor'], _ = situacao_do_dia(dia, hoje)
+        _com_correcao(dia, hoje)
 
     return render(request, 'ponto/ponto_equipe_funcionario.html', {
         'funcionario': funcionario,
@@ -641,14 +707,14 @@ def ponto_equipe_funcionario_view(request, funcionario_id):
     })
 
 
-# ---------- RH: fila de aprovação de ajustes ----------
+# ---------- RH e gestor: fila de aprovação de ajustes ----------
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
 def ajustes_pendentes_view(request):
     ajustes = (
         AjustePonto.objects
-        .filter(status='pendente')
+        .filter(status='pendente', funcionario__in=_funcionarios_permitidos(request))
         .select_related('funcionario', 'solicitado_por')
         .order_by('criado_em')
     )
@@ -659,9 +725,9 @@ def ajustes_pendentes_view(request):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
 def aprovar_ajuste_view(request, ajuste_id):
-    ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
+    ajuste = get_object_or_404(AjustePonto, id=ajuste_id, funcionario__in=_funcionarios_permitidos(request))
 
     if ajuste.status != 'pendente':
         messages.error(request, 'Este ajuste já foi analisado.')
@@ -688,9 +754,9 @@ def aprovar_ajuste_view(request, ajuste_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', 'gestor')
 def rejeitar_ajuste_view(request, ajuste_id):
-    ajuste = get_object_or_404(AjustePonto, id=ajuste_id)
+    ajuste = get_object_or_404(AjustePonto, id=ajuste_id, funcionario__in=_funcionarios_permitidos(request))
 
     if ajuste.status != 'pendente':
         messages.error(request, 'Este ajuste já foi analisado.')

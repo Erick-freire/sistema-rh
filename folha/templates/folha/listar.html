@@ -5,9 +5,17 @@
 
 {% block conteudo %}
 <h1>Fechamento de folha</h1>
+{% if usuario_atual.eh_dp_ou_rh %}
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">A planilha mensal que vai para o escritório de contabilidade.</p>
+{% else %}
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    Os lançamentos do mês da sua equipe. Enquanto o fechamento estiver aberto, você lança e corrige os valores de
+    quem trabalha nos seus setores; o RH abre e fecha cada mês e envia a planilha à contabilidade.
+</p>
+{% endif %}
 {% include 'folha/_subnav.html' %}
 
+{% if usuario_atual.eh_dp_ou_rh %}
 <div class="card">
     <div class="card__header">
         <span class="card__title">Abrir competência</span>
@@ -30,13 +38,14 @@
         periculosidade, do fechamento anterior. Bônus, descontos, reembolso, comissões e 13º começam em branco.
     </p>
 </div>
+{% endif %}
 
 <div class="table-responsive">
     <table>
         <thead>
             <tr>
                 <th>Competência</th>
-                <th>Funcionários</th>
+                <th>{% if usuario_atual.eh_dp_ou_rh %}Funcionários{% else %}Da sua equipe{% endif %}</th>
                 <th>Status</th>
                 <th>Aberto em</th>
                 <th>Fechado em</th>
@@ -58,12 +67,16 @@
                 <td>{{ fechamento.criado_em|date:'d/m/Y H:i' }}</td>
                 <td>{{ fechamento.fechado_em|date:'d/m/Y H:i'|default:'—' }}</td>
                 <td style="white-space: nowrap;">
+                    {% if usuario_atual.eh_dp_ou_rh %}
                     <a href="{% url 'folha:exportar_xlsx' fechamento.id %}" class="btn-outline btn-sm">{% icon 'download' %} Excel</a>
                     <a href="{% url 'folha:exportar_pdf' fechamento.id %}" class="btn-outline btn-sm">{% icon 'download' %} PDF</a>
+                    {% elif fechamento.aberto %}
+                    <a href="{% url 'folha:detalhe' fechamento.id %}" class="btn-outline btn-sm">Lançar</a>
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="6">Nenhum fechamento ainda.</td></tr>
+            <tr><td colspan="6">Nenhum fechamento ainda.{% if not usuario_atual.eh_dp_ou_rh %} O RH abre o fechamento de cada mês.{% endif %}</td></tr>
             {% endfor %}
         </tbody>
     </table>

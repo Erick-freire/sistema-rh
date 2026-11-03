@@ -1,14 +1,9 @@
 {% comment %}
-Campos da regra de prêmio (criar em premios.html, editar em regra_form.html).
+Campos da regra de prêmio incentivo (criar em premios.html, editar em regra_form.html).
 Setor, cargo e pessoa aparecem conforme o "Vale para" -- ver o script no fim.
 {% endcomment %}
 {% if form.non_field_errors %}<div class="alert alert--erro">{{ form.non_field_errors|join:' ' }}</div>{% endif %}
 <div class="form-grid" data-regra-premio>
-    <div>
-        <label for="{{ form.tipo.id_for_label }}">{{ form.tipo.label }}</label>
-        {{ form.tipo }}
-        {{ form.tipo.errors }}
-    </div>
     <div>
         <label for="{{ form.valor.id_for_label }}">{{ form.valor.label }}</label>
         {{ form.valor }}
@@ -50,7 +45,7 @@ Setor, cargo e pessoa aparecem conforme o "Vale para" -- ver o script no fim.
     <div>
         <label for="{{ form.vigente_ate.id_for_label }}">{{ form.vigente_ate.label }}</label>
         {{ form.vigente_ate }}
-        <p class="folha-ajuda">Vale até o fim do mês da data escolhida. Vazio = sem fim. No safra, o último mês da safra.</p>
+        <p class="folha-ajuda">Vale até o fim do mês da data escolhida. Vazio = sem fim.</p>
         {{ form.vigente_ate.errors }}
     </div>
 </div>

@@ -1,5 +1,5 @@
 {% extends 'funcionarios/base.html' %}
-{% load rh_icons %}
+{% load rh_icons ponto_extras %}
 
 {% block titulo %}
 {{ funcionario.nome }}
@@ -37,7 +37,9 @@
             </div>
 
             {% if usuario_atual.eh_dp_ou_rh %}
-            <form method="post" action="{% url 'editar_dados_funcionario' funcionario.id %}">
+            {# data-avisar-nao-salvo: ui.js mostra "Alterações não salvas" e avisa antes de sair da página sem salvar. #}
+            {# Form vinculado aqui só quando o salvar voltou com erro: o que está nos campos ainda não foi gravado. #}
+            <form method="post" action="{% url 'editar_dados_funcionario' funcionario.id %}" data-avisar-nao-salvo="{% if dados_form.is_bound %}pendente{% endif %}">
                 {% csrf_token %}
                 <div class="linha-dado">
                     <span class="linha-dado__rotulo">Matrícula</span>
@@ -72,24 +74,28 @@
                     {{ dados_form.data_admissao }}
                 </div>
                 {{ dados_form.data_admissao.errors }}
-                <div class="linha-dado">
-                    <span class="linha-dado__rotulo">CPF</span>
-                    <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
+                {# Logo abaixo dos campos editáveis: no fim do card, depois dos dados só de leitura, passava despercebido. #}
+                <div class="acoes-linha" style="margin: 14px 0 6px;">
+                    <button type="submit" class="btn-primario btn-sm">{% icon 'check-circle' %} Salvar alterações</button>
+                    <span class="aviso-nao-salvo" data-aviso-nao-salvo hidden>Alterações não salvas</span>
                 </div>
-                <div class="linha-dado">
-                    <span class="linha-dado__rotulo">Telefone</span>
-                    <span class="linha-dado__valor">{{ funcionario.telefone|default:"—" }}</span>
-                </div>
-                <div class="linha-dado">
-                    <span class="linha-dado__rotulo">Endereço</span>
-                    <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
-                </div>
-                <div class="linha-dado" title="Respondido pelo próprio colaborador em Meu Perfil.">
-                    <span class="linha-dado__rotulo">Vale-transporte</span>
-                    <span class="linha-dado__valor">{% if funcionario.usa_vale_transporte %}Usa{% elif funcionario.usa_vale_transporte is False %}Não usa (sem desconto){% else %}Ainda não respondeu{% endif %}</span>
-                </div>
-                <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar</button>
             </form>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">CPF</span>
+                <span class="linha-dado__valor">{{ funcionario.cpf }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Telefone</span>
+                <span class="linha-dado__valor">{{ funcionario.telefone|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Endereço</span>
+                <span class="linha-dado__valor">{{ funcionario.endereco|default:"—" }}</span>
+            </div>
+            <div class="linha-dado" title="Respondido pelo próprio colaborador em Meu Perfil.">
+                <span class="linha-dado__rotulo">Vale-transporte</span>
+                <span class="linha-dado__valor">{% if funcionario.usa_vale_transporte %}Usa{% elif funcionario.usa_vale_transporte is False %}Não usa (sem desconto){% else %}Ainda não respondeu{% endif %}</span>
+            </div>
             <a href="{% url 'gerar_contrato' funcionario.id %}" class="btn-outline btn-sm" style="margin-top: 10px; display: inline-block;" target="_blank">{% icon 'file' %} Gerar Contrato</a>
             {% else %}
             <div class="linha-dado">
@@ -99,6 +105,10 @@
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Setor</span>
                 <span class="linha-dado__valor">{{ funcionario.setor }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Salário</span>
+                <span class="linha-dado__valor">{{ funcionario.salario|moeda }}</span>
             </div>
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Admissão</span>
@@ -198,46 +208,10 @@
                 </div>
             </div>
 
-            {% if usuario_atual.eh_dp_ou_rh %}
             <div class="card">
                 <div class="card__title" style="margin-bottom: 8px;">Atestados</div>
-                {% if atestados %}
-                    <ul style="font-size: 0.88rem; padding-left: 18px; margin-bottom: 14px;">
-                        {% for atestado in atestados %}
-                        <li>{{ atestado.data_inicio|date:"d/m/Y" }} a {{ atestado.data_fim|date:"d/m/Y" }}{% if atestado.motivo %} — {{ atestado.motivo }}{% endif %}</li>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhum atestado lançado.</p>
-                {% endif %}
-
-                <button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-lancar-atestado" data-texto-alternativo="Cancelar">Lançar atestado</button>
-
-                <div id="form-lancar-atestado" style="display: none; margin-top: 14px;">
-                    <form method="post" action="{% url 'lancar_atestado' funcionario.id %}">
-                        {% csrf_token %}
-                        <div class="form-grid">
-                            <div>
-                                <label for="{{ atestado_form.data_inicio.id_for_label }}">De</label>
-                                {{ atestado_form.data_inicio }}
-                            </div>
-                            <div>
-                                <label for="{{ atestado_form.data_fim.id_for_label }}">Até</label>
-                                {{ atestado_form.data_fim }}
-                            </div>
-                            <div class="span-2">
-                                <label for="{{ atestado_form.motivo.id_for_label }}">Motivo (opcional)</label>
-                                {{ atestado_form.motivo }}
-                            </div>
-                        </div>
-                        <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar atestado</button>
-                    </form>
-                    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
-                        Nesses dias, o espelho de ponto mostra "Atestado" em vez de folga/falta e não desconta horas.
-                    </p>
-                </div>
+                {% include 'funcionarios/_atestados.html' %}
             </div>
-            {% endif %}
         </div>
 
         <div class="card">

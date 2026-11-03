@@ -1,6 +1,7 @@
 {% load rh_icons %}
 {% load ponto_extras %}
 {# Espelho por período em cards. `permite_correcao` liga o "Pedir correção" -- só no Meu Ponto do próprio colaborador. #}
+{# `corrigir_funcionario` liga o "Corrigir" do gestor, que lança o ajuste direto (ponto:ajustar_marcacao). #}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
         <a href="?data_inicio={{ periodo_anterior.data_inicio }}&data_fim={{ periodo_anterior.data_fim }}" class="pagina-link">{% icon 'arrow-left' %} Período anterior</a>
@@ -31,6 +32,9 @@
                 <span class="badge-status badge-status--{{ dia.situacao_cor }}">{{ dia.situacao_texto }}</span>
                 {% if permite_correcao and dia.pode_solicitar %}
                 <a href="{% url 'ponto:solicitar_ajuste_ponto' %}?data={{ dia.data|date:'Y-m-d' }}&tipo={{ dia.tipo_sugerido }}" class="btn-outline btn-sm">Pedir correção</a>
+                {% endif %}
+                {% if corrigir_funcionario and dia.pode_corrigir %}
+                <a href="{% url 'ponto:ajustar_marcacao' corrigir_funcionario.id dia.data|date:'Y-m-d' %}?tipo={{ dia.tipo_sugerido }}&voltar={{ request.get_full_path|urlencode }}" class="btn-outline btn-sm">Corrigir</a>
                 {% endif %}
             </div>
         </div>

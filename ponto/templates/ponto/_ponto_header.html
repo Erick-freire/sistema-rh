@@ -1,2 +1,7 @@
+{% if usuario_atual.eh_dp_ou_rh %}
 <h1>Ponto</h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">Espelho, equipamentos e cadastros no mesmo lugar.</p>
+{% else %}
+<h1>Ponto da equipe</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">Batidas, correções e pedidos de ajuste de quem trabalha nos seus setores.</p>
+{% endif %}

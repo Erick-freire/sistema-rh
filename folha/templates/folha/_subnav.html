@@ -1,4 +1,6 @@
+{% if usuario_atual.eh_dp_ou_rh %}{# O gestor não mexe nas regras de prêmios: valem para a empresa toda. #}
 <div class="tabs">
     <a href="{% url 'folha:listar' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar' %} is-ativo{% endif %}">Fechamentos</a>
-    <a href="{% url 'folha:premios' %}" class="tabs__link{% if request.resolver_match.url_name == 'premios' or request.resolver_match.url_name == 'editar_regra' %} is-ativo{% endif %}">Regras de prêmios</a>
+    <a href="{% url 'folha:premios' %}" class="tabs__link{% if request.resolver_match.url_name == 'premios' or request.resolver_match.url_name == 'editar_regra' or request.resolver_match.url_name == 'regra_programa' or request.resolver_match.url_name == 'regra_safra' %} is-ativo{% endif %}">Regras de prêmios</a>
 </div>
+{% endif %}

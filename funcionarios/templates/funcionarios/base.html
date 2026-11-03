@@ -88,8 +88,12 @@
                     </a>
                 </li>
                 {% if usuario_atual.papel == 'gestor' %}
-                <li class="{% if request.resolver_match.url_name == 'ponto_equipe' or request.resolver_match.url_name == 'ponto_equipe_funcionario' %}active{% endif %}">
-                    <a href="{% url 'ponto:ponto_equipe' %}">{% icon 'clock' %} Ponto da Equipe</a>
+                {# Sem DP/RH, o gestor usa o Espelho e os Ajustes pendentes pelo "Ponto da Equipe", só com a equipe dele. #}
+                <li class="{% if 'ponto_equipe' in request.resolver_match.url_name or request.resolver_match.app_name == 'ponto' and not usuario_atual.eh_dp_ou_rh %}active{% endif %}">
+                    <a href="{% url 'ponto:ponto_equipe' %}">
+                        {% icon 'clock' %} Ponto da Equipe
+                        {% if badge_ajustes_pendentes and not usuario_atual.eh_dp_ou_rh %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
+                    </a>
                 </li>
                 {% endif %}
                 {% if usuario_atual.eh_dp_ou_rh %}
@@ -99,9 +103,11 @@
                         {% if badge_ajustes_pendentes %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
                     </a>
                 </li>
+                {% endif %}
                 <li class="{% if request.resolver_match.app_name == 'folha' %}active{% endif %}">
                     <a href="{% url 'folha:listar' %}">{% icon 'table' %} Fechamento de folha</a>
                 </li>
+                {% if usuario_atual.eh_dp_ou_rh %}
                 <li class="{% if request.resolver_match.app_name == 'terceiros' %}active{% endif %}">
                     <a href="{% url 'terceiros:listar_empresas' %}">
                         {% icon 'briefcase' %} Terceiros
@@ -263,8 +269,9 @@
         {% icon 'umbrella' %} Férias
         {% if badge_ferias_total %}<span class="bottom-nav__dot"></span>{% endif %}
     </a>
-    <a href="{% url 'ponto:ponto_equipe' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'ponto_equipe' or request.resolver_match.url_name == 'ponto_equipe_funcionario' %} active{% endif %}">
+    <a href="{% url 'ponto:ponto_equipe' %}" class="bottom-nav__item{% if request.resolver_match.app_name == 'ponto' %} active{% endif %}">
         {% icon 'clock' %} Ponto
+        {% if badge_ajustes_pendentes %}<span class="bottom-nav__dot"></span>{% endif %}
     </a>
     <a href="{% url 'meu_perfil' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'meu_perfil' %} active{% endif %}">
         {% icon 'user' %} Perfil

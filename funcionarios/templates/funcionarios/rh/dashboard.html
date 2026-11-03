@@ -28,31 +28,6 @@
 </div>
 {% endif %}
 
-<div class="stats-grid">
-    <a href="{% url 'listar_funcionarios' %}?status=ativo" class="stat-card">
-        <div class="rotulo">Funcionários ativos</div>
-        <div class="valor">{{ total_funcionarios }}</div>
-        {% if admitidos_no_mes %}<div class="stat-card__sub stat-card__sub--positivo">+{{ admitidos_no_mes }} no mês</div>{% endif %}
-    </a>
-    <a href="{% url 'listar_funcionarios' %}?status=pendente" class="stat-card">
-        <div class="rotulo">Cadastros pendentes</div>
-        <div class="valor">{{ cadastros_pendentes }}</div>
-        {% if cadastros_pendentes_antigos %}<div class="stat-card__sub stat-card__sub--alerta">{{ cadastros_pendentes_antigos }} há mais de 7 dias</div>{% endif %}
-    </a>
-    {% if usuario_atual.papel == 'gestor' %}
-    <a href="{% url 'gestor_listar_ferias' %}" class="stat-card">
-        <div class="rotulo">Férias com o gestor</div>
-        <div class="valor">{{ ferias_aguardando_gestor }}</div>
-        {% if dias_mais_antiga_gestor %}<div class="stat-card__sub stat-card__sub--alerta">mais antiga: {{ dias_mais_antiga_gestor }} dia{{ dias_mais_antiga_gestor|pluralize }}</div>{% endif %}
-    </a>
-    {% endif %}
-    <a href="{% url 'concluir_ferias' %}" class="stat-card">
-        <div class="rotulo">Férias com o RH</div>
-        <div class="valor">{{ ferias_aguardando_rh }}</div>
-        {% if ferias_aguardando_rh %}<div class="stat-card__sub">prontas para concluir</div>{% endif %}
-    </a>
-</div>
-
 <div class="inicio-grid">
     <div class="inicio-coluna">
         <section class="inicio-bloco--topo">

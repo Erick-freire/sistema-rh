@@ -330,10 +330,11 @@ class DocumentosEComodatoPushTests(BasePush):
 class AjustePontoPushTests(BasePush):
     def setUp(self):
         super().setUp()
-        for user in (self.colaborador, self.gestor, self.rh):
+        for user in (self.colaborador, self.gestor, self.gestor_outro_setor, self.rh):
             self._inscrever(user)
 
     def test_pedido_de_ajuste_avisa_quem_aprova(self):
+        # O RH e o gestor da equipe; a gestora de outro setor não.
         self.client.force_login(self.colaborador)
 
         with self.captureOnCommitCallbacks(execute=True):
@@ -345,7 +346,8 @@ class AjustePontoPushTests(BasePush):
             })
 
         self.assertTrue(AjustePonto.objects.exists())
-        self.assertEqual(self._destinatarios(), [self.rh.username])
+        self.assertCountEqual(self._destinatarios(), [self.rh.username, self.gestor.username])
+        self.assertEqual({p['url'] for p in self._payloads()}, {reverse('ponto:ajustes_pendentes')})
 
     def test_rejeicao_avisa_o_colaborador_com_o_motivo(self):
         ajuste = AjustePonto.objects.create(

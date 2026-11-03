@@ -145,6 +145,13 @@ class MarcacaoRelogio(models.Model):
                 name='marcacao_unica_por_equipamento',
             )
         ]
+        indexes = [
+            # Batidas de um funcionário num período (espelho, cálculo) e as sem
+            # funcionário recentes (`vincular_marcacoes_sem_funcionario` em toda
+            # coleta) -- sem ele, achar as poucas recentes sem dono varria as
+            # centenas de milhares antigas da Farinha.
+            models.Index(fields=['funcionario', 'momento'], name='marcacao_funcionario_momento'),
+        ]
         ordering = ['-momento']
 
     def __str__(self):

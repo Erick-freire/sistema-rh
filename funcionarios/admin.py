@@ -7,7 +7,7 @@ from .models import (
 
 @admin.register(Atestado)
 class AtestadoAdmin(admin.ModelAdmin):
-    list_display = ('funcionario', 'data_inicio', 'data_fim', 'motivo')
+    list_display = ('funcionario', 'data_inicio', 'data_fim', 'motivo', 'lancado_por')
     list_filter = ('data_inicio',)
     search_fields = ('funcionario__nome',)
 

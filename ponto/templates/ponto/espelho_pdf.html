@@ -1,0 +1,156 @@
+{% comment %}
+Espelho de ponto em PDF (xhtml2pdf), A4 em pé: uma página por funcionário.
+Larguras fixas e só padding vertical nas células -- com padding lateral o
+xhtml2pdf ignora a largura das colunas (ver ponto/espelho_pdf.py).
+{% endcomment %}
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: a4 portrait;
+        margin: 1.1cm 1.2cm 1.3cm 1.2cm;
+        @frame rodape { -pdf-frame-content: rodape; bottom: 0.4cm; margin-left: 1.2cm; margin-right: 1.2cm; height: 0.7cm; }
+    }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 7pt; color: #222; }
+    table { border-collapse: collapse; }
+    .topo td { border: none; vertical-align: middle; }
+    .logo { width: 62px; }
+    h1 { font-size: 12pt; margin: 0; }
+    .empresa { font-size: 7.5pt; color: #555; }
+    .periodo { font-size: 9pt; font-weight: bold; text-align: right; }
+    .dados { margin-top: 6px; }
+    .dados td { border: 0.5px solid #BFBFBF; padding-top: 3px; padding-bottom: 2px; vertical-align: top; }
+    .rotulo { font-size: 6pt; color: #666; }
+    .valor { font-size: 8pt; font-weight: bold; }
+    .espelho { margin-top: 8px; }
+    .espelho th {
+        background-color: #325A3D; color: #FFFFFF; font-size: 6.5pt; font-weight: bold;
+        border: 0.5px solid #4A7A57; text-align: center; padding-top: 2px; padding-bottom: 1px;
+    }
+    .espelho td { border: 0.5px solid #BFBFBF; text-align: center; padding-top: 2px; padding-bottom: 1px; }
+    .espelho tr.destaque td { background-color: #EFEEE8; color: #555; }
+    .espelho td.obs { font-size: 6.5pt; }
+    .espelho td.batida { font-size: 6.5pt; }
+    .totais { margin-top: 8px; }
+    .totais th { background-color: #ECEAE3; font-size: 6.5pt; border: 0.5px solid #BFBFBF; padding-top: 2px; padding-bottom: 1px; }
+    .totais td { border: 0.5px solid #BFBFBF; text-align: center; font-size: 8.5pt; font-weight: bold; padding-top: 3px; padding-bottom: 2px; }
+    .legenda { font-size: 6.5pt; color: #555; margin-top: 5px; }
+    .declaracao { font-size: 7.5pt; margin-top: 18px; }
+    .assinaturas { margin-top: 26px; }
+    .assinaturas td { border: none; text-align: center; font-size: 7.5pt; }
+    #rodape { font-size: 6.5pt; color: #555; }
+</style>
+</head>
+<body>
+
+{% for espelho in espelhos %}
+{% if not forloop.first %}<pdf:nextpage />{% endif %}
+
+<table class="topo">
+    <tr>
+        <td style="width: 2.1cm;"><img class="logo" src="{{ caminho_logo }}"></td>
+        <td style="width: 10.5cm;">
+            <h1>Espelho de ponto</h1>
+            <div class="empresa">SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA &middot; CNPJ 04.577.125/0001-30</div>
+        </td>
+        <td class="periodo" style="width: 6cm;">{{ data_inicio|date:'d/m/Y' }} a {{ data_fim|date:'d/m/Y' }}</td>
+    </tr>
+</table>
+
+<table class="dados">
+    <tr>
+        <td style="width: 7.6cm;"><div class="rotulo">&nbsp;Funcionário</div><div class="valor">&nbsp;{{ espelho.funcionario.nome }}</div></td>
+        <td style="width: 2.2cm;"><div class="rotulo">&nbsp;Matrícula</div><div class="valor">&nbsp;{{ espelho.funcionario.matricula|default:'—' }}</div></td>
+        <td style="width: 3cm;"><div class="rotulo">&nbsp;CPF</div><div class="valor">&nbsp;{{ espelho.cpf }}</div></td>
+        <td style="width: 3.2cm;"><div class="rotulo">&nbsp;PIS</div><div class="valor">&nbsp;{{ espelho.funcionario.pis|default:'—' }}</div></td>
+        <td style="width: 2.6cm;"><div class="rotulo">&nbsp;Admissão</div><div class="valor">&nbsp;{{ espelho.funcionario.data_admissao|date:'d/m/Y'|default:'—' }}</div></td>
+    </tr>
+    <tr>
+        <td><div class="rotulo">&nbsp;Cargo</div><div class="valor">&nbsp;{{ espelho.funcionario.cargo }}</div></td>
+        <td colspan="2"><div class="rotulo">&nbsp;Setor</div><div class="valor">&nbsp;{{ espelho.funcionario.setor.nome }}</div></td>
+        <td colspan="2">
+            <div class="rotulo">&nbsp;Horário</div>
+            <div class="valor">
+                {% for jornada in espelho.jornadas %}&nbsp;{{ jornada.horario }}{% if espelho.jornadas|length > 1 %} (desde {{ jornada.data_inicio|date:'d/m' }}){% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}&nbsp;Sem jornada cadastrada{% endfor %}
+            </div>
+        </td>
+    </tr>
+</table>
+
+<table class="espelho" repeat="1">
+    <thead>
+        <tr>
+            <th style="width: {{ espelho.larguras.data|stringformat:'.2f' }}cm;">Data</th>
+            {% for n in espelho.numeros_dos_pares %}
+            <th style="width: {{ espelho.larguras.batida|stringformat:'.2f' }}cm;">Ent. {{ n }}</th>
+            <th style="width: {{ espelho.larguras.batida|stringformat:'.2f' }}cm;">Saí. {{ n }}</th>
+            {% endfor %}
+            <th style="width: {{ espelho.larguras.totais.0|stringformat:'.2f' }}cm;">Normais</th>
+            <th style="width: {{ espelho.larguras.totais.1|stringformat:'.2f' }}cm;">Noturno</th>
+            <th style="width: {{ espelho.larguras.totais.2|stringformat:'.2f' }}cm;">Faltas</th>
+            <th style="width: {{ espelho.larguras.totais.3|stringformat:'.2f' }}cm;">Extra 50%</th>
+            <th style="width: {{ espelho.larguras.totais.4|stringformat:'.2f' }}cm;">Extra 100%</th>
+            <th style="width: {{ espelho.larguras.observacao|stringformat:'.2f' }}cm;">Observação</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for dia in espelho.dias %}
+        <tr{% if dia.destaque %} class="destaque"{% endif %}>
+            <td>{{ dia.data }}</td>
+            {% for batida in dia.batidas %}<td class="batida">{{ batida }}</td>{% endfor %}
+            <td>{{ dia.normais }}</td>
+            <td>{{ dia.noturno }}</td>
+            <td>{{ dia.faltas }}</td>
+            <td>{{ dia.extra_50 }}</td>
+            <td>{{ dia.extra_100 }}</td>
+            <td class="obs">{{ dia.observacao }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<table class="totais">
+    <tr>
+        <th style="width: 2.3cm;">Horas normais</th>
+        <th style="width: 2.3cm;">Noturno</th>
+        <th style="width: 2.5cm;">Noturno convertido</th>
+        <th style="width: 2.3cm;">Extra 50%</th>
+        <th style="width: 2.3cm;">Extra 100%</th>
+        <th style="width: 2.3cm;">Faltas e atrasos</th>
+        <th style="width: 2.3cm;">Dias falta</th>
+        <th style="width: 2.3cm;">DSR perdidos</th>
+    </tr>
+    <tr>
+        <td>{{ espelho.totais.normais }}</td>
+        <td>{{ espelho.totais.noturno }}</td>
+        <td>{{ espelho.totais.noturno_convertido }}</td>
+        <td>{{ espelho.totais.extra_50 }}</td>
+        <td>{{ espelho.totais.extra_100 }}</td>
+        <td>{{ espelho.totais.faltas }}</td>
+        <td>{{ espelho.totais.dias_falta }}</td>
+        <td>{{ espelho.totais.dsr_perdidos }}</td>
+    </tr>
+</table>
+<div class="legenda">
+    Horas em h:mm. Totais do período já com a compensação: as horas extras abatem faltas e atrasos, primeiro as de 50%.
+    Dia falta não é compensado. Noturno (22h às 5h) em horas de relógio; noturno convertido na hora de 52min30s.
+    * batida lançada ou corrigida manualmente (ajuste aprovado pelo RH). +1: batida no dia seguinte ao do início do turno.
+</div>
+
+<div class="declaracao">Reconheço a exatidão das marcações e dos totais deste espelho de ponto.</div>
+<table class="assinaturas">
+    <tr>
+        <td style="width: 8.3cm;">_______________________________________________<br>{{ espelho.funcionario.nome }}</td>
+        <td style="width: 2cm;"></td>
+        <td style="width: 8.3cm;">_______________________________________________<br>SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA</td>
+    </tr>
+</table>
+{% endfor %}
+
+<div id="rodape">
+    Gerado em {{ gerado_em|date:'d/m/Y H:i' }} por {{ gerado_por }}. &nbsp;&nbsp; Página <pdf:pagenumber> de <pdf:pagecount>
+</div>
+
+</body>
+</html>

@@ -20,7 +20,7 @@
     {% endif %}
 </h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">
-    {{ total_linhas }} funcionário(s){% if fechamento.observacao %} · {{ fechamento.observacao }}{% endif %}
+    {{ total_linhas }} funcionário(s){% if not usuario_atual.eh_dp_ou_rh %} da sua equipe{% endif %}{% if fechamento.observacao %} · {{ fechamento.observacao }}{% endif %}
 </p>
 
 {% if pendentes %}
@@ -42,7 +42,7 @@
         <span>O mês ainda não terminou: o ponto só conta os dias já encerrados. Recalcule depois do último dia do mês.</span>
     </div>
     {% endif %}
-    {% if not tem_regras_de_premio %}
+    {% if not tem_regras_de_premio and usuario_atual.eh_dp_ou_rh %}
     <div class="alert alert--aviso alert--com-acao">
         <span>{% icon 'alert-triangle' %} Nenhuma regra de prêmio cadastrada: prêmio programa, incentivo e safra estão em branco.</span>
         <a href="{% url 'folha:premios' %}" class="btn-outline btn-sm">Cadastrar regras</a>
@@ -51,19 +51,20 @@
     <div class="alert alert--aviso">{% icon 'copy' %}
         <span>
             {% if anterior %}Vale-transporte e periculosidade vieram de {{ anterior.competencia_extenso }}.{% endif %}
-            Prêmio programa, incentivo e safra vêm das <a href="{% url 'folha:premios' %}">regras de prêmios</a>
+            Prêmio programa, incentivo e safra vêm das {% if usuario_atual.eh_dp_ou_rh %}<a href="{% url 'folha:premios' %}">regras de prêmios</a>{% else %}regras de prêmios do RH{% endif %}
             (as reduções do mês, como por atestado, são feitas aqui na grade).
             Bônus, descontos, reembolso, comissões e 13º começam em branco: lance os deste mês.
         </span>
     </div>
 {% else %}
     <div class="alert alert--sucesso">{% icon 'lock' %}
-        <span>Fechado{% if fechamento.fechado_em %} em {{ fechamento.fechado_em|date:'d/m/Y H:i' }}{% endif %}. Os valores estão travados; para alterar, reabra o fechamento.</span>
+        <span>Fechado{% if fechamento.fechado_em %} em {{ fechamento.fechado_em|date:'d/m/Y H:i' }}{% endif %}. Os valores estão travados; para alterar, {% if usuario_atual.eh_dp_ou_rh %}reabra o fechamento{% else %}peça ao RH para reabrir{% endif %}.</span>
     </div>
 {% endif %}
 
+{# Baixar, fechar, excluir e reabrir valem para a empresa toda: só DP/RH. O gestor recalcula a equipe dele. #}
 <div class="folha-acoes">
-    {% if not pendentes %}
+    {% if not pendentes and usuario_atual.eh_dp_ou_rh %}
     <a href="{% url 'folha:exportar_xlsx' fechamento.id %}" class="btn-primario btn-novo">{% icon 'download' %} Baixar Excel</a>
     <a href="{% url 'folha:exportar_pdf' fechamento.id %}" class="btn-primario btn-novo">{% icon 'download' %} Baixar PDF</a>
     {% endif %}
@@ -71,20 +72,24 @@
     {% if not pendentes %}
     <form method="post" action="{% url 'folha:recalcular' fechamento.id %}">
         {% csrf_token %}
-        <button type="submit" class="btn-outline">{% icon 'clock' %} Recalcular ponto</button>
+        <button type="submit" class="btn-outline">{% icon 'clock' %} Recalcular ponto{% if not usuario_atual.eh_dp_ou_rh %} da equipe{% endif %}</button>
     </form>
+    {% if usuario_atual.eh_dp_ou_rh %}
     <form method="post" action="{% url 'folha:fechar' fechamento.id %}">
         {% csrf_token %}
         <button type="submit" class="btn-outline" data-confirmar-titulo="Fechar a competência"
                 data-confirmar="Os valores de {{ fechamento.competencia_extenso }} ficam travados como estão agora. Dá para reabrir depois, se precisar.">{% icon 'lock' %} Fechar competência</button>
     </form>
     {% endif %}
+    {% endif %}
+    {% if usuario_atual.eh_dp_ou_rh %}
     <form method="post" action="{% url 'folha:excluir' fechamento.id %}">
         {% csrf_token %}
         <button type="submit" class="btn-outline" data-confirmar-titulo="Excluir o fechamento"
                 data-confirmar="Apaga o fechamento de {{ fechamento.competencia_extenso }} com tudo o que foi lançado nele. Não dá para desfazer.">{% icon 'trash' %} Excluir</button>
     </form>
-    {% else %}
+    {% endif %}
+    {% elif usuario_atual.eh_dp_ou_rh %}
     <form method="post" action="{% url 'folha:reabrir' fechamento.id %}">
         {% csrf_token %}
         <button type="submit" class="btn-outline" data-confirmar-titulo="Reabrir o fechamento"
@@ -104,7 +109,7 @@
         <form method="post" action="{% url 'folha:incluir_funcionario' fechamento.id %}" class="folha-filtros__incluir">
             {% csrf_token %}
             <select name="funcionario" aria-label="Funcionário ativo fora do fechamento" required>
-                <option value="">Incluir funcionário ({{ fora_do_fechamento|length }} ativo(s) fora)...</option>
+                <option value="">Incluir funcionário ({{ fora_do_fechamento|length }} ativo(s){% if not usuario_atual.eh_dp_ou_rh %} da equipe{% endif %} fora)...</option>
                 {% for funcionario in fora_do_fechamento %}
                 <option value="{{ funcionario.id }}">{{ funcionario.nome }} ({{ funcionario.matricula|default:'—' }})</option>
                 {% endfor %}

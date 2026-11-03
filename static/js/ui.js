@@ -60,6 +60,46 @@ document.addEventListener('DOMContentLoaded', function () {
         if (overlay) overlay.classList.remove('is-open');
     });
 
+    // Formulário editado direto na página (ex.: dados da ficha do funcionário):
+    // mostra "Alterações não salvas" enquanto algum campo difere do que veio do
+    // servidor e pede confirmação antes de sair da página sem salvar.
+    // data-avisar-nao-salvo="pendente": o servidor devolveu o form com erro, então
+    // o que está nos campos ainda não foi salvo, mesmo sem mexer em nada.
+    document.querySelectorAll('form[data-avisar-nao-salvo]').forEach(function (form) {
+        var aviso = form.querySelector('[data-aviso-nao-salvo]');
+        var pendente = form.dataset.avisarNaoSalvo === 'pendente';
+        var enviando = false;
+
+        function alterado() {
+            return pendente || Array.prototype.some.call(form.elements, function (campo) {
+                if (campo.type === 'hidden' || campo.disabled) return false;
+                if (campo.tagName === 'SELECT') {
+                    return Array.prototype.some.call(campo.options, function (opcao) {
+                        return opcao.selected !== opcao.defaultSelected;
+                    });
+                }
+                if (campo.type === 'checkbox' || campo.type === 'radio') {
+                    return campo.checked !== campo.defaultChecked;
+                }
+                return 'defaultValue' in campo && campo.value !== campo.defaultValue;
+            });
+        }
+
+        function atualizar() {
+            if (aviso) aviso.hidden = !alterado();
+        }
+
+        form.addEventListener('input', atualizar);
+        form.addEventListener('change', atualizar);
+        form.addEventListener('submit', function () { enviando = true; });
+        window.addEventListener('beforeunload', function (evento) {
+            if (enviando || !alterado()) return;
+            evento.preventDefault();
+            evento.returnValue = '';
+        });
+        atualizar();
+    });
+
     // Formulário de "Definir jornada": quando o horário escolhido é 12x36, a
     // data vira "dia de trabalho de referência do ciclo" em vez de "a partir
     // de" -- evita expor qualquer coisa de par/ímpar/cálculo pro usuário.

@@ -1,9 +1,13 @@
 from datetime import date, timedelta
 
 from django import forms
+from django.db.models import Count
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
+from funcionarios.models import Funcionario, Setor
+
+from .espelho_pdf import funcionarios_do_setor, funcionarios_que_batem_ponto
 from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
 from .turnos import DURACAO_MAXIMA_TURNO, duracao_do_turno
 from .utils import intervalo_do_dia
@@ -231,3 +235,72 @@ class FeriadoForm(forms.ModelForm):
         model = Feriado
         fields = ['data', 'descricao']
         widgets = {'data': forms.DateInput(attrs={'type': 'date'})}
+
+
+# Setor grande em período longo passaria do tempo que o proxy de produção
+# espera por uma resposta (~60 s). Medido em out/2026: 40 pessoas x 30 dias
+# = 20 s (cálculo + PDF); 2500 pessoas-dia fica perto de 40 s.
+LIMITE_PESSOAS_DIA_ESPELHO = 2500
+
+
+class ExportarEspelhoForm(forms.Form):
+    """
+    Filtro da tela Espelho e cálculo: um funcionário (espelho na tela ou em
+    PDF) ou o setor inteiro (só em PDF, uma página por pessoa). Os nomes dos
+    campos são os mesmos parâmetros da URL da tela.
+    """
+    FILTRO_CHOICES = [('funcionario', 'Um funcionário'), ('setor', 'Setor inteiro (PDF)')]
+
+    data_inicio = forms.DateField(label='De', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
+    data_fim = forms.DateField(label='Até', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
+    filtro = forms.ChoiceField(label='Espelho de', choices=FILTRO_CHOICES, widget=forms.RadioSelect, initial='funcionario')
+    setor = forms.ModelChoiceField(label='Setor', queryset=Setor.objects.order_by('nome'), required=False)
+    # Todos, inclusive inativos: o espelho de quem saiu ainda é pedido (ex.: na rescisão).
+    funcionario = forms.ModelChoiceField(
+        label='Funcionário', queryset=Funcionario.objects.order_by('nome'), required=False,
+    )
+
+    def __init__(self, *args, usuario=None, **kwargs):
+        # A tela também tem o formulário de jornada, com outro campo `data_inicio`: ids próprios evitam repetir.
+        kwargs.setdefault('auto_id', 'espelho_%s')
+        super().__init__(*args, **kwargs)
+        # O gestor só escolhe (e só exporta) a equipe e os setores dele.
+        if usuario is not None and not usuario.eh_dp_ou_rh():
+            self.fields['funcionario'].queryset = usuario.equipe().order_by('nome')
+            self.fields['setor'].queryset = usuario.setores_da_equipe().order_by('nome')
+        # Quantos entram no espelho de cada setor, ao lado do nome.
+        por_setor = dict(
+            funcionarios_que_batem_ponto().order_by().values_list('setor').annotate(total=Count('id'))
+        )
+        self.fields['setor'].label_from_instance = lambda setor: f'{setor.nome} ({por_setor.get(setor.id, 0)})'
+
+    def clean(self):
+        dados = super().clean()
+        inicio, fim = dados.get('data_inicio'), dados.get('data_fim')
+        if inicio and fim and fim < inicio:
+            self.add_error('data_fim', 'A data final não pode ser antes da inicial.')
+            return dados
+
+        if dados.get('filtro') == 'funcionario':
+            if dados.get('funcionario') is None:
+                self.add_error('funcionario', 'Escolha o funcionário.')
+            else:
+                dados['funcionarios'] = [dados['funcionario']]
+            return dados
+
+        setor = dados.get('setor')
+        if setor is None:
+            self.add_error('setor', 'Escolha o setor.')
+            return dados
+        pessoas = list(funcionarios_do_setor(setor))
+        if not pessoas:
+            self.add_error('setor', 'Nenhum funcionário ativo que bate ponto neste setor.')
+        elif inicio and fim and len(pessoas) * ((fim - inicio).days + 1) > LIMITE_PESSOAS_DIA_ESPELHO:
+            dias = LIMITE_PESSOAS_DIA_ESPELHO // len(pessoas)
+            self.add_error(
+                None,
+                f'Período longo demais para o setor inteiro ({len(pessoas)} pessoas): para este setor, '
+                f'escolha até {dias} dias, ou exporte por funcionário.',
+            )
+        dados['funcionarios'] = pessoas
+        return dados

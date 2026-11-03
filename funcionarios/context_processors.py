@@ -72,6 +72,11 @@ def usuario_logado(request):
         contexto['badge_comodatos'] = TermoComodato.objects.filter(status='em_validacao').count()
         # Pedidos de nova senha feitos pela tela de login.
         contexto['badge_pedidos_senha'] = SolicitacaoSenha.pendentes().count()
+    elif usuario.papel == 'gestor':
+        # O gestor também analisa os pedidos de ajuste de ponto, mas só os da equipe.
+        contexto['badge_ajustes_pendentes'] = AjustePonto.objects.filter(
+            status='pendente', funcionario__in=usuario.equipe(),
+        ).count()
 
     if usuario.eh_seguranca_ou_rh():
         # Fichas de EPI que o colaborador já devolveu assinadas.

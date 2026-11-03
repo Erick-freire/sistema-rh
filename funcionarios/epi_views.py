@@ -190,10 +190,11 @@ def reenviar_epi_assinado_view(request, ficha_id):
     except Usuario.DoesNotExist:
         return redirect('dashboard')
     ficha = get_object_or_404(FichaEPI, id=ficha_id, funcionario=funcionario)
+    destino = 'minhas_assinaturas' if request.POST.get('origem') == 'assinatura_gov' else 'meus_documentos'
 
     if ficha.status != 'aguardando_assinatura' or not ficha.arquivo_gerado:
         messages.error(request, 'Esta ficha não está aguardando assinatura.')
-        return redirect('meus_documentos')
+        return redirect(destino)
 
     if request.method == 'POST' and request.FILES.get('arquivo_assinado'):
         ficha.arquivo_assinado = request.FILES['arquivo_assinado']
@@ -203,7 +204,7 @@ def reenviar_epi_assinado_view(request, ficha_id):
         notificacoes.ficha_epi_assinada_enviada(ficha)
         messages.success(request, 'Ficha de EPI assinada enviada. Aguarde a validação da Segurança do Trabalho.')
 
-    return redirect('meus_documentos')
+    return redirect(destino)
 
 
 def _voltar_apos_validar_ficha(request):

@@ -168,9 +168,9 @@ def _gestores_do_setor(setor_id):
 
 
 def _gestores_da_equipe(funcionario):
-    # Mesma regra do "Ponto da equipe" (`ponto.views._funcionarios_da_equipe`):
-    # gestor do mesmo setor ou o responsável pelo setor -- os dois enxergam o
-    # ponto dessa pessoa. Ser `Setor.gestor` sem papel de gestor não conta.
+    # Mesma regra do "Ponto da equipe" (`Usuario.equipe`): gestor do mesmo
+    # setor ou o responsável pelo setor -- os dois enxergam e corrigem o ponto
+    # dessa pessoa. Ser `Setor.gestor` sem papel de gestor não conta.
     if funcionario.setor_id is None:
         return User.objects.none()
     return User.objects.filter(
@@ -346,9 +346,12 @@ def comodato_rejeitado(comodato):
 # ---------- Ponto ----------
 
 def ajuste_ponto_solicitado(ajuste):
+    # Quem pode aprovar: o RH/DP e o gestor da equipe (a fila dele só mostra a equipe).
     funcionario = ajuste.funcionario
+    rh = list(_usuarios_rh_dp())
+    ids_rh = {user.pk for user in rh}
     notificar(
-        _usuarios_rh_dp(),
+        rh + [user for user in _gestores_da_equipe(funcionario) if user.pk not in ids_rh],
         'Novo pedido de ajuste de ponto',
         f'{funcionario.nome}: {ajuste.get_tipo_evento_display().lower()} às '
         f'{ajuste.horario_ajustado:%H:%M} em {ajuste.data:%d/%m/%Y}.',

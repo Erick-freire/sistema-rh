@@ -1,0 +1,77 @@
+{% comment %}
+Escolha de quem colocar numa regra com lista (programa ou safra). Recebe:
+regra, url_incluir (nome da URL), candidatos (ver `views._candidatos`),
+ajuda_escolha (quem está no topo e por quê) e premio (nome do prêmio).
+{% endcomment %}
+{% load rh_icons %}
+<div class="card" id="colocar">
+    <div class="card__header"><span class="card__title">Colocar pessoas nesta regra</span></div>
+    {% if candidatos %}
+    <form method="post" action="{% url url_incluir regra.id %}" data-escolha-pessoas>
+        {% csrf_token %}
+        <div class="folha-filtros">
+            <input type="search" placeholder="Buscar por nome, matrícula, setor ou cargo" aria-label="Buscar colaborador" data-busca>
+            <label class="folha-filtros__opcao"><input type="checkbox" data-so-sem-regra checked> Só quem está sem regra</label>
+        </div>
+        <p class="folha-ajuda">
+            {{ ajuda_escolha }}
+            Quem já está em outra regra de {{ premio }} sai dela e passa para esta.
+        </p>
+        <ul class="folha-escolha">
+            {% for item in candidatos %}
+            <li data-texto="{{ item.funcionario.nome }} {{ item.funcionario.matricula }} {{ item.funcionario.setor.nome }} {{ item.funcionario.cargo }}"{% if item.regra_atual %} data-em-regra{% endif %}>
+                <label>
+                    <input type="checkbox" name="funcionario" value="{{ item.funcionario.id }}">
+                    <span>
+                        <span class="folha-escolha__nome">{{ item.funcionario.nome }}</span>
+                        <span class="folha-escolha__sub">
+                            {{ item.funcionario.matricula|default:'—' }} · {{ item.funcionario.setor.nome|default:'sem setor' }} · {{ item.funcionario.cargo|default:'sem cargo' }}{% if item.regra_atual %} · hoje em {{ item.regra_atual }}{% endif %}
+                        </span>
+                    </span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+        <button type="submit" class="btn-primario" style="margin-top: 12px;" data-botao-colocar>{% icon 'plus' %} <span>Colocar selecionados</span></button>
+    </form>
+    {% else %}
+    <p class="folha-vazio">Todos os ativos já estão nesta regra.</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-escolha-pessoas]').forEach(function (form) {
+        var busca = form.querySelector('[data-busca]');
+        var soSemRegra = form.querySelector('[data-so-sem-regra]');
+        var botao = form.querySelector('[data-botao-colocar]');
+        var itens = form.querySelectorAll('.folha-escolha li');
+        var normalizar = function (texto) {
+            return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        };
+        itens.forEach(function (item) { item.dataset.busca = normalizar(item.dataset.texto); });
+
+        // Quem já foi marcado continua à vista, mesmo fora do filtro.
+        var filtrar = function () {
+            var termo = normalizar(busca.value.trim());
+            itens.forEach(function (item) {
+                var escondido = (soSemRegra.checked && item.hasAttribute('data-em-regra'))
+                    || (termo && item.dataset.busca.indexOf(termo) === -1);
+                item.hidden = escondido && !item.querySelector('input').checked;
+            });
+        };
+        var contar = function () {
+            var marcados = form.querySelectorAll('input[name="funcionario"]:checked').length;
+            botao.disabled = marcados === 0;
+            botao.querySelector('span').textContent = marcados ? 'Colocar ' + marcados + ' selecionado(s)' : 'Colocar selecionados';
+        };
+        busca.addEventListener('input', filtrar);
+        soSemRegra.addEventListener('change', filtrar);
+        form.addEventListener('change', function (evento) {
+            if (evento.target.name === 'funcionario') contar();
+        });
+        filtrar();
+        contar();
+    });
+});
+</script>

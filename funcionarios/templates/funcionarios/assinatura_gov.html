@@ -14,14 +14,14 @@ Assinar com Gov.br
         <div class="passo">
             <span class="passo__num">1</span>
             <div>
-                <div class="passo__titulo">Baixe o seu contrato</div>
-                <div class="passo__sub">O arquivo em PDF gerado pelo RH.</div>
+                <div class="passo__titulo">Baixe o documento</div>
+                <div class="passo__sub">O PDF que está esperando a sua assinatura, aqui embaixo.</div>
             </div>
         </div>
         <div class="passo">
             <span class="passo__num">2</span>
             <div>
-                <div class="passo__titulo">Assine em assinador.iti.br</div>
+                <div class="passo__titulo">Assinatura com o gov.br</div>
                 <div class="passo__sub">Login com a sua conta gov.br.</div>
             </div>
         </div>
@@ -33,7 +33,7 @@ Assinar com Gov.br
             </div>
         </div>
     </div>
-    <a href="https://assinador.iti.br/" target="_blank" rel="noopener" class="btn">{% icon 'pen' %} Abrir assinador.iti.br</a>
+    <a href="https://assinador.iti.br/" target="_blank" rel="noopener" class="btn">{% icon 'pen' %} Abrir assinador gov.br</a>
 </div>
 
 {% if contrato_documento %}
@@ -52,9 +52,55 @@ Assinar com Gov.br
         </div>
     </div>
 </div>
-{% else %}
+{% endif %}
+
+{% if comodatos or fichas_epi %}
+<div class="card" style="border-left: 3px solid var(--color-accent);">
+    <div class="card__title" style="margin-bottom: 12px;">Termos para assinar</div>
+    <div class="lista-cards">
+        {% for comodato in comodatos %}
+        <div class="item-card item-card--termo">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">Comodato de {{ comodato.get_modalidade_display }}</div>
+                <div class="item-card__subtitulo">{{ comodato.data_emprestimo|date:"d/m/Y" }}</div>
+                {% if comodato.motivo_rejeicao %}
+                <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pelo RH: {{ comodato.motivo_rejeicao }}. Envie o termo assinado novamente.</div>
+                {% endif %}
+            </div>
+            <a href="{% url 'ver_comodato' comodato.id 'gerado' %}" download class="btn btn-sm">{% icon 'download' %} Baixar</a>
+            <form method="post" action="{% url 'reenviar_comodato_assinado' comodato.id %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="origem" value="assinatura_gov">
+                <input type="file" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-comodato-{{ comodato.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+        </div>
+        {% endfor %}
+        {% for ficha in fichas_epi %}
+        <div class="item-card item-card--termo">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">Ficha de EPI</div>
+                <div class="item-card__subtitulo">{{ ficha.data_entrega|date:"d/m/Y" }}</div>
+                {% if ficha.motivo_rejeicao %}
+                <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pela Segurança do Trabalho: {{ ficha.motivo_rejeicao }}. Envie a ficha assinada novamente.</div>
+                {% endif %}
+            </div>
+            <a href="{% url 'ver_ficha_epi' ficha.id 'gerado' %}" download class="btn btn-sm">{% icon 'download' %} Baixar</a>
+            <form method="post" action="{% url 'reenviar_epi_assinado' ficha.id %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="origem" value="assinatura_gov">
+                <input type="file" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-epi-{{ ficha.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not contrato_documento and not comodatos and not fichas_epi %}
 <div class="card">
-    <p style="color: var(--color-text-muted); font-size: 0.9rem;">Seu contrato ainda não foi gerado pelo RH. Quando estiver disponível, aparece aqui pra download.</p>
+    <p style="color: var(--color-text-muted); font-size: 0.9rem;">Nenhum documento esperando a sua assinatura. Quando houver um contrato, termo de comodato ou ficha de EPI pra assinar, ele aparece aqui pra download.</p>
 </div>
 {% endif %}
 {% endblock %}

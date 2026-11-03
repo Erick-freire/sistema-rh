@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from funcionarios.models import Funcionario, Setor
@@ -13,7 +13,8 @@ from funcionarios.utils import MESES
 # De onde vem cada lançamento ao abrir uma competência nova (decisões do
 # usuário em 26/10/2026):
 # - copiados do mês anterior: só o que é fixo da pessoa (VT e periculosidade);
-# - das regras de prêmios (`RegraPremio`): programa, incentivo e safra;
+# - das regras de prêmios: programa (`RegraPremioPrograma`), incentivo
+#   (`RegraPremio`) e safra (`RegraPremioSafra`);
 # - do cálculo do ponto: horas, faltas, atestados e assiduidade;
 # - em branco: o resto (bônus, descontos, reembolso, comissões, 13º), que o
 #   RH lança mês a mês.
@@ -92,6 +93,7 @@ class LinhaFechamento(models.Model):
     premio_programa = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     premio_bonus = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     premio_incentivo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Percentual do salário (10 = 10%). Vai assim para a contabilidade, que aplica sobre o salário.
     premio_safra = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True, help_text='Percentual (10 = 10%).',
     )
@@ -165,23 +167,43 @@ def normalizar_cargo(cargo):
     return ' '.join(sem_acento.casefold().split())
 
 
-class RegraPremio(models.Model):
-    """
-    Quem recebe prêmio programa, incentivo ou safra, e quanto. A regra vale
-    para um setor inteiro, para um cargo de um setor, ou para uma pessoa; a
-    mais específica vence (pessoa > setor e cargo > setor). Valor zero numa
-    regra de pessoa é a exceção "não recebe".
+class ComVigencia:
+    """Regra que vale de um mês a outro (`vigente_de` e `vigente_ate`, sempre no dia 1; vazio = sem limite)."""
 
-    Ao abrir um fechamento, as regras vigentes na competência preenchem as
-    três colunas, e o RH ainda ajusta caso a caso na grade -- no programa, as
-    reduções do mês (atestado, faltas) são sempre manuais, não há tabela
-    (confirmado com o usuário). No safra o valor é percentual (10 = 10%) e a
-    regra costuma ter vigência: só vale nos meses da safra.
+    @property
+    def descricao_vigencia(self):
+        def mes(data):
+            return f'{data.month:02d}/{data.year}'
+        if self.vigente_de and self.vigente_ate:
+            return f'{mes(self.vigente_de)} a {mes(self.vigente_ate)}'
+        if self.vigente_de:
+            return f'desde {mes(self.vigente_de)}'
+        if self.vigente_ate:
+            return f'até {mes(self.vigente_ate)}'
+        return 'sempre'
+
+    def vale_em(self, competencia):
+        return (self.vigente_de or date.min) <= competencia <= (self.vigente_ate or date.max)
+
+    def _validar_vigencia(self):
+        if self.vigente_de and self.vigente_ate and self.vigente_ate < self.vigente_de:
+            raise ValidationError({'vigente_ate': 'O último mês não pode ser antes do primeiro.'})
+
+
+class RegraPremio(ComVigencia, models.Model):
+    """
+    Quem recebe prêmio incentivo, e quanto. A regra vale para um setor
+    inteiro, para um cargo de um setor, ou para uma pessoa; a mais específica
+    vence (pessoa > setor e cargo > setor). Valor zero numa regra de pessoa é
+    a exceção "não recebe". Programa e safra saíram daqui em 29/10/2026 para
+    regras com a lista de quem recebe: ver `RegraPremioPrograma` e
+    `RegraPremioSafra`.
+
+    Ao abrir um fechamento, as regras vigentes na competência preenchem a
+    coluna, e o RH ainda ajusta caso a caso na grade.
     """
     TIPO_CHOICES = [
-        ('premio_programa', 'Prêmio programa'),
         ('premio_incentivo', 'Prêmio incentivo'),
-        ('premio_safra', 'Prêmio safra'),
     ]
 
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
@@ -192,7 +214,7 @@ class RegraPremio(models.Model):
     )
     valor = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)],
-        help_text='Em R$ (no prêmio safra, em %). Zero = não recebe.',
+        help_text='Em R$. Zero = não recebe.',
     )
     vigente_de = models.DateField(null=True, blank=True, help_text='Primeiro mês em que vale. Vazio = desde sempre.')
     vigente_ate = models.DateField(null=True, blank=True, help_text='Último mês em que vale. Vazio = sem fim.')
@@ -221,21 +243,6 @@ class RegraPremio(models.Model):
             return self.funcionario.nome
         return f'{self.setor.nome} · {self.cargo}' if self.cargo else f'{self.setor.nome} (todos os cargos)'
 
-    @property
-    def descricao_vigencia(self):
-        def mes(data):
-            return f'{data.month:02d}/{data.year}'
-        if self.vigente_de and self.vigente_ate:
-            return f'{mes(self.vigente_de)} a {mes(self.vigente_ate)}'
-        if self.vigente_de:
-            return f'desde {mes(self.vigente_de)}'
-        if self.vigente_ate:
-            return f'até {mes(self.vigente_ate)}'
-        return 'sempre'
-
-    def vale_em(self, competencia):
-        return (self.vigente_de or date.min) <= competencia <= (self.vigente_ate or date.max)
-
     def atinge(self, funcionario):
         if self.funcionario_id:
             return self.funcionario_id == funcionario.id
@@ -259,8 +266,7 @@ class RegraPremio(models.Model):
             raise ValidationError('A regra vale para uma pessoa ou para um setor, não para os dois.')
         if not self.funcionario_id and not self.setor_id:
             raise ValidationError('Escolha o setor ou a pessoa da regra.')
-        if self.vigente_de and self.vigente_ate and self.vigente_ate < self.vigente_de:
-            raise ValidationError({'vigente_ate': 'O último mês não pode ser antes do primeiro.'})
+        self._validar_vigencia()
         # Duas regras com o mesmo alvo no mesmo mês: não daria para saber qual vale.
         for outra in RegraPremio.objects.filter(tipo=self.tipo).exclude(pk=self.pk).select_related('setor', 'funcionario'):
             if self._mesmo_alvo(outra) and self._vigencias_se_cruzam(outra):
@@ -268,3 +274,113 @@ class RegraPremio(models.Model):
                     f'Já existe uma regra para {outra.descricao_alvo} nesse período ({outra.descricao_vigencia}). '
                     'Edite a que existe ou ajuste as vigências.'
                 )
+
+
+class RegraPremioPrograma(models.Model):
+    """
+    Prêmio programa: um valor por cargo, com a lista de quem recebe (uma
+    regra, muitos colaboradores). Pedido do usuário em 29/10/2026: a regra é
+    "cargo X = R$ Y" e o RH coloca nela quem entra, inclusive quem for
+    contratado depois. Não há casamento automático por setor ou cargo: só
+    recebe quem está na lista, e cada pessoa fica em uma regra só.
+
+    Um cargo pode ter mais de uma regra quando o valor muda de setor para
+    setor (em set/2026, Operador de Máquina 2 recebia 900 no Moinho e 450 no
+    Macarrão). As reduções do mês (atestado, faltas) continuam à mão na grade.
+    """
+    cargo = models.CharField(max_length=100)
+    valor = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], help_text='Em R$.',
+    )
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['cargo', 'valor']
+
+    def __str__(self):
+        return f'{self.cargo} = {self.valor}'
+
+    def clean(self):
+        self.cargo = ' '.join((self.cargo or '').split())
+        # Duas regras iguais dividiriam o mesmo grupo de pessoas sem motivo.
+        chave = normalizar_cargo(self.cargo)
+        for outra in RegraPremioPrograma.objects.filter(valor=self.valor).exclude(pk=self.pk):
+            if normalizar_cargo(outra.cargo) == chave:
+                raise ValidationError(f'Já existe a regra "{outra.cargo}" com esse valor: coloque as pessoas nela.')
+
+
+class MembroPremioPrograma(models.Model):
+    regra = models.ForeignKey(RegraPremioPrograma, on_delete=models.CASCADE, related_name='membros')
+    # Único: a pessoa recebe o programa de uma regra só. Mudou de cargo, muda de regra.
+    funcionario = models.OneToOneField(Funcionario, on_delete=models.CASCADE, related_name='membro_premio_programa')
+    incluido_em = models.DateTimeField(auto_now_add=True)
+    incluido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['funcionario__nome']
+
+    def __str__(self):
+        return f'{self.funcionario.nome} em {self.regra}'
+
+
+class RegraPremioSafra(ComVigencia, models.Model):
+    """
+    Bônus safra: um percentual do salário (10%, confirmado pelo usuário em
+    29/10/2026) nos meses da safra, com a lista de quem recebe. Como no
+    programa, o RH coloca e tira as pessoas, e cada pessoa fica em uma regra só.
+
+    A coluna vai para a contabilidade com o percentual (10), como no modelo de
+    set/2026 ("PREMIO BONUS SAFRA (10%)"): o escritório aplica sobre o salário.
+    """
+    nome = models.CharField(max_length=100, help_text='Ex.: Safra 2026.')
+    percentual = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10'),
+        validators=[MinValueValidator(Decimal('0.01')), MaxValueValidator(Decimal('100'))],
+        help_text='Do salário (10 = 10%).',
+    )
+    vigente_de = models.DateField(null=True, blank=True, help_text='Primeiro mês da safra. Vazio = desde sempre.')
+    vigente_ate = models.DateField(null=True, blank=True, help_text='Último mês da safra. Vazio = sem fim.')
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    atualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['nome']
+
+    def __str__(self):
+        return f'{self.nome} ({self.percentual}%)'
+
+    @property
+    def valor(self):
+        """O que vai para a coluna do fechamento: o percentual."""
+        return self.percentual
+
+    def clean(self):
+        self.nome = ' '.join((self.nome or '').split())
+        self._validar_vigencia()
+
+
+class MembroPremioSafra(models.Model):
+    regra = models.ForeignKey(RegraPremioSafra, on_delete=models.CASCADE, related_name='membros')
+    # Único: a pessoa recebe o safra de uma regra só.
+    funcionario = models.OneToOneField(Funcionario, on_delete=models.CASCADE, related_name='membro_premio_safra')
+    incluido_em = models.DateTimeField(auto_now_add=True)
+    incluido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
+    class Meta:
+        ordering = ['funcionario__nome']
+
+    def __str__(self):
+        return f'{self.funcionario.nome} em {self.regra}'

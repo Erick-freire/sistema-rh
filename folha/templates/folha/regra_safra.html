@@ -1,0 +1,64 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}{{ regra.nome }} · bônus safra{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'folha:premios' %}#premio_safra" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {{ regra.nome }}
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    Bônus safra · {{ percentual_texto }} do salário · {{ regra.descricao_vigencia }} · {{ membros|length }} pessoa(s)
+    {% if not vale_neste_mes %}<span class="badge-status badge-status--inativo">fora da safra neste mês</span>{% endif %}
+</p>
+{% include 'folha/_subnav.html' %}
+
+<div class="card">
+    <div class="card__header"><span class="card__title">Regra</span></div>
+    <form method="post">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert--erro">{{ form.non_field_errors|join:' ' }}</div>{% endif %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.nome.id_for_label }}">Nome</label>
+                {{ form.nome }}
+                {{ form.nome.errors }}
+            </div>
+            <div>
+                <label for="{{ form.percentual.id_for_label }}">{{ form.percentual.label }}</label>
+                {{ form.percentual }}
+                {{ form.percentual.errors }}
+            </div>
+            <div>
+                <label for="{{ form.vigente_de.id_for_label }}">{{ form.vigente_de.label }}</label>
+                {{ form.vigente_de }}
+                <p class="folha-ajuda">Conta o mês inteiro da data escolhida. Vazio = desde sempre.</p>
+                {{ form.vigente_de.errors }}
+            </div>
+            <div>
+                <label for="{{ form.vigente_ate.id_for_label }}">{{ form.vigente_ate.label }}</label>
+                {{ form.vigente_ate }}
+                <p class="folha-ajuda">Vale até o fim do mês da data escolhida. Vazio = sem fim.</p>
+                {{ form.vigente_ate.errors }}
+            </div>
+        </div>
+        <p class="folha-ajuda" style="margin-top: 12px;">
+            Vale para todos da lista, só nos meses da safra. Na planilha da contabilidade vai o percentual, e o escritório
+            aplica sobre o salário. Fechamentos abertos pegam a mudança ao recalcular, sem desfazer os valores ajustados à
+            mão na grade; os já fechados não mudam.
+        </p>
+        <div class="folha-acoes" style="margin: 16px 0 0;">
+            <button type="submit" class="btn-primario">Salvar</button>
+        </div>
+    </form>
+    <form method="post" action="{% url 'folha:excluir_regra_safra' regra.id %}" style="margin-top: 12px;">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline btn-sm" data-confirmar-titulo="Excluir regra"
+                data-confirmar="As {{ membros|length }} pessoa(s) desta regra ficam sem bônus safra. Fechamentos já fechados não mudam.">{% icon 'trash' %} Excluir regra</button>
+    </form>
+</div>
+
+{% include 'folha/_membros_da_regra.html' with url_remover='folha:remover_da_safra' premio='bônus safra' %}
+{% include 'folha/_colocar_pessoas.html' with url_incluir='folha:incluir_na_safra' premio='bônus safra' %}
+{% endblock %}

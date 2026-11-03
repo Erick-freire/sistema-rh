@@ -24,6 +24,7 @@ urlpatterns = [
     path('horarios/<int:horario_id>/excluir/', views.excluir_horario_view, name='excluir_horario'),
 
     path('calculo/', views.listar_calculo_view, name='listar_calculo'),
+    path('espelho-pdf/', views.exportar_espelho_view, name='exportar_espelho'),
     path('calculo/<int:funcionario_id>/atribuir-jornada/', views.atribuir_jornada_view, name='atribuir_jornada'),
     path('calculo/<int:funcionario_id>/<str:data>/ajustar/', views.ajustar_marcacao_view, name='ajustar_marcacao'),
 

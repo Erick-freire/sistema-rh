@@ -9,29 +9,79 @@
 {% include 'ponto/_subnav.html' %}
 
 <div class="card">
-    <form method="get" class="form-grid">
-        <div>
-            <label for="funcionario">Funcionário</label>
-            <select name="funcionario" id="funcionario">
-                <option value="">Selecione...</option>
-                {% for f in funcionarios %}
-                <option value="{{ f.id }}" {% if funcionario_id == f.id|stringformat:'s' %}selected{% endif %}>{{ f.nome }} ({{ f.matricula|default:'—' }})</option>
-                {% endfor %}
-            </select>
+    {# Um filtro, dois botões: Calcular mostra o espelho aqui; Gerar PDF abre o arquivo em outra aba (ponto:exportar_espelho). #}
+    <form method="get" action="{% url 'ponto:listar_calculo' %}" data-espelho-form>
+        <div class="form-grid">
+            <div class="span-2">
+                <label>{{ filtro_form.filtro.label }}</label>
+                <div class="opcoes-radio">
+                    {% for opcao in filtro_form.filtro %}
+                    <label class="opcoes-radio__item">{{ opcao.tag }} {{ opcao.choice_label }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="span-2" data-filtro="funcionario">
+                {% include 'funcionarios/epi/_busca_funcionario.html' with campo=filtro_form.funcionario %}
+            </div>
+            <div class="span-2" data-filtro="setor">
+                <label for="{{ filtro_form.setor.id_for_label }}">{{ filtro_form.setor.label }}</label>
+                {{ filtro_form.setor }}
+                <p class="espelho-ajuda">
+                    Todos os funcionários ativos do setor, uma página por pessoa (entre parênteses, quantos são).
+                    Gestores ficam de fora: não batem ponto.
+                </p>
+            </div>
+            <div>
+                <label for="{{ filtro_form.data_inicio.id_for_label }}">{{ filtro_form.data_inicio.label }}</label>
+                {{ filtro_form.data_inicio }}
+            </div>
+            <div>
+                <label for="{{ filtro_form.data_fim.id_for_label }}">{{ filtro_form.data_fim.label }}</label>
+                {{ filtro_form.data_fim }}
+            </div>
         </div>
-        <div>
-            <label for="data_inicio">De</label>
-            <input type="date" name="data_inicio" id="data_inicio" value="{{ data_inicio }}">
-        </div>
-        <div>
-            <label for="data_fim">Até</label>
-            <input type="date" name="data_fim" id="data_fim" value="{{ data_fim }}">
-        </div>
-        <div style="align-self: end;">
-            <button type="submit" class="btn-primario">Calcular</button>
+        <p class="alert alert--erro" data-espelho-erro hidden style="margin: 14px 0 0;"></p>
+        <div class="espelho-acoes">
+            <button type="submit" class="btn-primario" data-filtro="funcionario">Calcular</button>
+            <button type="submit" class="btn-outline" formaction="{% url 'ponto:exportar_espelho' %}" formtarget="_blank" data-gerar-pdf>{% icon 'download' %} Gerar PDF</button>
+            <span class="espelho-ajuda">O PDF abre numa nova aba, para imprimir ou baixar. O setor inteiro pode levar até meio minuto.</span>
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.querySelector('[data-espelho-form]');
+    var erro = form.querySelector('[data-espelho-erro]');
+    var filtroAtual = function () {
+        var marcado = form.querySelector('input[name="filtro"]:checked');
+        return marcado ? marcado.value : 'funcionario';
+    };
+    var mostrar = function () {
+        var filtro = filtroAtual();
+        form.querySelectorAll('[data-filtro]').forEach(function (campo) {
+            campo.hidden = campo.dataset.filtro !== filtro;
+            // O Calcular escondido também fica desligado: Enter não pode enviar o "setor" para a tela.
+            if (campo.tagName === 'BUTTON') campo.disabled = campo.hidden;
+        });
+        erro.hidden = true;
+    };
+    form.querySelectorAll('input[name="filtro"]').forEach(function (radio) {
+        radio.addEventListener('change', mostrar);
+    });
+    // Sem funcionário ou setor escolhido, avisa aqui mesmo em vez de abrir uma aba à toa.
+    form.addEventListener('submit', function (evento) {
+        var filtro = filtroAtual();
+        var campo = form.querySelector(filtro === 'setor' ? 'select[name="setor"]' : 'select[name="funcionario"]');
+        if (!campo.value) {
+            evento.preventDefault();
+            erro.textContent = filtro === 'setor' ? 'Escolha o setor.' : 'Escolha o funcionário (digite o nome, a matrícula ou o CPF).';
+            erro.hidden = false;
+        }
+    });
+    mostrar();
+});
+</script>
 
 {% if funcionario %}
 
@@ -70,6 +120,13 @@
     </p>
 </div>
 
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">Atestados no período</span>
+    </div>
+    {% include 'funcionarios/_atestados.html' with proxima=request.get_full_path %}
+</div>
+
 {% if resultado %}
 <div class="card">
     <div class="card__header">
@@ -102,10 +159,14 @@
             {% if valores %}<div class="totais-grid__rotulo">{{ valores.dsr|moeda }}</div>{% endif %}
         </div>
     </div>
-    <div class="totais-grid">
-        <div class="totais-grid__tile" title="Trabalho entre 22:00 e 05:00, na hora de 52min30s. Base do adicional noturno de 20%.">
+    <div class="totais-grid totais-grid--5">
+        <div class="totais-grid__tile" title="Trabalho entre 22:00 e 05:00, em horas de relógio (já somado em Normais/Extras).">
             <div class="totais-grid__rotulo">Horas noturnas</div>
             <div class="totais-grid__valor">{{ resultado.totais.noturno_segundos|horas }}</div>
+        </div>
+        <div class="totais-grid__tile" title="Horas noturnas na hora de 52min30s (relógio × 60 ÷ 52,5). Base do adicional noturno de 20% e do que vai para a folha.">
+            <div class="totais-grid__rotulo">Noturnas convertidas</div>
+            <div class="totais-grid__valor">{{ resultado.totais.noturno_convertido_segundos|horas }}</div>
             {% if valores %}<div class="totais-grid__rotulo">{{ valores.adicional_noturno|moeda }}</div>{% endif %}
         </div>
         <div class="totais-grid__tile">
@@ -131,7 +192,7 @@
         </p>
         <p style="font-size: 0.78rem; color: var(--color-text-muted);">
             Salário base {{ funcionario.salario|moeda }}; hora {{ valores.valor_hora|moeda }} (salário ÷ 220).
-            Extra 50% = hora × 1,5; extra 100% = hora × 2; adicional noturno = hora × 20% por hora noturna.
+            Extra 50% = hora × 1,5; extra 100% = hora × 2; adicional noturno = hora × 20% por hora noturna convertida.
             Dia falta e DSR = salário ÷ 30 cada.
         </p>
     {% else %}
@@ -156,7 +217,7 @@
                         <th>Ent.{{ n }}</th><th>Saí.{{ n }}</th>
                     {% endfor %}
                     <th>Normais</th>
-                    <th title="Trabalho entre 22:00 e 05:00, na hora de 52min30s (base do adicional noturno). Já está somado em Normais/Extras.">Not.</th>
+                    <th title="Trabalho entre 22:00 e 05:00, em horas de relógio. Já está somado em Normais/Extras.">Not.</th>
                     <th>Faltas</th>
                     <th>Ex50%</th>
                     <th>Ex100%</th>

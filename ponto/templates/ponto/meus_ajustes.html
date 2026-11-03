@@ -6,7 +6,7 @@
 {% block conteudo %}
 <h1>Meu ponto</h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">
-    Suas batidas e o horário esperado de cada dia. Encontrou algo errado? Peça correção — o RH analisa antes de valer no espelho.
+    Suas batidas e o horário esperado de cada dia. Encontrou algo errado? Peça correção — o RH ou o gestor do seu setor analisa antes de valer no espelho.
 </p>
 {% include 'ponto/_meu_ponto_tabs.html' %}
 
@@ -18,7 +18,7 @@
                 <div class="item-card__titulo">{{ ajuste.data|date:'d/m/Y' }} · {{ ajuste.get_tipo_evento_display }} às {{ ajuste.horario_ajustado|time:'H:i' }}</div>
                 <div class="item-card__subtitulo">{{ ajuste.motivo }}</div>
                 {% if ajuste.status == 'rejeitado' and ajuste.observacao_rh %}
-                <div class="item-card__subtitulo" style="color: var(--color-error);">RH: {{ ajuste.observacao_rh }}</div>
+                <div class="item-card__subtitulo" style="color: var(--color-error);">Motivo da recusa: {{ ajuste.observacao_rh }}</div>
                 {% endif %}
             </div>
             <span class="badge-status badge-status--{{ ajuste.status }}">{{ ajuste.get_status_display }}</span>

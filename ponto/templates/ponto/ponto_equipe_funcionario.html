@@ -8,9 +8,12 @@
     <a href="{% url 'ponto:ponto_equipe' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
     <h1 style="margin: 0;">{{ funcionario.nome }}</h1>
 </div>
-<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+<p class="item-card__subtitulo" style="margin-bottom: 12px;">
     {{ funcionario.cargo }} · {{ funcionario.setor }}{% if funcionario.matricula %} · matrícula {{ funcionario.matricula }}{% endif %}
 </p>
+<div style="margin-bottom: 16px;">
+    <a href="{% url 'ponto:listar_calculo' %}?funcionario={{ funcionario.id }}&data_inicio={{ data_inicio|date:'Y-m-d' }}&data_fim={{ data_fim|date:'Y-m-d' }}" class="btn-outline btn-sm">{% icon 'pen' %} Espelho completo: corrigir batidas, lançar atestado, jornada e PDF</a>
+</div>
 
-{% include 'ponto/_espelho_periodo.html' with permite_correcao=False %}
+{% include 'ponto/_espelho_periodo.html' with permite_correcao=False corrigir_funcionario=funcionario %}
 {% endblock %}

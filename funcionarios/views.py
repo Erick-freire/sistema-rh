@@ -283,41 +283,18 @@ def dashboard_rh_view(request):
     usuario = request.user.usuario
     funcionario_atual = usuario.funcionario
 
-    if usuario.eh_dp_ou_rh():
-        funcionarios_do_escopo = Funcionario.objects.all()
-    else:
-        funcionarios_do_escopo = Funcionario.objects.filter(setor=usuario.funcionario.setor)
+    funcionarios_do_escopo = usuario.funcionarios_que_opera()
 
     agora = timezone.localtime(timezone.now())
     hoje = agora.date()
 
     funcionarios_ativos = funcionarios_do_escopo.filter(status='ativo')
-    total_funcionarios = funcionarios_ativos.count()
-    admitidos_no_mes = funcionarios_ativos.filter(
-        data_admissao__year=hoje.year, data_admissao__month=hoje.month
-    ).count()
-
-    cadastros_pendentes_qs = funcionarios_do_escopo.filter(status__in=STATUS_ONBOARDING)
-    cadastros_pendentes = cadastros_pendentes_qs.count()
-    limite_parado = hoje - timedelta(days=7)
-    cadastros_pendentes_antigos = cadastros_pendentes_qs.filter(data_admissao__lte=limite_parado).count()
-
     funcionarios_por_setor = funcionarios_ativos.values('setor__nome').annotate(total=Count('id')).order_by('-total')
     maior_total_setor = max([item['total'] for item in funcionarios_por_setor], default=0)
-
-    # Mesmo filtro da fila do gestor (`gestor_listar_ferias_view`): mesmo com
-    # `acesso_rh`, o gestor só aprova férias do próprio setor.
-    ferias_gestor_qs = SolicitacaoFerias.objects.filter(
-        status='pendente_gestor', funcionario__setor=funcionario_atual.setor
-    ).exclude(funcionario=funcionario_atual).order_by('criado_em')
-    ferias_aguardando_gestor = ferias_gestor_qs.count()
-    mais_antiga_gestor = ferias_gestor_qs.first()
-    dias_mais_antiga_gestor = (hoje - mais_antiga_gestor.criado_em.date()).days if mais_antiga_gestor else None
 
     ferias_rh_qs = SolicitacaoFerias.objects.filter(
         status='pendente_rh', funcionario__in=funcionarios_do_escopo
     ).select_related('funcionario').order_by('atualizado_em')
-    ferias_aguardando_rh = ferias_rh_qs.count()
 
     # ---- Feed "Precisa da sua ação": junta tudo que só o RH consegue resolver ----
     itens_acao = []
@@ -387,13 +364,6 @@ def dashboard_rh_view(request):
         'saudacao': saudacao,
         'nome_usuario': funcionario_atual.primeiro_nome,
         'data_extenso': data_curta_por_extenso(hoje),
-        'total_funcionarios': total_funcionarios,
-        'admitidos_no_mes': admitidos_no_mes,
-        'cadastros_pendentes': cadastros_pendentes,
-        'cadastros_pendentes_antigos': cadastros_pendentes_antigos,
-        'ferias_aguardando_gestor': ferias_aguardando_gestor,
-        'dias_mais_antiga_gestor': dias_mais_antiga_gestor,
-        'ferias_aguardando_rh': ferias_aguardando_rh,
         'funcionarios_por_setor': funcionarios_por_setor,
         'maior_total_setor': maior_total_setor,
         'itens_acao': itens_acao[:5],
@@ -557,9 +527,20 @@ def assinatura_gov_view(request):
         return render(request, 'funcionarios/sem_perfil.html')
 
     contrato_documento = funcionario.documentos.filter(tipo_documento__eh_contrato=True).first()
+    # Termos e fichas só entram enquanto esperam a assinatura e já têm o PDF gerado.
+    comodatos = (
+        funcionario.comodatos.filter(status='aguardando_assinatura')
+        .exclude(arquivo_gerado='').exclude(arquivo_gerado__isnull=True).order_by('-gerado_em')
+    )
+    fichas_epi = (
+        funcionario.fichas_epi.filter(status='aguardando_assinatura')
+        .exclude(arquivo_gerado='').exclude(arquivo_gerado__isnull=True).order_by('-gerado_em')
+    )
 
     return render(request, 'funcionarios/assinatura_gov.html', {
         'contrato_documento': contrato_documento,
+        'comodatos': comodatos,
+        'fichas_epi': fichas_epi,
     })
 
 
@@ -576,9 +557,9 @@ def ver_documento_view(request, documento_id):
 
     eh_dono = usuario.funcionario_id == documento.funcionario_id
     eh_rh = usuario.eh_dp_ou_rh()
-    eh_gestor_do_setor = usuario.papel == 'gestor' and documento.funcionario.setor_id == usuario.funcionario.setor_id
+    eh_gestor_da_equipe = usuario.papel == 'gestor' and usuario.opera(documento.funcionario)
 
-    if not (eh_dono or eh_rh or eh_gestor_do_setor):
+    if not (eh_dono or eh_rh or eh_gestor_da_equipe):
         messages.error(request, 'Você não tem permissão para acessar este documento.')
         return redirect('dashboard')
 
@@ -601,9 +582,9 @@ def ver_comodato_view(request, comodato_id, versao):
 
     eh_dono = usuario.funcionario_id == comodato.funcionario_id
     eh_rh = usuario.eh_dp_ou_rh()
-    eh_gestor_do_setor = usuario.papel == 'gestor' and comodato.funcionario.setor_id == usuario.funcionario.setor_id
+    eh_gestor_da_equipe = usuario.papel == 'gestor' and usuario.opera(comodato.funcionario)
 
-    if not (eh_dono or eh_rh or eh_gestor_do_setor):
+    if not (eh_dono or eh_rh or eh_gestor_da_equipe):
         messages.error(request, 'Você não tem permissão para acessar este termo.')
         return redirect('dashboard')
 
@@ -625,7 +606,10 @@ def listar_funcionarios_view(request):
     status_filtro = request.GET.get('status', 'ativo')
     busca = request.GET.get('busca', '').strip()
 
-    if tem_acesso_total and escopo == 'todos':
+    if not tem_acesso_total:
+        # O gestor vê a equipe: o setor dele e os setores em que é o responsável.
+        base_qs = usuario.equipe()
+    elif escopo == 'todos':
         base_qs = Funcionario.objects.all()
     else:
         base_qs = Funcionario.objects.filter(setor=usuario.funcionario.setor)
@@ -721,12 +705,16 @@ def detalhe_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
+    if not usuario.opera(funcionario):
         messages.error(request, 'Você não tem permissão para ver este funcionário.')
         return redirect('listar_funcionarios')
 
     avancar_status_por_documentos(funcionario)
 
+    return render(request, 'funcionarios/rh/detalhe_funcionario.html', _contexto_detalhe_funcionario(funcionario))
+
+
+def _contexto_detalhe_funcionario(funcionario, dados_form=None):
     documentos = funcionario.documentos.all().order_by('-data_upload')
 
     tipos_obrigatorios = funcionario.tipos_documentos_obrigatorios()
@@ -746,7 +734,7 @@ def detalhe_funcionario_view(request, funcionario_id):
     )
     pode_validar = funcionario.status == 'em_validacao' and funcionario.documentos_todos_aprovados()
 
-    return render(request, 'funcionarios/rh/detalhe_funcionario.html', {
+    return {
         'funcionario': funcionario,
         'documentos': documentos,
         'checklist_documentos': checklist_documentos,
@@ -755,15 +743,15 @@ def detalhe_funcionario_view(request, funcionario_id):
         'pode_validar': pode_validar,
         'jornada_vigente': FuncionarioJornada.vigente_em(funcionario, timezone.now().date()),
         'jornada_form': FuncionarioJornadaForm(),
-        'dados_form': DadosCadastraisForm(instance=funcionario),
-        'atestados': funcionario.atestados.all()[:10],
-        'atestado_form': AtestadoForm(),
+        'dados_form': dados_form or DadosCadastraisForm(instance=funcionario),
+        'atestados': funcionario.atestados.select_related('lancado_por__usuario__funcionario')[:10],
+        'atestado_form': AtestadoForm(auto_id='atestado_%s'),  # a jornada também tem `data_inicio`
         # Só termos já devolvidos assinados. Rejeitado volta a aguardar assinatura e sai
         # daqui até o colaborador reenviar; o acompanhamento completo fica na lista de comodatos.
         'comodatos': funcionario.comodatos.exclude(arquivo_assinado='').exclude(arquivo_assinado__isnull=True)
             .exclude(status='aguardando_assinatura')
             .prefetch_related('itens__item_catalogo').order_by('-gerado_em'),
-    })
+    }
 
 
 @login_required
@@ -782,7 +770,14 @@ def editar_dados_funcionario_view(request, funcionario_id):
             form.save()
             messages.success(request, 'Dados atualizados com sucesso.')
         else:
-            messages.error(request, 'Não foi possível atualizar os dados. Verifique os campos.')
+            # Volta para a ficha com o form preenchido: o erro aparece ao lado do
+            # campo e o que foi digitado não se perde (um redirect descartaria os dois).
+            messages.error(request, 'Não foi possível salvar. Corrija o campo destacado.')
+            funcionario.refresh_from_db()  # o form inválido já mexeu na instância
+            return render(
+                request, 'funcionarios/rh/detalhe_funcionario.html',
+                _contexto_detalhe_funcionario(funcionario, dados_form=form),
+            )
 
     return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
@@ -790,23 +785,37 @@ def editar_dados_funcionario_view(request, funcionario_id):
 @login_required
 @papel_required('rh', 'dp', 'gestor')
 def lancar_atestado_view(request, funcionario_id):
+    """
+    Abono por atestado: nos dias do período o espelho mostra "Atestado", sem
+    falta nem desconto, e a assiduidade não se perde. O RH lança para todos; o
+    gestor, para a equipe dele. Volta para `proxima` (o espelho) ou para a ficha.
+    """
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if not usuario.eh_dp_ou_rh():
+    if not usuario.opera(funcionario):
         messages.error(request, 'Você não tem permissão para essa ação.')
-        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+        return redirect('dashboard')
 
     if request.method == 'POST':
         form = AtestadoForm(request.POST)
         if form.is_valid():
             atestado = form.save(commit=False)
             atestado.funcionario = funcionario
+            atestado.lancado_por = request.user
             atestado.save()
-            messages.success(request, 'Atestado lançado com sucesso.')
+            messages.success(
+                request,
+                f'Atestado de {funcionario.nome} lançado: {atestado.data_inicio:%d/%m/%Y} a {atestado.data_fim:%d/%m/%Y}. '
+                'Esses dias não contam como falta nem tiram a assiduidade.',
+            )
         else:
-            messages.error(request, 'Não foi possível lançar o atestado. Verifique os campos.')
+            erros = ' '.join(erro for lista in form.errors.values() for erro in lista)
+            messages.error(request, f'Não foi possível lançar o atestado. {erros}')
 
+    proxima = request.POST.get('proxima')
+    if proxima and url_has_allowed_host_and_scheme(proxima, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(proxima)
     return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
 
@@ -816,7 +825,7 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
+    if not usuario.opera(funcionario):
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('listar_funcionarios')
 
@@ -855,7 +864,7 @@ def resetar_senha_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
-    if usuario.papel == 'gestor' and not usuario.acesso_rh and funcionario.setor != usuario.funcionario.setor:
+    if not usuario.opera(funcionario):
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('listar_funcionarios')
 
@@ -1509,10 +1518,11 @@ def gerar_pdf_comodato_view(request, comodato_id):
 def reenviar_comodato_assinado_view(request, comodato_id):
     funcionario = request.user.usuario.funcionario
     comodato = get_object_or_404(TermoComodato, id=comodato_id, funcionario=funcionario)
+    destino = 'minhas_assinaturas' if request.POST.get('origem') == 'assinatura_gov' else 'meus_documentos'
 
     if comodato.status != 'aguardando_assinatura':
         messages.error(request, 'Este termo não está aguardando assinatura.')
-        return redirect('meus_documentos')
+        return redirect(destino)
 
     if request.method == 'POST' and request.FILES.get('arquivo_assinado'):
         comodato.arquivo_assinado = request.FILES['arquivo_assinado']
@@ -1522,7 +1532,7 @@ def reenviar_comodato_assinado_view(request, comodato_id):
         notificacoes.comodato_assinado_enviado(comodato)
         messages.success(request, 'Termo assinado enviado. Aguarde a validação do RH.')
 
-    return redirect('meus_documentos')
+    return redirect(destino)
 
 
 def _voltar_apos_validar_comodato(request, comodato):

@@ -1,0 +1,49 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}{{ regra.cargo }} · prêmio programa{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'folha:premios' %}#premio_programa" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {{ regra.cargo }}
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">Prêmio programa · {{ valor_texto }} · {{ membros|length }} pessoa(s)</p>
+{% include 'folha/_subnav.html' %}
+
+<div class="card">
+    <div class="card__header"><span class="card__title">Regra</span></div>
+    <form method="post">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert--erro">{{ form.non_field_errors|join:' ' }}</div>{% endif %}
+        <div class="form-grid">
+            <div>
+                <label for="{{ form.cargo.id_for_label }}">Cargo</label>
+                {{ form.cargo }}
+                <datalist id="cargos-existentes">{% for cargo in cargos_existentes %}<option value="{{ cargo }}">{% endfor %}</datalist>
+                {{ form.cargo.errors }}
+            </div>
+            <div>
+                <label for="{{ form.valor.id_for_label }}">{{ form.valor.label }}</label>
+                {{ form.valor }}
+                {{ form.valor.errors }}
+            </div>
+        </div>
+        <p class="folha-ajuda" style="margin-top: 12px;">
+            O valor vale para todos da lista. Fechamentos abertos pegam a mudança ao recalcular, sem desfazer os valores
+            ajustados à mão na grade; os já fechados não mudam.
+        </p>
+        <div class="folha-acoes" style="margin: 16px 0 0;">
+            <button type="submit" class="btn-primario">Salvar</button>
+        </div>
+    </form>
+    <form method="post" action="{% url 'folha:excluir_regra_programa' regra.id %}" style="margin-top: 12px;">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline btn-sm" data-confirmar-titulo="Excluir regra"
+                data-confirmar="As {{ membros|length }} pessoa(s) desta regra ficam sem prêmio programa. Fechamentos já fechados não mudam.">{% icon 'trash' %} Excluir regra</button>
+    </form>
+</div>
+
+{% include 'folha/_membros_da_regra.html' with url_remover='folha:remover_do_programa' premio='prêmio programa' %}
+{% include 'folha/_colocar_pessoas.html' with url_incluir='folha:incluir_no_programa' premio='prêmio programa' %}
+{% endblock %}

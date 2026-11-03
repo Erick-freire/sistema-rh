@@ -372,6 +372,38 @@ class Usuario(models.Model):
     def eh_seguranca_ou_rh(self):
         """Quem opera o módulo de EPI. O DP não entra: não é rotina dele."""
         return self.papel == 'seguranca_trabalho' or self.eh_rh()
+
+    def setores_da_equipe(self):
+        """Setores do gestor: o dele e os que ele responde (`Setor.gestor`). Vazio para quem não é gestor."""
+        if self.papel != 'gestor':
+            return Setor.objects.none()
+        return Setor.objects.filter(models.Q(gestor_id=self.funcionario_id) | models.Q(id=self.funcionario.setor_id))
+
+    def equipe(self):
+        """
+        Quem trabalha nos setores do gestor, sem ele e sem outros gestores
+        (cargo de confiança: não batem ponto). Todos os status -- quem
+        precisa só dos ativos filtra. É a mesma regra do aviso ao gestor em
+        `funcionarios.notificacoes._gestores_da_equipe`.
+        """
+        return (
+            Funcionario.objects
+            .filter(setor__in=self.setores_da_equipe())
+            .exclude(id=self.funcionario_id)
+            .exclude(usuario__papel='gestor')
+        )
+
+    def funcionarios_que_opera(self):
+        """
+        De quem esta conta vê a ficha e opera o ponto e a folha: DP/RH, todos;
+        o gestor, a equipe (inclusive dos setores em que não está lotado).
+        """
+        if self.eh_dp_ou_rh():
+            return Funcionario.objects.all()
+        return self.equipe()
+
+    def opera(self, funcionario):
+        return self.funcionarios_que_opera().filter(id=funcionario.id).exists()
     
 class TipoDocumento(models.Model):
     CONDICAO_CHOICES = [
@@ -545,6 +577,10 @@ class Atestado(models.Model):
     data_fim = models.DateField()
     motivo = models.CharField(max_length=200, blank=True, help_text='CID ou motivo, se informado no atestado.')
     criado_em = models.DateTimeField(auto_now_add=True)
+    # O RH e o gestor da equipe lançam (é o abono: o dia não vira falta nem tira a assiduidade).
+    lancado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='atestados_lancados',
+    )
 
     class Meta:
         ordering = ['-data_inicio']

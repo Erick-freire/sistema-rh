@@ -1,3 +1,5 @@
+import unicodedata
+
 from django import forms
 from .models import (
     Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento, TermoComodato, ItemComodato,
@@ -31,8 +33,18 @@ class MeuPerfilForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for campo in self.CAMPOS_OBRIGATORIOS:
             self.fields[campo].required = True
+        # O PIS é informado uma vez, ao completar o cadastro, e depois trava: é
+        # por ele que o relógio ADM identifica a pessoa. Quem corrige é o RH.
+        # `disabled` faz o Django descartar o que vier no POST e reusar o valor
+        # do banco. Decidido aqui, e não consultando `instance.pis` depois: a
+        # validação já grava no `instance` o PIS digitado, mesmo sem salvar.
+        self.pis_travado = bool(self.instance.pis)
+        if self.pis_travado:
+            self.fields['pis'].disabled = True
 
     def clean_pis(self):
+        if self.pis_travado:
+            return self.instance.pis
         pis = ''.join(filter(str.isdigit, self.cleaned_data.get('pis') or ''))
         if len(pis) != 11:
             raise forms.ValidationError('PIS deve ter 11 dígitos.')
@@ -87,8 +99,20 @@ class DadosCadastraisForm(forms.ModelForm):
         # Reaproveita a grafia de um cargo já cadastrado ("operador" vira "Operador"),
         # para não abrir um cargo duplicado só por maiúscula/minúscula.
         cargo = ' '.join(self.cleaned_data['cargo'].split())
+        # Mas o cargo que a pessoa já tem, digitado com outra grafia, é correção
+        # ("AUXILIAR DE PRODUCAO" -> "Auxiliar de Produção") e vale como está:
+        # a busca abaixo acharia o próprio cadastro e desfaria a correção.
+        if _sem_acento_nem_caixa(cargo) == _sem_acento_nem_caixa(self.instance.cargo):
+            return cargo
+        # O `iexact` do MySQL (utf8mb4_unicode_ci) também ignora acento.
         existente = Funcionario.objects.filter(cargo__iexact=cargo).values_list('cargo', flat=True).first()
         return existente or cargo
+
+
+def _sem_acento_nem_caixa(texto):
+    sem_acento = unicodedata.normalize('NFKD', texto or '').encode('ascii', 'ignore').decode()
+    return ' '.join(sem_acento.casefold().split())
+
 
 class AtestadoForm(forms.ModelForm):
     class Meta:

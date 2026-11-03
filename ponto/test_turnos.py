@@ -8,7 +8,7 @@ import unittest
 from datetime import date, datetime, time, timedelta
 
 from .turnos import (
-    agrupar_batidas_em_turnos, em_hora_noturna, segundos_computados, segundos_noturnos, turno_previsto_do_dia,
+    agrupar_batidas_em_turnos, em_hora_noturna, segundos_noturnos, turno_previsto_do_dia,
 )
 
 
@@ -191,4 +191,3 @@ class HoraNoturnaTests(unittest.TestCase):
 
     def test_7h_de_relogio_valem_8h(self):
         self.assertEqual(em_hora_noturna(7 * 3600), 8 * 3600)
-        self.assertEqual(segundos_computados(12 * 3600, 7 * 3600), 13 * 3600)

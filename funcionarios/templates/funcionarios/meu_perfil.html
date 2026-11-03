@@ -50,8 +50,14 @@ Meu Perfil
                     </div>
                     <div>
                         <label for="{{ form.pis.id_for_label }}">PIS</label>
+                        {% if form.pis_travado %}
+                        <p class="linha-dado__valor" style="text-align: left; padding: 8px 0;">{{ funcionario.pis }}</p>
+                        <p style="font-size: 0.78rem; color: var(--color-text-muted);">Para corrigir o PIS, fale com o RH.</p>
+                        {% else %}
                         {{ form.pis }}
+                        <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px;">Confira antes de salvar: depois não dá para alterar.</p>
                         {{ form.pis.errors }}
+                        {% endif %}
                     </div>
                     <div class="span-2">
                         <label for="{{ form.endereco.id_for_label }}">Endereço</label>

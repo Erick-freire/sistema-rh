@@ -2,7 +2,7 @@ from django import forms
 
 from funcionarios.models import Setor
 
-from .models import RegraPremio
+from .models import RegraPremio, RegraPremioPrograma, RegraPremioSafra
 from .services import funcionarios_da_folha
 
 
@@ -25,6 +25,7 @@ def _campo_mes(rotulo):
 
 
 class RegraPremioForm(forms.ModelForm):
+    """Regra de prêmio incentivo (o único tipo que sobrou no `RegraPremio`)."""
     ALVO_CHOICES = [
         ('setor_cargo', 'Um cargo do setor'),
         ('setor', 'Todo o setor'),
@@ -36,8 +37,8 @@ class RegraPremioForm(forms.ModelForm):
 
     class Meta:
         model = RegraPremio
-        fields = ['tipo', 'alvo', 'setor', 'cargo', 'funcionario', 'valor', 'vigente_de', 'vigente_ate']
-        labels = {'tipo': 'Prêmio', 'funcionario': 'Pessoa', 'valor': 'Valor (R$; no prêmio safra, %)'}
+        fields = ['alvo', 'setor', 'cargo', 'funcionario', 'valor', 'vigente_de', 'vigente_ate']
+        labels = {'funcionario': 'Pessoa', 'valor': 'Valor (R$)'}
         widgets = {
             # Texto livre com sugestões: o <datalist> vem do template, a partir dos cargos dos ativos.
             'cargo': forms.TextInput(attrs={'list': 'cargos-existentes', 'autocomplete': 'off'}),
@@ -46,6 +47,8 @@ class RegraPremioForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.instance.tipo = 'premio_incentivo'  # antes de validar: a checagem de regra repetida usa o tipo
         self.fields['setor'].queryset = Setor.objects.order_by('nome')
         self.fields['funcionario'].queryset = funcionarios_da_folha()
         self.fields['funcionario'].label_from_instance = lambda f: f'{f.nome} ({f.matricula or "—"})'
@@ -72,3 +75,31 @@ class RegraPremioForm(forms.ModelForm):
             else:
                 dados['cargo'] = ' '.join(dados['cargo'].split())
         return dados
+
+
+class RegraProgramaForm(forms.ModelForm):
+    """Cargo e valor da regra de prêmio programa; as pessoas são colocadas na tela da regra."""
+
+    class Meta:
+        model = RegraPremioPrograma
+        fields = ['cargo', 'valor']
+        labels = {'valor': 'Valor (R$)'}
+        widgets = {
+            'cargo': forms.TextInput(attrs={'list': 'cargos-existentes', 'autocomplete': 'off'}),
+            'valor': forms.NumberInput(attrs={'step': '0.01', 'min': '0.01'}),
+        }
+
+
+class RegraSafraForm(forms.ModelForm):
+    """Nome, percentual e meses da safra; as pessoas são colocadas na tela da regra."""
+    vigente_de = _campo_mes('Primeiro mês da safra')
+    vigente_ate = _campo_mes('Último mês da safra')
+
+    class Meta:
+        model = RegraPremioSafra
+        fields = ['nome', 'percentual', 'vigente_de', 'vigente_ate']
+        labels = {'percentual': '% do salário'}
+        widgets = {
+            'nome': forms.TextInput(attrs={'placeholder': 'Ex.: Safra 2026'}),
+            'percentual': forms.NumberInput(attrs={'step': '0.01', 'min': '0.01', 'max': '100'}),
+        }

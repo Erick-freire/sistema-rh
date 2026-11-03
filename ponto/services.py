@@ -1,8 +1,9 @@
 import hashlib
 import re
+from datetime import datetime, time, timedelta
 
 from django.db import close_old_connections, connection, transaction
-from django.db.models import Q
+from django.db.models import Count, Max, Min, Q
 from django.utils import timezone
 
 from . import controlid_client as client
@@ -268,6 +269,77 @@ def funcionario_da_marcacao(registro, mapas):
     return None
 
 
+def inicio_da_revinculacao(hoje=None):
+    """
+    1º dia do mês anterior (aware, hora local): até onde a coleta volta pra
+    revincular marcações sem funcionário. Cobre a competência aberta e a que
+    está sendo fechada; mais pra trás, só com o comando
+    `vincular_marcacoes_sem_funcionario`, que varre o histórico todo.
+    """
+    hoje = hoje or timezone.localdate()
+    mes_anterior = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
+    return timezone.make_aware(datetime.combine(mes_anterior, time.min))
+
+
+def vincular_marcacoes_sem_funcionario(equipamento, mapas=None, desde=None):
+    """
+    Dá dono às marcações já gravadas sem funcionário cujo identificador agora
+    é conhecido, e devolve quantas vinculou. A coleta só grava o que é novo (e
+    `ignore_conflicts` não mexe no que já existe), então uma marcação que
+    entrou sem dono fica assim pra sempre se ninguém a revisitar -- o que
+    acontece com quem bate ponto antes de ser cadastrado aqui, antes da
+    reconciliação gravar o identificador do relógio, ou com marcação coletada
+    por uma versão antiga da regra (caso da matrícula 1473 em 22/10/2026).
+    `desde=None` varre o histórico todo.
+    """
+    if mapas is None:
+        mapas = funcionarios_por_identificador(equipamento)
+
+    marcacoes = MarcacaoRelogio.objects.filter(equipamento=equipamento, funcionario__isnull=True)
+    if desde:
+        marcacoes = marcacoes.filter(momento__gte=desde)
+
+    vinculadas = []
+    for marcacao in marcacoes.only('id', 'dados_brutos').order_by().iterator(chunk_size=2000):
+        funcionario_id = funcionario_da_marcacao(marcacao.dados_brutos or {}, mapas)
+        if funcionario_id:
+            marcacao.funcionario_id = funcionario_id
+            vinculadas.append(marcacao)
+
+    MarcacaoRelogio.objects.bulk_update(vinculadas, ['funcionario_id'], batch_size=2000)
+    return len(vinculadas)
+
+
+def resumo_marcacoes_sem_funcionario(desde):
+    """
+    Quem bateu ponto desde `desde` sem ter dono no sistema, agrupado por
+    equipamento e identificador: em geral alguém admitido no Secullum/relógio
+    e ainda não cadastrado aqui, ou demitido que continua no relógio. Assim
+    que o cadastro (ou o vínculo do relógio) existir, a próxima coleta vincula
+    essas marcações sozinha.
+    """
+    linhas = (
+        MarcacaoRelogio.objects
+        .filter(funcionario__isnull=True, momento__gte=desde)
+        .values('equipamento__nome', 'dados_brutos__prefixo', 'dados_brutos__identificador')
+        .annotate(quantidade=Count('id'), primeira=Min('momento'), ultima=Max('momento'))
+        .order_by('-quantidade')
+    )
+    return [
+        {
+            'equipamento': linha['equipamento__nome'],
+            # Prefixo diferente de 0 faz parte do número (o "PIS" de 12 dígitos do ADM).
+            'identificador': (
+                (linha['dados_brutos__prefixo'] or '').lstrip('0') + (linha['dados_brutos__identificador'] or '')
+            ),
+            'quantidade': linha['quantidade'],
+            'primeira': linha['primeira'],
+            'ultima': linha['ultima'],
+        }
+        for linha in linhas
+    ]
+
+
 def coletar_marcacoes(equipamento):
     """
     Coleta incremental e idempotente: só pede eventos com NSR maior que o
@@ -287,7 +359,16 @@ def coletar_marcacoes(equipamento):
     interrompida no meio, o que já foi processado fica salvo, e a próxima
     tentativa parte dali em vez de repetir tudo -- converge em algumas
     tentativas em vez de travar pra sempre.
+
+    Antes de buscar as novas, revincula as recentes que ficaram sem dono (ver
+    `vincular_marcacoes_sem_funcionario`) -- mesmo se o relógio estiver
+    offline ou sem nada novo, já que o que muda é o nosso cadastro.
     """
+    # O AFD não traz matrícula, só o identificador da pessoa no equipamento
+    # (CPF, PIS, ou o "PIS" gerado do ADM) -- ver `funcionario_da_marcacao`.
+    mapas = funcionarios_por_identificador(equipamento)
+    vincular_marcacoes_sem_funcionario(equipamento, mapas, desde=inicio_da_revinculacao())
+
     try:
         session = client.login(equipamento)
         texto = client.get_afd(equipamento, session, equipamento.ultimo_nsr_coletado)
@@ -304,10 +385,6 @@ def coletar_marcacoes(equipamento):
         equipamento.ultima_comunicacao = timezone.now()
         equipamento.save(update_fields=['status_conexao', 'ultima_comunicacao', 'atualizado_em'])
         return 0
-
-    # O AFD não traz matrícula, só o identificador da pessoa no equipamento
-    # (CPF, PIS, ou o "PIS" gerado do ADM) -- ver `funcionario_da_marcacao`.
-    mapas = funcionarios_por_identificador(equipamento)
 
     total_novas = 0
     for inicio in range(0, len(registros), TAMANHO_LOTE_COLETA):

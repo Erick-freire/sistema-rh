@@ -26,13 +26,12 @@ Regras (confirmadas com o usuário):
   compensação (hora extra não abate dia inteiro), desconta o DSR da semana
   (segunda a domingo; várias faltas na mesma semana perdem um DSR só) e tira a
   assiduidade do período. Atestado, férias, feriado e folga nunca são Dia Falta.
-- Hora noturna: o tempo entre 22:00 e 05:00 conta na hora de 52min30s (7h de
-  relógio = 8h), tanto no trabalhado quanto no esperado do horário -- é assim
-  que a jornada fica proporcional no noturno. Esperado, normais, saldo, faltas
-  e extras são todos nessa hora "computada"; `segundos_trabalhados` continua
-  sendo o relógio (é o que vale pro intervalo mínimo). A tolerância olha o
-  relógio: ela é sobre a variação na hora de bater. `segundos_noturnos` é a
-  base do adicional noturno (ver `turnos.segundos_noturnos`).
+- Hora noturna (decisão do DP em 30/10/2026, igual ao Secullum): esperado,
+  normais, saldo, faltas, extras e as horas noturnas do dia são todos no
+  relógio, sem a redução da hora de 52min30s. A redução só aparece no total do
+  período (`noturno_convertido_segundos`: 7h de relógio = 8h), que é a base do
+  adicional noturno em R$ e o que vai para a folha. `segundos_noturnos` é o
+  tempo entre 22:00 e 05:00 (ver `turnos.segundos_noturnos`).
 - Valores em R$ (`valores_do_periodo`): ver as constantes lá.
 
 Turno que atravessa a meia-noite (ex.: 12x36 noturno 18:00-06:00, horário
@@ -62,9 +61,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio
-from .turnos import (
-    agrupar_batidas_em_turnos, em_hora_noturna, segundos_computados, segundos_noturnos, turno_previsto_do_dia,
-)
+from .turnos import agrupar_batidas_em_turnos, em_hora_noturna, segundos_noturnos, turno_previsto_do_dia
 from .utils import intervalo_do_dia
 
 # `funcionario.solicitacoes_ferias`/`funcionario.atestados` são relations
@@ -133,25 +130,6 @@ def _diferenca_horario(entrada, saida):
     if fim < inicio:
         fim += timedelta(days=1)  # jornada atravessa a meia-noite (turno noturno)
     return fim - inicio
-
-
-def _segundos_noturnos_esperados(horario_dia):
-    """Segundos de relógio do horário previsto que caem entre 22:00 e 05:00."""
-    if horario_dia is None:
-        return 0
-
-    total = 0
-    # A faixa noturna se repete todo dia, então qualquer data serve de base pra cada par.
-    base = datetime(2000, 1, 3)
-    for entrada, saida in (
-        (horario_dia.entrada1, horario_dia.saida1),
-        (horario_dia.entrada2, horario_dia.saida2),
-        (horario_dia.entrada3, horario_dia.saida3),
-    ):
-        if entrada and saida:
-            inicio = datetime.combine(base, entrada)
-            total += segundos_noturnos(inicio, inicio + _diferenca_horario(entrada, saida))
-    return total
 
 
 def _segundos_noturnos_trabalhados(eventos):
@@ -453,7 +431,7 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
                 'entrada_esperada': None, 'saida_esperada': None,
                 'segundos_esperados': 0, 'segundos_trabalhados': segundos_trabalhados, 'saldo_segundos': 0,
                 'segundos_normais': 0, 'segundos_falta_dia': 0, 'segundos_extra_50_dia': 0, 'segundos_extra_100_dia': 0,
-                'segundos_noturnos': em_hora_noturna(noturnos_trabalhados),
+                'segundos_noturnos': noturnos_trabalhados,
                 'marcacao_impar': marcacao_impar, 'taxa_extra': None, 'folga': False,
                 'ferias': em_ferias, 'atestado': em_atestado, 'feriado': False, 'dia_falta': False,
             })
@@ -462,20 +440,16 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
 
         horario_dia = dados['horario_dia']
         em_12x36 = dados['em_12x36']
-        esperado_relogio = _segundos_esperados(horario_dia)
-        # Esperado e trabalhado na hora computada (noturno em 52min30s).
-        segundos_esperados = segundos_computados(esperado_relogio, _segundos_noturnos_esperados(horario_dia))
-        trabalhado_computado = segundos_computados(segundos_trabalhados, noturnos_trabalhados)
+        segundos_esperados = _segundos_esperados(horario_dia)
         entrada_esperada = _primeira_entrada(horario_dia) if horario_dia else None
         saida_esperada = _ultima_saida(horario_dia) if horario_dia else None
-        saldo_segundos = trabalhado_computado - segundos_esperados
+        saldo_segundos = segundos_trabalhados - segundos_esperados
         # Dentro da tolerância (pra menos ou pra mais) o dia fecha zerado: não
         # aparece como falta nem como extra, não entra na compensação e não vira
         # "Falta/atraso" na tela do colaborador. `segundos_normais` não muda.
         # Sem horário previsto (folga, feriado, férias, atestado) não há horário
-        # pra variar: todo minuto trabalhado conta como extra. A tolerância é
-        # medida no relógio; passou dela, conta o saldo na hora computada.
-        if esperado_relogio and abs(segundos_trabalhados - esperado_relogio) <= TOLERANCIA_DIARIA_SEGUNDOS:
+        # pra variar: todo minuto trabalhado conta como extra.
+        if segundos_esperados and abs(saldo_segundos) <= TOLERANCIA_DIARIA_SEGUNDOS:
             saldo_segundos = 0
         taxa_extra = _taxa_extra_do_dia(dia_atual, em_12x36)
 
@@ -500,10 +474,9 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
             'saldo_segundos': saldo_segundos,
             # "Normais" (igual ao espelho do Secullum) nunca passa do esperado
             # do dia -- o que passar disso é que conta como extra, em separado.
-            'segundos_normais': min(trabalhado_computado, segundos_esperados),
-            # Base do adicional noturno: todo o trabalho entre 22:00 e 05:00,
-            # normal ou extra, na hora de 52min30s.
-            'segundos_noturnos': em_hora_noturna(noturnos_trabalhados),
+            'segundos_normais': min(segundos_trabalhados, segundos_esperados),
+            # Todo o trabalho entre 22:00 e 05:00, normal ou extra, no relógio.
+            'segundos_noturnos': noturnos_trabalhados,
             'segundos_falta_dia': max(0, -saldo_segundos),
             'segundos_extra_50_dia': max(0, saldo_segundos) if taxa_extra == 50 else 0,
             'segundos_extra_100_dia': max(0, saldo_segundos) if taxa_extra == 100 else 0,
@@ -531,12 +504,15 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
     consumo_100 = min(deficit_restante, superavit_100)
 
     dias_falta = [d['data'] for d in dias if d['dia_falta']]
+    # Dia sem jornada fica de fora, como no resto dos totais (ele é sinalizado à parte).
+    noturno_segundos = sum(d['segundos_noturnos'] for d in dias if not d['sem_jornada'])
     totais = {
         'extra_50_segundos': superavit_50 - consumo_50,
         'extra_100_segundos': superavit_100 - consumo_100,
         'falta_segundos': deficit_restante - consumo_100,
-        # Dia sem jornada fica de fora, como no resto dos totais (ele é sinalizado à parte).
-        'noturno_segundos': sum(d['segundos_noturnos'] for d in dias if not d['sem_jornada']),
+        'noturno_segundos': noturno_segundos,
+        # Na hora de 52min30s: base do adicional noturno em R$ e da coluna da folha.
+        'noturno_convertido_segundos': em_hora_noturna(noturno_segundos),
         'dias_falta': len(dias_falta),
         'dsr_perdidos': len({dia.isocalendar()[:2] for dia in dias_falta}),  # um por semana (ano, semana ISO)
         'perdeu_assiduidade': bool(dias_falta),
@@ -552,7 +528,7 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
 # do salário cada.
 DIVISOR_SALARIO_HORA = 220
 DIAS_DO_MES = 30
-# Confirmado com o usuário: 20% do valor da hora, por hora noturna trabalhada.
+# Confirmado com o usuário: 20% do valor da hora, por hora noturna convertida.
 ADICIONAL_NOTURNO = Decimal('0.20')
 
 
@@ -561,7 +537,7 @@ def valores_do_periodo(totais, salario):
     Os totais de `calcular_periodo` em R$, a partir do salário base; None sem salário
     cadastrado. Hora: salário / 220. Extra 50%: hora x 1,5 x horas; extra 100%: hora
     x 2 x horas; falta/atraso: hora x horas; adicional noturno: hora x 20% x horas
-    noturnas (já na hora de 52min30s). Cada linha é arredondada no centavo.
+    noturnas convertidas (na hora de 52min30s). Cada linha é arredondada no centavo.
     """
     if salario is None:
         return None
@@ -574,7 +550,7 @@ def valores_do_periodo(totais, salario):
     valores = {
         'extra_50': valor_hora * Decimal('1.5') * horas(totais['extra_50_segundos']),
         'extra_100': valor_hora * 2 * horas(totais['extra_100_segundos']),
-        'adicional_noturno': valor_hora * ADICIONAL_NOTURNO * horas(totais['noturno_segundos']),
+        'adicional_noturno': valor_hora * ADICIONAL_NOTURNO * horas(totais['noturno_convertido_segundos']),
         'falta': valor_hora * horas(totais['falta_segundos']),
         'dias_falta': valor_dia * totais['dias_falta'],
         'dsr': valor_dia * totais['dsr_perdidos'],

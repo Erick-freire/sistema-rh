@@ -103,11 +103,6 @@ def em_hora_noturna(segundos_noturnos_relogio: int) -> int:
     return round(segundos_noturnos_relogio * 3600 / HORA_NOTURNA_SEGUNDOS)
 
 
-def segundos_computados(segundos_relogio: int, segundos_noturnos_relogio: int) -> int:
-    """Tempo total com a parte noturna (já contida em `segundos_relogio`) na hora de 52min30s."""
-    return segundos_relogio - segundos_noturnos_relogio + em_hora_noturna(segundos_noturnos_relogio)
-
-
 def _janelas(previstos, margem_maxima):
     janelas = []
     ultimo = len(previstos) - 1

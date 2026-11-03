@@ -109,6 +109,59 @@
     {% endfor %}
 </div>
 
+{% if sem_funcionario %}
+<div class="card" style="margin-top: 24px;">
+    <div class="card__header">
+        <span class="card__title">Batidas sem funcionário desde {{ sem_funcionario_desde|date:'d/m/Y' }}</span>
+    </div>
+    <div class="alert alert--aviso">
+        {% icon 'alert-triangle' %}
+        <span>
+            Essas pessoas bateram ponto, mas o relógio as identifica por um CPF/PIS que não está no cadastro do sistema
+            (em geral, admitidas no Secullum e ainda não cadastradas aqui, ou demitidas que continuam no relógio).
+            Assim que o cadastro existir, o próximo <strong>Receber</strong> vincula essas batidas sozinho.
+        </span>
+    </div>
+
+    <div class="table-responsive desktop-only">
+        <table>
+            <thead>
+                <tr>
+                    <th>Equipamento</th>
+                    <th>CPF/PIS no relógio</th>
+                    <th>Batidas</th>
+                    <th>Primeira</th>
+                    <th>Última</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for linha in sem_funcionario %}
+                <tr>
+                    <td>{{ linha.equipamento }}</td>
+                    <td>{{ linha.identificador }}</td>
+                    <td>{{ linha.quantidade }}</td>
+                    <td>{{ linha.primeira|date:'d/m/Y H:i' }}</td>
+                    <td>{{ linha.ultima|date:'d/m/Y H:i' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="lista-cards mobile-only">
+        {% for linha in sem_funcionario %}
+        <div class="item-card">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ linha.identificador }}</div>
+                <div class="item-card__subtitulo">{{ linha.equipamento }} · {{ linha.quantidade }} batida{{ linha.quantidade|pluralize }}</div>
+                <div class="item-card__subtitulo">{{ linha.primeira|date:'d/m/Y' }} a {{ linha.ultima|date:'d/m/Y' }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% for equipamento in equipamentos %}
 <div class="modal-overlay" id="sincronizar-{{ equipamento.id }}">
     <div class="modal">

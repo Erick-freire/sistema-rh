@@ -62,7 +62,8 @@ def calcular_ponto(funcionario, competencia):
     totais = calcular_periodo(funcionario, inicio, fim)['totais']
     return {
         'valores': {
-            'adicional_noturno_minutos': _minutos(totais['noturno_segundos']),
+            # Convertidas (hora de 52min30s), decisão do DP em 30/10/2026.
+            'adicional_noturno_minutos': _minutos(totais['noturno_convertido_segundos']),
             'he_50_minutos': _minutos(totais['extra_50_segundos']),
             'he_100_minutos': _minutos(totais['extra_100_segundos']),
             'faltas_minutos': _minutos(totais['falta_segundos']),
@@ -182,17 +183,24 @@ def recalcular_linha(linha, regras=None):
 LOTE_DE_CALCULO = 20
 
 
-def calcular_pendentes(fechamento, limite=LOTE_DE_CALCULO):
-    """Calcula o ponto de até `limite` linhas pendentes. Devolve quantas ainda faltam."""
+def calcular_pendentes(fechamento, limite=LOTE_DE_CALCULO, linhas=None):
+    """
+    Calcula o ponto de até `limite` linhas pendentes. Devolve quantas ainda
+    faltam. `linhas` restringe a algumas do fechamento (a equipe do gestor).
+    """
+    pendentes = (fechamento.linhas.all() if linhas is None else linhas).filter(ponto_pendente=True)
     regras = RegrasDoMes(fechamento.competencia)
-    for linha in fechamento.linhas_pendentes().select_related('funcionario', 'fechamento')[:limite]:
+    for linha in pendentes.select_related('funcionario', 'fechamento')[:limite]:
         recalcular_linha(linha, regras)
-    return fechamento.linhas_pendentes().count()
+    return pendentes.count()
 
 
-def marcar_para_recalcular(fechamento):
-    """O recálculo de todos também vai em lotes; os ajustes do RH continuam valendo (`_atualizar_automaticos`)."""
-    fechamento.linhas.update(ponto_pendente=True)
+def marcar_para_recalcular(fechamento, linhas=None):
+    """
+    O recálculo de todos (ou só de `linhas`) também vai em lotes; os ajustes
+    feitos à mão continuam valendo (`_atualizar_automaticos`).
+    """
+    (fechamento.linhas.all() if linhas is None else linhas).update(ponto_pendente=True)
 
 
 def recalcular_fechamento(fechamento):
