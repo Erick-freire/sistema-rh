@@ -7,10 +7,11 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
@@ -240,6 +241,87 @@ class ImportarPisPlanilhaTests(TestCase):
         call_command('importar_pis_planilha', planilha)
 
         self.assertFalse(Funcionario.objects.filter(pis='12345678901').exists())
+
+
+class ImportarFuncionariosTests(TestCase):
+    """Importação da aba "Naves": demitido fica inativo e gestor já definido não é trocado pelo nome truncado."""
+
+    COLUNAS = [
+        'Setor', 'Responsável do Setor', 'Nome', 'CPF', 'Matrícula eSocial', 'Função',
+        'Data de Admissão', 'Data de Demissão', 'Endereço', 'Número', 'Bairro', 'Município', 'Estado',
+        'DDD', 'Fone', 'DDD Celular', 'Celular',
+    ]
+
+    def _linha(self, nome, cpf, matricula, setor='MOINHO', responsavel='JERUSA FERREIRA', demissao=None):
+        return [
+            setor, responsavel, nome, cpf, matricula, 'Operador',
+            '01/02/2024', demissao, 'Rua A', '10', 'Centro', 'Brasília', 'DF',
+            None, None, '61', '999990000',
+        ]
+
+    def _criar_planilha(self, linhas, colunas=None):
+        arquivo = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Naves'
+        ws.append(colunas or self.COLUNAS)
+        for linha in linhas:
+            ws.append(linha)
+        wb.save(arquivo.name)
+        return arquivo.name
+
+    def _importar(self, linhas):
+        call_command('importar_funcionarios', self._criar_planilha(linhas), stdout=io.StringIO())
+
+    def _jerusa(self):
+        return self._linha('JERUSA FERREIRA DE ALMEIDA SANTOS', '79500000000', '795')
+
+    def test_demitido_fica_inativo(self):
+        self._importar([
+            self._jerusa(),
+            self._linha('ANA SAIU', '11100000000', '1001', demissao=datetime(2026, 8, 3)),
+        ])
+
+        self.assertEqual(Funcionario.objects.get(matricula='1001').status, 'inativo')
+        self.assertEqual(Funcionario.objects.get(matricula='795').status, 'ativo')
+
+    def test_demissao_futura_continua_ativo(self):
+        self._importar([
+            self._jerusa(),
+            self._linha('BIA AVISO', '22200000000', '1002', demissao=datetime(2099, 1, 31)),
+        ])
+
+        self.assertEqual(Funcionario.objects.get(matricula='1002').status, 'ativo')
+
+    def test_sem_coluna_de_demissao_nao_importa(self):
+        colunas = [c for c in self.COLUNAS if c != 'Data de Demissão']
+        linha = self._jerusa()
+        del linha[self.COLUNAS.index('Data de Demissão')]
+
+        with self.assertRaises(CommandError):
+            call_command('importar_funcionarios', self._criar_planilha([linha], colunas), stdout=io.StringIO())
+
+        self.assertFalse(Funcionario.objects.exists())
+
+    def test_nome_truncado_nao_troca_gestor_ja_definido(self):
+        setor = Setor.objects.create(nome='MOINHO')
+        jerusa = Funcionario.objects.create(
+            nome='JERUSA FERREIRA DE ALMEIDA SANTOS', cpf='79500000000', matricula='795', cargo='Gerente', setor=setor,
+        )
+        setor.gestor = jerusa
+        setor.save()
+
+        self._importar([self._jerusa(), self._linha('CAIO OPERADOR', '33300000000', '1003')])
+
+        setor.refresh_from_db()
+        self.assertEqual(setor.gestor, jerusa)
+        self.assertFalse(Funcionario.objects.filter(cargo='Gestor (cadastro pendente)').exists())
+
+    def test_setor_novo_casa_nome_truncado_pela_matricula(self):
+        self._importar([self._jerusa(), self._linha('CAIO OPERADOR', '33300000000', '1003')])
+
+        self.assertEqual(Setor.objects.get(nome='MOINHO').gestor.matricula, '795')
+        self.assertFalse(Funcionario.objects.filter(cargo='Gestor (cadastro pendente)').exists())
 
 
 class OnboardingDocumentosTests(TestCase):
