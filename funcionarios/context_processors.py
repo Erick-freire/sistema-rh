@@ -52,7 +52,7 @@ def usuario_logado(request):
             badge_concluir_ferias += SolicitacaoFerias.objects.filter(status='pendente_rh').count()
 
         avisos_pendentes = AvisoFerias.objects.filter(visualizado=False)
-        if usuario.papel == 'gestor':
+        if usuario.papel == 'gestor' and not usuario.eh_dp_ou_rh():
             avisos_pendentes = avisos_pendentes.filter(funcionario__setor__gestor=usuario.funcionario)
         badge_concluir_ferias += avisos_pendentes.count()
 

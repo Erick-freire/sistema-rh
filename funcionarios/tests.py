@@ -16,7 +16,7 @@ from decimal import Decimal
 
 from .forms import AtestadoForm, MeuPerfilForm, PreCadastroFuncionarioForm
 from .models import (
-    Atestado, Documento, FichaEPI, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, SolicitacaoSenha,
+    Atestado, AvisoFerias, Documento, FichaEPI, Funcionario, ItemCatalogoComodato, ItemComodato, Setor, SolicitacaoSenha,
     TermoComodato, TipoDocumento, Usuario,
 )
 from . import views
@@ -660,6 +660,20 @@ class LoginGestorPorNomeTests(TestCase):
         self._usuario('Romario Ribeiro', '11111111111', 'gestor')
 
         self.assertRedirects(self._entrar('11111111111'), reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_cpf_com_pontuacao_entra(self):
+        self._usuario('Maria Silva', '12345678900', 'colaborador')
+
+        self.assertRedirects(self._entrar(' 123.456.789-00 '), reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_username_antigo_com_pontuacao_entra_dos_dois_jeitos(self):
+        funcionario = Funcionario.objects.create(nome='Ana', cpf='98765432100', cargo='X', setor=self.setor, status='ativo')
+        user = User.objects.create_user(username='987.654.321-00', password='Senha!123')
+        Usuario.objects.create(user=user, funcionario=funcionario, papel='rh')
+
+        self.assertRedirects(self._entrar('987.654.321-00'), reverse('dashboard'), fetch_redirect_response=False)
+        self.client.logout()
+        self.assertRedirects(self._entrar('98765432100'), reverse('dashboard'), fetch_redirect_response=False)
 
     def test_colaborador_nao_tem_login_por_nome(self):
         colaborador = self._usuario('Maria Silva', '11111111111', 'colaborador')
@@ -1516,3 +1530,30 @@ class GestorVeEquipeDeOutrosSetoresTests(TestCase):
         resposta = self.client.get(reverse('listar_funcionarios') + '?escopo=meu_setor')
 
         self.assertCountEqual(resposta.context['pagina'], [self.moleiro, rh])
+
+
+class GestorComAcessoRhTests(TestCase):
+    """Gerente de RH: papel Gestor (entra pelo nome) + acesso_rh (vê como o RH)."""
+
+    def setUp(self):
+        cache.clear()
+        setor_rh = Setor.objects.create(nome='RH')
+        outro = Setor.objects.create(nome='Produção')
+        funcionario = Funcionario.objects.create(nome='Savana Teste', cpf='11111111111', cargo='Gerente', setor=setor_rh, status='ativo')
+        setor_rh.gestor = funcionario
+        setor_rh.save()
+        user = User.objects.create_user(username='111.111.111-11', password='Senha!123')
+        self.usuario = Usuario.objects.create(user=user, funcionario=funcionario, papel='gestor', acesso_rh=True)
+        de_fora = Funcionario.objects.create(nome='Bruno', cpf='22222222222', cargo='X', setor=outro, status='ativo')
+        self.aviso = AvisoFerias.objects.create(funcionario=de_fora, data_prevista='2026-12-01')
+
+    def test_entra_pelo_nome_e_tem_acesso_de_rh(self):
+        self.assertEqual(self.usuario.login_gestor, 'savana')
+        resposta = self.client.post(reverse('login'), {'username': 'savana', 'password': 'Senha!123'})
+        self.assertRedirects(resposta, reverse('dashboard'), fetch_redirect_response=False)
+        self.assertTrue(self.usuario.eh_rh())
+
+    def test_ve_avisos_de_ferias_de_fora_da_equipe(self):
+        self.client.login(username='111.111.111-11', password='Senha!123')
+        resposta = self.client.get(reverse('concluir_ferias'))
+        self.assertIn(self.aviso, list(resposta.context['avisos']))

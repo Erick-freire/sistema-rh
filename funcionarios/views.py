@@ -1304,7 +1304,7 @@ def concluir_ferias_view(request):
     usuario = request.user.usuario
 
     avisos = AvisoFerias.objects.all()
-    if usuario.papel == 'gestor':
+    if usuario.papel == 'gestor' and not usuario.eh_dp_ou_rh():  # gestor com acesso de RH vê todos
         avisos = avisos.filter(funcionario__setor__gestor=usuario.funcionario)
     avisos = avisos.order_by('visualizado', '-criado_em')
 
@@ -1317,7 +1317,7 @@ def concluir_ferias_view(request):
     confirmadas_qs = SolicitacaoFerias.objects.filter(
         status='aprovada'
     ).select_related('funcionario')
-    if usuario.papel == 'gestor':
+    if usuario.papel == 'gestor' and not usuario.eh_dp_ou_rh():
         confirmadas_qs = confirmadas_qs.filter(funcionario__setor__gestor=usuario.funcionario)
     hoje = timezone.now().date()
     ferias_confirmadas = sorted(
@@ -1411,7 +1411,7 @@ def marcar_aviso_visualizado_view(request, aviso_id):
     usuario = request.user.usuario
     aviso = get_object_or_404(AvisoFerias, id=aviso_id)
 
-    if usuario.papel == 'gestor' and aviso.funcionario.setor.gestor != usuario.funcionario:
+    if usuario.papel == 'gestor' and not usuario.eh_dp_ou_rh() and aviso.funcionario.setor.gestor != usuario.funcionario:
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('concluir_ferias')
 

@@ -1,6 +1,11 @@
+import re
+
 from django.contrib.auth.backends import ModelBackend
+from django.contrib.auth.models import User
 
 from .models import Usuario
+
+CPF_DIGITADO = re.compile(r'\s*[\d.\-\s]+\s*')
 
 
 class CpfOuLoginGestorBackend(ModelBackend):
@@ -12,7 +17,16 @@ class CpfOuLoginGestorBackend(ModelBackend):
     """
 
     def authenticate(self, request, username=None, password=None, **kwargs):
-        if username:
+        if username and CPF_DIGITADO.fullmatch(username):
+            # O CPF pode ser digitado com ou sem pontuação, e há usernames
+            # antigos gravados com pontuação: vale o formato que existir.
+            digitos = re.sub(r'\D', '', username)
+            candidatos = [digitos]
+            if len(digitos) == 11:
+                candidatos.append(f'{digitos[:3]}.{digitos[3:6]}.{digitos[6:9]}-{digitos[9:]}')
+            existente = User.objects.filter(username__in=candidatos).values_list('username', flat=True).first()
+            username = existente or username.strip()
+        elif username:
             gestor = Usuario.objects.filter(
                 papel='gestor', login_gestor=username.strip().lower(),
             ).select_related('user').first()
