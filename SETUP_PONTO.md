@@ -90,6 +90,18 @@ python manage.py coletar_marcacoes_control_id
 
 ### Sincronização automática (06:00 e 18:00)
 
+O agendamento **não substitui** o botão "Sincronizar": os dois fazem a mesma
+coisa e podem rodar à vontade (nada se duplica). O cabeçalho do
+`scripts\sincronizar_ponto.bat` explica passo a passo o que o job faz, onde
+fica o log e como pausar/rodar/remover as tarefas. O script acha sozinho o
+Python do ambiente virtual, seja `.venv` ou `venv`.
+
+**Banco novo:** antes da primeira sincronização (manual ou agendada), rode
+`reconciliar_funcionarios_equipamento` e depois
+`vincular_marcacoes_sem_funcionario`. Sem isso as batidas de quem o relógio
+identifica pelo PIS ficam sem dono, e a fila pode recadastrar nos relógios
+quem já está lá (duplicando sem biometria).
+
 `scripts\sincronizar_ponto.bat` roda os dois comandos acima em sequência
 (envia cadastros, depois recebe marcações) e grava a saída em
 `logs\sincronizar_ponto.log`. Para agendar no servidor, abrir um prompt

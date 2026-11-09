@@ -8,5 +8,9 @@ if not exist logs mkdir logs
 set LOG=logs\lembrar_pendencias.log
 set PYTHONIOENCODING=utf-8
 
+rem O ambiente virtual pode se chamar .venv (este servidor) ou venv.
+set PY=.venv\Scripts\python.exe
+if not exist "%PY%" set PY=venv\Scripts\python.exe
+
 echo ===== %date% %time% ===== >> "%LOG%"
-"venv\Scripts\python.exe" manage.py lembrar_pendencias >> "%LOG%" 2>&1
+"%PY%" manage.py lembrar_pendencias >> "%LOG%" 2>&1
