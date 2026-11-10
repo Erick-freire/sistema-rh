@@ -21,14 +21,12 @@ navegador passar a forçar HTTPS em localhost — ver `config/settings.py`.
 
 ## 2. Certificado SSL / HTTPS
 
-Hoje o sistema roda com `python manage.py runserver`, que é só para
-desenvolvimento (não faz HTTPS e não aguenta produção). Caminho recomendado:
+Ainda sem HTTPS. Caminho recomendado:
 
-1. **Servir com waitress** (WSGI de produção, roda nativo no Windows — já
-   está no `requirements.txt`):
-   ```
-   python -m waitress --listen=127.0.0.1:8000 config.wsgi:application
-   ```
+1. **Servir com waitress** (WSGI de produção, roda nativo no Windows) --
+   **feito**: roda como o serviço Windows `SistemaRH`, ver
+   [Servidor web (serviço SistemaRH)](#servidor-web-serviço-sistemarh) abaixo.
+   Não usar `runserver` em produção.
 2. **Proxy reverso na frente** terminando o TLS com um certificado real
    (interno da empresa ou Let's Encrypt) e repassando para o waitress em
    HTTP dentro da rede interna — IIS (com ARR + URL Rewrite) ou nginx,
@@ -110,3 +108,31 @@ levantar erro — ver `EncryptedTextField.to_python`).
 
    Log em `logs\avisar_intervalos_curtos.log`. Para conferir os casos de um
    dia sem mandar nada: `manage.py avisar_intervalos_curtos --data AAAA-MM-DD --dry-run`.
+
+## Servidor web (serviço SistemaRH)
+
+O sistema roda como serviço do Windows criado com o NSSM (o mesmo usado no
+`SistemaCatraca`), e **não depende de ninguém logado nem de janela aberta**:
+
+| Item | Valor |
+|---|---|
+| Serviço | `SistemaRH` ("Sistema RH (servidor web)") |
+| Comando | `C:\sistema-rh\.venv\Scripts\python.exe -m waitress --listen=0.0.0.0:8002 config.wsgi:application` |
+| Pasta de trabalho | `C:\sistema-rh` (é de onde vem o `.env`) |
+| Conta | LocalSystem |
+| Início | Automático (sobe junto com o Windows) |
+| Se cair | o NSSM reinicia sozinho em 5 segundos |
+| Log | `logs\servidor_web.log` (gira a cada 10 MB) |
+
+Comandos (prompt como administrador):
+
+```
+sc query SistemaRH                       :: está rodando?
+net stop SistemaRH && net start SistemaRH :: reiniciar (ex.: depois de um git pull)
+C:\nssm\win64\nssm.exe edit SistemaRH     :: abrir a configuração na tela
+```
+
+**Depois de atualizar o código** (`git pull`, `migrate`, `collectstatic`),
+reiniciar o serviço -- o waitress não recarrega sozinho. Não suba o sistema
+de novo com `runserver` ou numa janela de PowerShell: a porta 8002 já é do
+serviço, e a janela morre quando a sessão do RDP é encerrada.
