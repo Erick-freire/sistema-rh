@@ -1557,3 +1557,76 @@ class GestorComAcessoRhTests(TestCase):
         self.client.login(username='111.111.111-11', password='Senha!123')
         resposta = self.client.get(reverse('concluir_ferias'))
         self.assertIn(self.aviso, list(resposta.context['avisos']))
+
+
+class EquipeDoRhComAcessoRhTests(TestCase):
+    """
+    Quem trabalha no RH/DP sem ser o gerente (analista de DP, estagiário...)
+    recebe acesso pelo botão "Conceder acesso ao RH" da ficha, que mantém o
+    papel (normalmente Colaborador) e liga `acesso_rh`. Tem que ver as mesmas
+    telas de RH que o gerente de RH (gestor + acesso_rh) e o papel RH.
+    """
+
+    TELAS_DE_RH = [
+        ('listar_funcionarios', []), ('cadastrar_funcionario', []),
+        ('concluir_ferias', []), ('rh_vencimento_ferias', []),
+        ('listar_comodatos', []), ('pedidos_senha', []),
+        ('ponto:listar_equipamentos', []), ('ponto:ajustes_pendentes', []),
+        ('folha:listar', []), ('folha:premios', []),
+        ('terceiros:listar_empresas', []),
+        ('listar_fichas_epi', []), ('listar_epis_vencendo', []),
+        ('gerenciar_matriz_epi', []), ('listar_ocorrencias_epi', []),
+    ]
+
+    def setUp(self):
+        cache.clear()
+        self.setor_rh = Setor.objects.create(nome='RECURSOS HUMANOS')
+        self.contas = {
+            'rh': self._conta('RH Papel', '10000000001', 'rh', False),
+            'gerente_rh': self._conta('Gerente RH', '10000000002', 'gestor', True),
+            'analista_dp': self._conta('Analista DP', '10000000003', 'colaborador', True),
+            'sst_com_rh': self._conta('Tecnico Com RH', '10000000004', 'seguranca_trabalho', True),
+        }
+
+    def _conta(self, nome, cpf, papel, acesso_rh):
+        funcionario = Funcionario.objects.create(nome=nome, cpf=cpf, cargo='X', setor=self.setor_rh, status='ativo')
+        user = User.objects.create_user(username=cpf, password='Senha!123')
+        Usuario.objects.create(user=user, funcionario=funcionario, papel=papel, acesso_rh=acesso_rh)
+        return user
+
+    def test_todas_as_telas_de_rh_abrem_para_todos(self):
+        for perfil, user in self.contas.items():
+            self.client.force_login(user)
+            for nome_url, args in self.TELAS_DE_RH:
+                with self.subTest(perfil=perfil, tela=nome_url):
+                    resposta = self.client.get(reverse(nome_url, args=args))
+                    self.assertEqual(resposta.status_code, 200)
+
+    def test_inicio_e_o_painel_do_rh(self):
+        for perfil in ('rh', 'gerente_rh', 'analista_dp', 'sst_com_rh'):
+            with self.subTest(perfil=perfil):
+                self.client.force_login(self.contas[perfil])
+                resposta = self.client.get(reverse('dashboard'))
+                self.assertTemplateUsed(resposta, 'funcionarios/rh/dashboard.html')
+
+    def test_colaborador_com_acesso_rh_tem_menu_de_rh_no_celular(self):
+        self.client.force_login(self.contas['analista_dp'])
+        resposta = self.client.get(reverse('dashboard'))
+        self.assertContains(resposta, reverse('concluir_ferias'))
+        self.assertContains(resposta, 'Recursos Humanos ·')
+        self.assertContains(resposta, 'Pessoas')  # rótulo da barra inferior do RH, não a do colaborador
+
+    def test_pode_conceder_acesso_rh_como_o_gerente(self):
+        alvo = Funcionario.objects.create(nome='Novo Estagiario', cpf='10000000009', cargo='Estagiário', setor=self.setor_rh, status='ativo')
+        Usuario.objects.create(user=User.objects.create_user(username='10000000009'), funcionario=alvo, papel='colaborador')
+        self.client.force_login(self.contas['analista_dp'])
+        self.client.post(reverse('alternar_acesso_rh', args=[alvo.id]))
+        self.assertTrue(Usuario.objects.get(funcionario=alvo).acesso_rh)
+
+    def test_colaborador_sem_acesso_rh_continua_barrado(self):
+        user = self._conta('Aprendiz', '10000000005', 'colaborador', False)
+        self.client.force_login(user)
+        resposta = self.client.get(reverse('dashboard'))
+        self.assertTemplateUsed(resposta, 'funcionarios/colaborador/dashboard.html')
+        resposta = self.client.get(reverse('listar_funcionarios'))
+        self.assertRedirects(resposta, reverse('dashboard'), fetch_redirect_response=False)

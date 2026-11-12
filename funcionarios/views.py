@@ -239,7 +239,9 @@ def dashboard_view(request):
 
     usuario = perfil
 
-    if usuario.papel == 'colaborador':
+    # Colaborador ou Segurança do Trabalho com `acesso_rh` (ex.: analista de DP,
+    # estagiário do RH) entra como o RH: painel de RH, não o pessoal.
+    if usuario.papel == 'colaborador' and not usuario.eh_rh():
         funcionario = usuario.funcionario
         tipos_iniciais = funcionario.tipos_documentos_iniciais()
         tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
@@ -271,7 +273,7 @@ def dashboard_view(request):
         })
 
     # Segurança do Trabalho não tem painel de RH: a tela inicial é a fila de fichas.
-    if usuario.papel == 'seguranca_trabalho':
+    if usuario.papel == 'seguranca_trabalho' and not usuario.eh_rh():
         return redirect('listar_fichas_epi')
 
     return dashboard_rh_view(request)

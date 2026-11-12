@@ -2281,4 +2281,14 @@ form .login-campo input#password { padding-right: 46px; }
 
 .espelho-ajuda { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px; }
 .espelho-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 18px; }
-[data-filtro][hidden] { display: none; }
+[data-filtro][hidden], [data-resultado][hidden] { display: none; }
+
+/* Espelho do setor, um dia por vez */
+.espelho-setor-nav { display: flex; gap: 8px; }
+.espelho-setor-dias { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; }
+.chip--dia { padding: 6px 10px; flex: none; font-size: 0.8rem; }
+.chip--dia small { font-weight: 400; opacity: 0.8; }
+.abono-dia summary { list-style: none; cursor: pointer; white-space: nowrap; }
+.abono-dia summary::-webkit-details-marker { display: none; }
+.abono-dia[open] form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; min-width: 200px; }
+.batidas-a-mais { font-size: 0.72rem; color: var(--color-pending); white-space: nowrap; margin-top: 2px; }

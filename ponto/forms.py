@@ -245,11 +245,12 @@ LIMITE_PESSOAS_DIA_ESPELHO = 2500
 
 class ExportarEspelhoForm(forms.Form):
     """
-    Filtro da tela Espelho e cálculo: um funcionário (espelho na tela ou em
-    PDF) ou o setor inteiro (só em PDF, uma página por pessoa). Os nomes dos
-    campos são os mesmos parâmetros da URL da tela.
+    Filtro da tela Espelho e cálculo: um funcionário ou o setor inteiro. Na
+    tela, o setor aparece um dia por vez (para ajustar as batidas de todos);
+    no PDF, uma página por pessoa. Os nomes dos campos são os mesmos
+    parâmetros da URL da tela.
     """
-    FILTRO_CHOICES = [('funcionario', 'Um funcionário'), ('setor', 'Setor inteiro (PDF)')]
+    FILTRO_CHOICES = [('funcionario', 'Um funcionário'), ('setor', 'Setor inteiro')]
 
     data_inicio = forms.DateField(label='De', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))
     data_fim = forms.DateField(label='Até', widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'))

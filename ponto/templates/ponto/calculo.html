@@ -9,7 +9,7 @@
 {% include 'ponto/_subnav.html' %}
 
 <div class="card">
-    {# Um filtro, dois botões: Calcular mostra o espelho aqui; Gerar PDF abre o arquivo em outra aba (ponto:exportar_espelho). #}
+    {# Um filtro, dois botões: Calcular mostra o espelho aqui (o setor, um dia por vez); Gerar PDF abre o arquivo em outra aba (ponto:exportar_espelho). #}
     <form method="get" action="{% url 'ponto:listar_calculo' %}" data-espelho-form>
         <div class="form-grid">
             <div class="span-2">
@@ -27,8 +27,8 @@
                 <label for="{{ filtro_form.setor.id_for_label }}">{{ filtro_form.setor.label }}</label>
                 {{ filtro_form.setor }}
                 <p class="espelho-ajuda">
-                    Todos os funcionários ativos do setor, uma página por pessoa (entre parênteses, quantos são).
-                    Gestores ficam de fora: não batem ponto.
+                    Todos os funcionários ativos do setor (entre parênteses, quantos são); gestores ficam de fora, não batem ponto.
+                    Calcular mostra as batidas de todos, um dia por vez, para ajustar; o PDF traz uma página por pessoa.
                 </p>
             </div>
             <div>
@@ -42,7 +42,7 @@
         </div>
         <p class="alert alert--erro" data-espelho-erro hidden style="margin: 14px 0 0;"></p>
         <div class="espelho-acoes">
-            <button type="submit" class="btn-primario" data-filtro="funcionario">Calcular</button>
+            <button type="submit" class="btn-primario" formaction="{% url 'ponto:listar_calculo' %}" formtarget="_self">Calcular</button>
             <button type="submit" class="btn-outline" formaction="{% url 'ponto:exportar_espelho' %}" formtarget="_blank" data-gerar-pdf>{% icon 'download' %} Gerar PDF</button>
             <span class="espelho-ajuda">O PDF abre numa nova aba, para imprimir ou baixar. O setor inteiro pode levar até meio minuto.</span>
         </div>
@@ -61,10 +61,12 @@ document.addEventListener('DOMContentLoaded', function () {
         var filtro = filtroAtual();
         form.querySelectorAll('[data-filtro]').forEach(function (campo) {
             campo.hidden = campo.dataset.filtro !== filtro;
-            // O Calcular escondido também fica desligado: Enter não pode enviar o "setor" para a tela.
-            if (campo.tagName === 'BUTTON') campo.disabled = campo.hidden;
         });
         erro.hidden = true;
+        // O resultado na tela é do filtro em que foi calculado: trocar de filtro o esconde.
+        document.querySelectorAll('[data-resultado]').forEach(function (bloco) {
+            bloco.hidden = bloco.dataset.resultado !== filtro;
+        });
     };
     form.querySelectorAll('input[name="filtro"]').forEach(function (radio) {
         radio.addEventListener('change', mostrar);
@@ -83,7 +85,14 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+{% if espelho_setor %}
+<div data-resultado="setor">
+{% include 'ponto/_espelho_setor_dia.html' with esp=espelho_setor %}
+</div>
+{% endif %}
+
 {% if funcionario %}
+<div data-resultado="funcionario">
 
 <div class="card">
     <div class="card__header">
@@ -236,6 +245,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         <td class="celula-ponto">
                             {% if saida %}{{ saida.momento|time:'H:i' }}{{ saida.momento|marca_dia_turno:dia.data }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
                             <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.marcacao_id %}&marcacao_original={{ saida.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
+                        {% if forloop.last and dia.batidas_a_mais %}
+                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija ou anule pelo lápis.">
+                                a mais:{% for extra in dia.batidas_a_mais %}
+                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a></span>{% endfor %}
+                            </div>
+                            {% endif %}
                         </td>
                     {% endfor %}
                     <td>{{ dia.segundos_normais|horas }}</td>
@@ -250,5 +265,6 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 {% endif %}
+</div>
 {% endif %}
 {% endblock %}

@@ -17,7 +17,7 @@ from funcionarios.forms import AtestadoForm
 from funcionarios.models import Usuario
 
 from . import espelho_pdf, services
-from .calculos import calcular_periodo, situacao_do_dia, valores_do_periodo
+from .calculos import MAX_PARES_EXIBIDOS, calcular_periodo, situacao_do_dia, valores_do_periodo
 from .forms import (
     AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, ExportarEspelhoForm, FeriadoForm,
     FuncionarioJornadaForm, HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
@@ -404,6 +404,14 @@ def listar_calculo_view(request):
         'data_inicio': data_inicio, 'data_fim': data_fim, 'filtro': filtro,
         'funcionario': funcionario_id or None, 'setor': request.GET.get('setor') or None,
     })
+
+    # Setor: a mesma tela de ajuste, mas um dia por "página", com todos do setor.
+    setor_id = request.GET.get('setor')
+    espelho_setor = None
+    if filtro == 'setor' and setor_id and data_inicio <= data_fim:
+        setor = get_object_or_404(filtro_form.fields['setor'].queryset, id=setor_id)
+        dia = min(max(_data_do_get(request, 'dia', data_inicio), data_inicio), data_fim)
+        espelho_setor = _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim)
     return render(request, 'ponto/calculo.html', {
         'filtro_form': filtro_form,
         'funcionarios_busca': [
@@ -424,7 +432,71 @@ def listar_calculo_view(request):
         'atestados': atestados,
         'atestado_form': AtestadoForm(auto_id='atestado_%s'),  # a jornada também tem `data_inicio`
         'numeros_dos_pares': numeros_dos_pares,
+        'espelho_setor': espelho_setor,
     })
+
+
+# Um setor de 40 pessoas num mês dá 30 "páginas"; acima disso a fileira de dias fica comprida demais.
+MAX_DIAS_ESPELHO_SETOR = 62
+
+
+def _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim):
+    """
+    Batidas de um dia de todos do setor que batem ponto (os mesmos do PDF do
+    setor), para o RH corrigir pessoa por pessoa sem trocar de funcionário. Só
+    o dia escolhido é calculado: o período inteiro é só a navegação entre dias.
+    O gestor vê só quem é da equipe dele.
+    """
+    hoje = timezone.localdate()
+    pessoas = espelho_pdf.funcionarios_do_setor(setor).filter(
+        id__in=request.user.usuario.funcionarios_que_opera().values('id'),
+    )
+    linhas = []
+    for funcionario in pessoas:
+        resultado_dia = calcular_periodo(funcionario, dia, dia)['dias'][0]
+        texto, cor, _ = situacao_do_dia(resultado_dia, hoje)
+        if resultado_dia['dia_falta']:
+            texto = 'Dia falta'
+        linhas.append({
+            'funcionario': funcionario,
+            'dia': resultado_dia,
+            'situacao': texto,
+            'cor': cor,
+            # Abono por atestado só faz sentido em dia de trabalho ainda não abonado.
+            'pode_abonar': bool(resultado_dia['segundos_esperados']) and not resultado_dia['atestado'],
+        })
+
+    # Todas as linhas com o mesmo número de colunas de batida.
+    pares = max((len(linha['dia']['pares']) for linha in linhas), default=MAX_PARES_EXIBIDOS)
+    for linha in linhas:
+        linha['dia']['pares'] += [(None, None)] * (pares - len(linha['dia']['pares']))
+
+    def url_do_dia(outro_dia):
+        parametros = request.GET.copy()
+        parametros['dia'] = outro_dia.isoformat()
+        return f"{reverse('ponto:listar_calculo')}?{parametros.urlencode()}"
+
+    total_dias = (data_fim - data_inicio).days + 1
+    dias = []
+    if total_dias <= MAX_DIAS_ESPELHO_SETOR:
+        dias = [
+            {'data': d, 'url': url_do_dia(d), 'atual': d == dia}
+            for d in (data_inicio + timedelta(days=n) for n in range(total_dias))
+        ]
+    anterior = dia - timedelta(days=1)
+    seguinte = dia + timedelta(days=1)
+    return {
+        'setor': setor,
+        'dia': dia,
+        'linhas': linhas,
+        'numeros_dos_pares': range(1, pares + 1),
+        'dias': dias,
+        'url_anterior': url_do_dia(anterior) if anterior >= data_inicio else None,
+        'url_seguinte': url_do_dia(seguinte) if seguinte <= data_fim else None,
+        'posicao': (dia - data_inicio).days + 1,
+        'total_dias': total_dias,
+        'pendencias': sum(1 for linha in linhas if linha['cor'] in ('pendente', 'rejeitado')),
+    }
 
 
 @login_required

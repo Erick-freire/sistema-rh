@@ -136,3 +136,226 @@ C:\nssm\win64\nssm.exe edit SistemaRH     :: abrir a configuração na tela
 reiniciar o serviço -- o waitress não recarrega sozinho. Não suba o sistema
 de novo com `runserver` ou numa janela de PowerShell: a porta 8002 já é do
 serviço, e a janela morre quando a sessão do RDP é encerrada.
+
+## Backup (banco + mídia)
+
+Todo dia às 22:00 o script `scripts\backup_sistema_rh.bat` faz o backup do
+banco MySQL e da pasta de mídia (documentos, contratos, comodatos, fotos) e
+envia uma cópia para o servidor do AD. Roda como `SYSTEM`, **sem ninguém
+logado**.
+
+| Item | Valor |
+|---|---|
+| Tarefa agendada | `SistemaRH\Backup diario 22h` (diária, 22:00, conta `SYSTEM`) |
+| Script | `C:\sistema-rh\scripts\backup_sistema_rh.bat` |
+| Log | `C:\sistema-rh\logs\backup.log` (última linha de uma execução boa: `backup concluido`) |
+| Cópia local | `C:\backups\sistema-rh\banco` (dumps `.zip`) e `C:\backups\sistema-rh\media` |
+| Cópia remota | `\\192.168.0.155\BackupSistemaRH$` (servidor do AD, `STR-SRV-01`, pasta `C:\BackupSistemaRH`) |
+| Retenção do banco | 14 dias na cópia local, 30 dias na remota |
+| Retenção da mídia | sem limpeza: a cópia só acrescenta e atualiza, nunca apaga |
+
+### O que o script faz, em ordem
+
+1. **Banco:** `mysqldump` com `--single-transaction` (cópia consistente sem
+   travar o sistema, o RH pode estar usando), compacta em
+   `sistema_rh_AAAA-MM-DD_HHMM.zip` e apaga o `.sql` solto.
+2. **Mídia:** `robocopy /E` de `C:\sistema-rh\media` para a cópia local.
+   Usa `/E` e não `/MIR` de propósito: um arquivo apagado por engano no
+   sistema continua no backup.
+3. **Envio:** conecta no compartilhamento do AD com o usuário
+   `SOTRIGO\svc_backup_rh`, copia a pasta local inteira, aplica a retenção
+   remota e desconecta.
+
+Qualquer falha grava uma linha com `ERRO` no log e encerra com código 1. Se
+só o envio falhar, a cópia local daquele dia foi feita mesmo assim.
+
+### Credenciais (nenhuma senha fica no script nem no Git)
+
+Ficam em `C:\backups\credenciais`, pasta acessível **só** para
+Administradores e `SYSTEM` (herança removida com `icacls`):
+
+| Arquivo | Conteúdo | Usado por |
+|---|---|---|
+| `mysql_backup.cnf` | `[client]` com `user`, `password` e `host` do usuário `sistema_rh` | `mysqldump` |
+| `backup_rede.txt` | só a senha do `svc_backup_rh`, uma linha, sem espaços | `net use` do script |
+
+Salvar esses arquivos pelo VS Code (UTF-8 **sem** BOM). O Bloco de Notas
+pode gravar o BOM, que vira parte da senha e faz a conexão falhar.
+
+**Trocou alguma senha? Atualize os dois lados no mesmo momento:**
+
+- Senha do MySQL `sistema_rh`: `ALTER USER` no MySQL + `DB_PASSWORD` no
+  `.env` + `mysql_backup.cnf` (e reiniciar o serviço `SistemaRH`).
+- Senha do `svc_backup_rh`: `Set-ADAccountPassword` no servidor do AD +
+  `backup_rede.txt`.
+
+### Usuário `svc_backup_rh` e a pasta no AD
+
+Este servidor (`SOTR-PON`) **não está no domínio** (WORKGROUP), por isso a
+conexão usa um usuário do domínio dedicado em vez da conta do computador.
+
+- Usuário `SOTRIGO\svc_backup_rh`: senha que não expira e que ele não pode
+  trocar (se expirasse, o backup pararia em silêncio). Não usar essa conta
+  para mais nada.
+- Compartilhamento oculto `BackupSistemaRH$`: `svc_backup_rh` com
+  Alteração; acesso total para o administrador.
+- NTFS de `C:\BackupSistemaRH`: `svc_backup_rh` com Modificar,
+  Administradores e `SYSTEM` com Controle total, **sem herança**. A pasta
+  fica fora de `C:\Compartilhamentos` de propósito: o backup tem dados
+  pessoais de todos os funcionários e não pode herdar o acesso dos usuários.
+- Atenção ao espaço livre no `C:` do servidor do AD: a mídia só cresce.
+
+### Rodar e conferir manualmente
+
+```
+schtasks /run /tn "SistemaRH\Backup diario 22h"
+schtasks /query /tn "SistemaRH\Backup diario 22h" /v /fo list | Select-String "Status", "Resultado"
+Get-Content C:\sistema-rh\logs\backup.log -Tail 10
+```
+
+Testar sempre pela tarefa (`schtasks /run`), e não rodando o `.bat` na
+própria sessão: assim ele roda como `SYSTEM`, igual à execução das 22:00.
+
+Para testar só o acesso ao compartilhamento, com o usuário do backup (a
+senha é pedida na tela e não vai para o histórico):
+
+```
+net use \\192.168.0.155\BackupSistemaRH$ /user:SOTRIGO\svc_backup_rh
+net use \\192.168.0.155\BackupSistemaRH$ /delete
+```
+
+### Restaurar
+
+**Antes de restaurar em produção, restaure num banco de teste e confira.**
+
+O dump é de um banco só (sem `--databases`), então ele **não** tem
+`CREATE DATABASE` nem `USE`: restaura no banco que estiver selecionado.
+Confira isso antes de qualquer restauração (não deve aparecer nada):
+
+```
+Select-String -Path C:\caminho\sistema_rh_AAAA-MM-DD_HHMM.sql -Pattern '^USE |^CREATE DATABASE'
+```
+
+**Banco de teste** (MySQL com o usuário administrador):
+
+```sql
+CREATE DATABASE teste_restauracao CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE teste_restauracao;
+SOURCE C:/caminho/sistema_rh_AAAA-MM-DD_HHMM.sql;
+-- conferir e depois:
+DROP DATABASE teste_restauracao;
+```
+
+No `SOURCE`, usar barras normais (`/`), mesmo no Windows.
+
+**Produção** (só em caso de perda real de dados):
+
+1. Parar o sistema, para ninguém gravar durante a restauração:
+   `Stop-Service SistemaRH`.
+2. Guardar o estado atual antes de sobrescrever, rodando a tarefa de backup
+   (`schtasks /run ...`) e conferindo o log.
+3. No MySQL, com o administrador:
+   ```sql
+   DROP DATABASE sistema_rh;
+   CREATE DATABASE sistema_rh CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   USE sistema_rh;
+   SOURCE C:/caminho/sistema_rh_AAAA-MM-DD_HHMM.sql;
+   ```
+   As permissões do usuário `sistema_rh` continuam valendo: no MySQL elas
+   são dadas pelo nome do banco, não pelo banco físico.
+4. Mídia, se necessário: copiar de volta com
+   `robocopy C:\backups\sistema-rh\media C:\sistema-rh\media /E`.
+5. `Start-Service SistemaRH` e testar login e uma ficha.
+
+Os `.sql` extraídos têm dados pessoais de todos os funcionários: extrair
+dentro de `C:\backups` (pasta protegida) e apagar logo depois de usar.
+
+## Acesso externo (Cloudflare Tunnel)
+
+O sistema é acessado **só** por `https://rh.sotrix.com.br`, de dentro ou de
+fora da empresa. O endereço antigo `http://10.4.23.6:8002` não funciona
+mais (de propósito).
+
+| Item | Valor |
+|---|---|
+| Endereço | `https://rh.sotrix.com.br` |
+| Túnel | o túnel `catraca` da Cloudflare (Zero Trust → Networks → Tunnels), que é o túnel **deste servidor** (`SOTR-PON`) |
+| Rota no túnel | `rh.sotrix.com.br` → `HTTP` `localhost:8002` |
+| Conector | serviço do Windows `cloudflared`, token em `C:\ProgramData\cloudflared\token` |
+| HTTPS | entregue pela Cloudflare; entre o `cloudflared` e o Waitress é HTTP local |
+| Firewall | nenhuma porta aberta para o sistema (a regra da 8002 foi removida) |
+
+**O túnel `catraca` também leva o sistema de RH.** Não apague o túnel nem
+troque o token achando que é "só da catraca": os dois sistemas caem juntos.
+No painel, ao mexer no túnel, só **acrescente** ou edite a rota do sistema
+que você quer; não altere a rota da catraca.
+
+### Como o caminho funciona
+
+```
+navegador --HTTPS--> Cloudflare --túnel--> cloudflared (este servidor) --HTTP--> Waitress 127.0.0.1:8002 --> Django
+```
+
+O Waitress do serviço `SistemaRH` roda com:
+
+```
+-m waitress --listen=127.0.0.1:8002 --trusted-proxy=127.0.0.1 --trusted-proxy-headers="x-forwarded-for x-forwarded-proto" config.wsgi:application
+```
+
+- `--listen=127.0.0.1`: só o próprio servidor (o `cloudflared`) alcança o
+  Waitress. Ninguém da rede consegue falar direto com ele e forjar
+  cabeçalhos.
+- `--trusted-proxy` / `--trusted-proxy-headers`: o Waitress confia nos
+  cabeçalhos que o `cloudflared` envia. Sem isso, ele descarta o
+  `X-Forwarded-Proto: https`, o Django acha que tudo é HTTP e o
+  `SECURE_SSL_REDIRECT` entra em **loop de redirecionamento** (no Firefox:
+  "A página não está sendo redirecionada corretamente").
+
+Para mudar esses argumentos, use a tela do NSSM
+(`C:\nssm\win64\nssm.exe edit SistemaRH`, aba Application, campo
+Arguments) e clique em **Edit service** — fechar pelo X descarta a
+alteração. Confira com `nssm get SistemaRH AppParameters` e reinicie o
+serviço.
+
+### `.env` de produção (parte do acesso)
+
+```
+ALLOWED_HOSTS=rh.sotrix.com.br,localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=https://rh.sotrix.com.br
+ATRAS_DE_PROXY=True
+RECAPTCHA_SITE_KEY=...
+RECAPTCHA_SECRET_KEY=...
+```
+
+`ATRAS_DE_PROXY=True` liga juntos: cookies seguros, redirecionamento para
+HTTPS, HSTS e a leitura do `X-Forwarded-Proto`. **Só pode ficar `True`
+com o Waitress em `127.0.0.1`.** Esses valores vão no `.env`, nunca no
+`config/settings.py` (código, que só muda por `git pull`).
+
+### Diagnóstico rápido
+
+Simular a Cloudflare no próprio servidor:
+
+```
+curl.exe -s -o NUL -w "%{http_code} %{redirect_url}\n" -H "Host: rh.sotrix.com.br" -H "X-Forwarded-Proto: https" http://127.0.0.1:8002/
+```
+
+- `302` para a tela de login (ou `200`): Django e Waitress certos; se o
+  site não abre, o problema está na Cloudflare ou no `cloudflared`.
+- `301` para `https://rh.sotrix.com.br/`: o Waitress está descartando o
+  cabeçalho; conferir os argumentos do serviço.
+- Erro de conexão: o serviço `SistemaRH` não está rodando (ver
+  `logs\servidor_web.log`).
+
+O navegador memoriza redirecionamentos 301: depois de corrigir um loop,
+testar numa janela privativa.
+
+### Voltar para o acesso só pela rede interna (emergência)
+
+1. `.env`: `ATRAS_DE_PROXY=False` e `10.4.23.6` de volta no `ALLOWED_HOSTS`.
+2. Argumentos do serviço: `-m waitress --listen=0.0.0.0:8002 config.wsgi:application`.
+3. Firewall:
+   `New-NetFirewallRule -DisplayName "Sistema RH (8002)" -Direction Inbound -Protocol TCP -LocalPort 8002 -RemoteAddress 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -Action Allow`
+4. `Restart-Service SistemaRH`; acesso por `http://10.4.23.6:8002`.
+
+Nunca deixe `ATRAS_DE_PROXY=True` com o Waitress em `0.0.0.0`.

@@ -193,7 +193,7 @@
                 {% endif %}
                 <span class="sidebar__user-info">
                     <span class="sidebar__user-name">{{ usuario_atual.funcionario.nome }}</span>
-                    <span class="sidebar__user-role">{% if usuario_atual.papel != 'colaborador' %}{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %} · {% endif %}Matrícula {{ usuario_atual.funcionario.matricula }}</span>
+                    <span class="sidebar__user-role">{% if usuario_atual.papel == 'colaborador' and usuario_atual.acesso_rh %}Recursos Humanos · {% elif usuario_atual.papel != 'colaborador' %}{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %} · {% endif %}Matrícula {{ usuario_atual.funcionario.matricula }}</span>
                 </span>
             </a>
             <a href="{% url 'logout' %}" class="sidebar__sair" title="Sair" aria-label="Sair">{% icon 'log-out' %}</a>
@@ -237,7 +237,7 @@
 </div>
 
 {% block barra_inferior %}
-{% if usuario_atual.papel == 'colaborador' %}
+{% if usuario_atual.papel == 'colaborador' and not usuario_atual.eh_rh %}
 <nav class="bottom-nav">
     <a href="{% url 'dashboard' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'dashboard' %} active{% endif %}">
         {% icon 'home' %} Início

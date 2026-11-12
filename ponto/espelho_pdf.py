@@ -102,7 +102,11 @@ def dados_do_espelho(funcionario, data_inicio, data_fim):
             'faltas': 'Dia falta' if dia['dia_falta'] else _horas(dia['segundos_falta_dia']),
             'extra_50': _horas(dia['segundos_extra_50_dia']),
             'extra_100': _horas(dia['segundos_extra_100_dia']),
-            'observacao': _observacao(dia),
+            'observacao': ' '.join(filter(None, [
+                _observacao(dia),
+                # Sem coluna para elas: aparecem na observação para não sumirem do papel.
+                ('A mais: ' + ' '.join(_batida(e, dia['data']) for e in dia['batidas_a_mais'])) if dia['batidas_a_mais'] else '',
+            ])),
             'destaque': dia['folga'] or dia['ferias'] or dia['atestado'] or dia['feriado'],
         })
 
@@ -115,7 +119,7 @@ def dados_do_espelho(funcionario, data_inicio, data_fim):
     jornadas_do_periodo = [j for j in jornadas if j.data_inicio >= data_inicio] + [
         j for j in jornadas if j.data_inicio < data_inicio
     ][:1]
-    # Com muitos pares (até 5), as batidas encolhem para a observação não sumir.
+    # Com 3 pares, as batidas encolhem para a observação não sumir.
     sobra = LARGURA_UTIL_CM - LARGURA_DATA_CM - sum(LARGURAS_TOTAIS_CM) - LARGURA_MINIMA_OBS_CM
     largura_batida = min(LARGURA_BATIDA_CM, sobra / (2 * pares))
     largura_obs = LARGURA_UTIL_CM - LARGURA_DATA_CM - sum(LARGURAS_TOTAIS_CM) - largura_batida * 2 * pares

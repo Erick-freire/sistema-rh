@@ -200,7 +200,9 @@ def _janela_do_dia(data, horario_dia_hoje, horario_dia_ontem):
     return inicio, fim
 
 
-MAX_PARES_EXIBIDOS = 5  # mesmo limite do espelho do Secullum (Ent.1..Ent.5/Saí.1..Saí.5)
+# Colunas Ent./Saí. do espelho: o horário tem no máximo 3 pares (HorarioDia.entrada1..saida3).
+# Batida além disso (repetida, a mais) não some: vai para `batidas_a_mais` do dia.
+MAX_PARES_EXIBIDOS = 3
 
 # Vale para falta/atraso e para hora extra. Valor provisório: mais adiante vai
 # para a tela de parâmetros do RH (igual às margens de `turnos.py`). Inclusivo:
@@ -375,7 +377,7 @@ def _parear_eventos(eventos):
     if marcacao_impar:
         pares.append((eventos[-1], None))  # última batida sem par, sinalizada mas visível
 
-    return eventos, pares[:MAX_PARES_EXIBIDOS], segundos_trabalhados, marcacao_impar
+    return eventos, pares, segundos_trabalhados, marcacao_impar
 
 
 def _marcacoes_pareadas(funcionario, data, horario_dia_hoje=None, horario_dia_ontem=None):
@@ -486,12 +488,11 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         })
         dia_atual += timedelta(days=1)
 
-    # Mostra só quantos pares de entrada/saída o período realmente usou (em vez
-    # de sempre 5 fixos) -- a tela fica bem mais estreita na maioria dos casos,
-    # já que a maioria dos horários usa só 2 ou 3 pares por dia.
-    pares_no_periodo = max((len(d['pares']) for d in dias), default=0)
-    pares_no_periodo = max(2, min(pares_no_periodo, MAX_PARES_EXIBIDOS))
+    # Sempre os 3 pares do horário (Ent.1..Saí.3), mesmo em dia sem batida.
+    pares_no_periodo = MAX_PARES_EXIBIDOS
     for dia in dias:
+        # Continuam na conta do dia; ficam à parte só porque não há coluna para elas.
+        dia['batidas_a_mais'] = [evento for par in dia['pares'][MAX_PARES_EXIBIDOS:] for evento in par if evento]
         dia['pares'] = dia['pares'][:pares_no_periodo] + [(None, None)] * (pares_no_periodo - len(dia['pares']))
 
     superavit_50 = sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 50)

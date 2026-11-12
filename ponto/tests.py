@@ -1118,9 +1118,24 @@ class CalculosTests(TestCase):
         self.assertEqual(dia['segundos_extra_50_dia'], 3600)
         self.assertEqual(dia['segundos_extra_100_dia'], 0)
         self.assertEqual(dia['segundos_falta_dia'], 0)
-        self.assertEqual(len(dia['pares']), 2)  # só usou 2 pares nesse dia -- não preenche até 5 à toa
+        self.assertEqual(len(dia['pares']), 3)  # sempre as 3 colunas do horário, mesmo usando só 2
         pares_preenchidos = [p for p in dia['pares'] if p[0] is not None]
         self.assertEqual(len(pares_preenchidos), 2)
+
+    def test_batida_alem_do_terceiro_par_fica_a_parte_e_continua_na_conta(self):
+        FuncionarioJornada.objects.create(
+            funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=_criar_horario_util(4401),
+        )
+        dia = date(2026, 8, 3)
+        _bater_ponto(self.funcionario, self.equipamento, dia, '08:05', '12:02', '12:03', '13:15', '16:05', '16:26', '17:57')
+
+        resultado = calcular_periodo(self.funcionario, dia, dia)
+
+        self.assertEqual(resultado['pares_no_periodo'], 3)  # nada de Ent.4/Saí.4
+        linha = resultado['dias'][0]
+        self.assertEqual(len(linha['pares']), 3)
+        self.assertEqual([timezone.localtime(e.momento).strftime('%H:%M') for e in linha['batidas_a_mais']], ['17:57'])
+        self.assertTrue(linha['marcacao_impar'])
 
     def test_hora_extra_domingo_e_taxa_100(self):
         horario = _criar_horario_util(4003)
@@ -2136,6 +2151,102 @@ class EspelhoCalculoViewTests(TestCase):
 
         self.assertContains(resposta, 'Sem salário cadastrado')
         self.assertNotContains(resposta, 'A descontar:')
+
+
+class EspelhoSetorPorDiaTests(TestCase):
+    """Setor escolhido na tela: um dia por vez, as batidas de todos do setor, para o RH ajustar."""
+
+    def setUp(self):
+        rh_setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=rh_setor, cpf='22222222222')
+        user = User.objects.create_user(username='rhteste', password='senha123')
+        Usuario.objects.create(user=user, funcionario=rh, papel='rh')
+        self.client.login(username='rhteste', password='senha123')
+        self.equipamento = _criar_equipamento()
+        self.producao = Setor.objects.create(nome='Produção')
+        horario = _criar_horario_util(4601)
+        self.ana = Funcionario.objects.create(nome='Ana Prod', matricula='4601', cargo='Op', setor=self.producao, cpf='46011111111')
+        self.beto = Funcionario.objects.create(nome='Beto Prod', matricula='4602', cargo='Op', setor=self.producao, cpf='46022222222')
+        Funcionario.objects.create(  # inativo não entra
+            nome='Caio Saiu', matricula='4603', cargo='Op', setor=self.producao, cpf='46033333333', status='inativo',
+        )
+        for funcionario in (self.ana, self.beto):
+            FuncionarioJornada.objects.create(funcionario=funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+
+    def _tela(self, **extra):
+        parametros = {'filtro': 'setor', 'setor': self.producao.id, 'data_inicio': '2026-08-03', 'data_fim': '2026-08-07'}
+        parametros.update(extra)
+        return self.client.get(reverse('ponto:listar_calculo'), parametros)
+
+    def test_mostra_todos_do_setor_no_primeiro_dia(self):
+        _bater_ponto(self.ana, self.equipamento, date(2026, 8, 3), '08:00', '12:00', '13:00', '17:00')
+
+        resposta = self._tela()
+
+        esp = resposta.context['espelho_setor']
+        self.assertEqual(esp['dia'], date(2026, 8, 3))
+        self.assertEqual([linha['funcionario'] for linha in esp['linhas']], [self.ana, self.beto])
+        self.assertEqual(esp['linhas'][1]['situacao'], 'Dia falta')
+        self.assertEqual(esp['pendencias'], 1)
+        self.assertEqual(len(esp['dias']), 5)
+        self.assertIsNone(esp['url_anterior'])
+        self.assertIn('dia=2026-08-04', esp['url_seguinte'])
+        self.assertIsNone(resposta.context['resultado'])
+        self.assertNotContains(resposta, 'Atestados no período')  # nada do espelho de um funcionário
+        self.assertNotContains(resposta, 'Normais')
+        # Lápis de cada pessoa leva à correção daquela pessoa naquele dia, voltando para este dia do setor.
+        self.assertContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.beto.id, '2026-08-03']))
+        self.assertContains(resposta, reverse('lancar_atestado', args=[self.beto.id]))
+
+    def test_dia_sem_batidas_mostra_os_3_pares(self):
+        resposta = self._tela(dia='2026-08-08')  # sábado, folga de todos
+
+        self.assertContains(resposta, 'Saí.3')
+        self.assertNotContains(resposta, 'Ent.4')
+
+    def test_navega_para_outro_dia(self):
+        _bater_ponto(self.beto, self.equipamento, date(2026, 8, 5), '08:00', '12:00')
+
+        esp = self._tela(dia='2026-08-05').context['espelho_setor']
+
+        self.assertEqual(esp['dia'], date(2026, 8, 5))
+        beto = esp['linhas'][1]
+        self.assertEqual(timezone.localtime(beto['dia']['pares'][0][0].momento).hour, 8)
+        self.assertIn('dia=2026-08-04', esp['url_anterior'])
+
+    def test_sem_coluna_ent4_e_batida_a_mais_com_lapis(self):
+        marcacoes = _bater_ponto(
+            self.ana, self.equipamento, date(2026, 8, 3), '08:05', '12:02', '12:03', '13:15', '16:05', '16:26', '17:57',
+        )
+
+        resposta = self._tela()
+
+        self.assertNotContains(resposta, 'Ent.4')
+        self.assertContains(resposta, 'Ent.3')
+        self.assertContains(resposta, 'a mais:')
+        self.assertContains(resposta, f'marcacao_original={marcacoes[-1].id}')
+
+    def test_dia_fora_do_periodo_volta_para_dentro(self):
+        self.assertEqual(self._tela(dia='2026-09-30').context['espelho_setor']['dia'], date(2026, 8, 7))
+
+    def test_abono_do_dia_volta_para_o_mesmo_dia(self):
+        proxima = reverse('ponto:listar_calculo') + f'?filtro=setor&setor={self.producao.id}&dia=2026-08-04'
+
+        resposta = self.client.post(reverse('lancar_atestado', args=[self.beto.id]), {
+            'data_inicio': '2026-08-04', 'data_fim': '2026-08-04', 'motivo': '', 'proxima': proxima,
+        })
+
+        self.assertRedirects(resposta, proxima, fetch_redirect_response=False)
+        linha = self._tela(dia='2026-08-04').context['espelho_setor']['linhas'][1]
+        self.assertEqual(linha['situacao'], 'Atestado')
+        self.assertFalse(linha['pode_abonar'])
+
+    def test_gestor_nao_ve_setor_de_fora(self):
+        gestor = Funcionario.objects.create(nome='Gil', matricula='4609', cargo='G', setor=Setor.objects.create(nome='Outro'), cpf='46099999999')
+        Usuario.objects.create(user=User.objects.create_user(username='gil', password='senha123'), funcionario=gestor, papel='gestor')
+        self.client.login(username='gil', password='senha123')
+
+        self.assertEqual(self._tela().status_code, 404)
 
 
 class MeuPontoViewTests(TestCase):

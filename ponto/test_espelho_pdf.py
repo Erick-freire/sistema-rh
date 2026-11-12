@@ -57,7 +57,7 @@ class DadosDoEspelhoTests(BaseEspelhoTestCase):
 
         primeiro = espelho['dias'][0]
         self.assertEqual(primeiro['data'], '01/09 ter')
-        self.assertEqual(primeiro['batidas'], ['08:00', '12:00', '13:00', '18:00*'])
+        self.assertEqual(primeiro['batidas'], ['08:00', '12:00', '13:00', '18:00*', '', ''])
         self.assertEqual(primeiro['extra_50'], '01:00')
         self.assertEqual(espelho['dias'][1]['faltas'], 'Dia falta')  # 02/09 sem batida
         self.assertEqual(espelho['dias'][4]['observacao'], 'Folga')  # sábado
@@ -75,7 +75,7 @@ class DadosDoEspelhoTests(BaseEspelhoTestCase):
 
         espelho = espelho_pdf.dados_do_espelho(self.bia, date(2026, 9, 1), date(2026, 9, 2))
 
-        self.assertEqual(espelho['dias'][0]['batidas'], ['18:00', '22:00', '23:00', '06:00+1'])
+        self.assertEqual(espelho['dias'][0]['batidas'], ['18:00', '22:00', '23:00', '06:00+1', '', ''])
 
     def test_totais_tem_noturno_no_relogio_e_convertido(self):
         horario = Horario.objects.create(numero=7103, nome='12x36 noturno', eh_12x36=True)

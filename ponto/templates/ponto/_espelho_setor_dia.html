@@ -1,0 +1,100 @@
+{% comment %}
+Espelho do setor, um dia por "página": as batidas de todos do setor naquele dia,
+com o mesmo lápis do espelho individual (lançar/corrigir batida) e o abono por
+atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
+{% endcomment %}
+{% load rh_icons %}
+{% load ponto_extras %}
+
+<div class="card">
+    <div class="card__header">
+        <span class="card__title">
+            {{ esp.setor.nome }} — {{ esp.dia|date:'l, d/m/Y' }}
+            <span class="espelho-ajuda">(dia {{ esp.posicao }} de {{ esp.total_dias }})</span>
+        </span>
+        <div class="espelho-setor-nav">
+            {% if esp.url_anterior %}
+                <a class="btn-outline btn-sm" href="{{ esp.url_anterior }}" title="Dia anterior">{% icon 'arrow-left' %} Anterior</a>
+            {% endif %}
+            {% if esp.url_seguinte %}
+                <a class="btn-outline btn-sm" href="{{ esp.url_seguinte }}" title="Próximo dia">Próximo {% icon 'chevron-right' %}</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if esp.dias %}
+    <div class="espelho-setor-dias">
+        {% for d in esp.dias %}
+            <a class="chip chip--dia{% if d.atual %} chip--ativo{% endif %}" href="{{ d.url }}"{% if d.atual %} aria-current="page"{% endif %}>
+                {{ d.data|date:'d/m' }} <small>{{ d.data|date:'D' }}</small>
+            </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if esp.linhas %}
+    <p class="espelho-ajuda" style="margin-bottom: 10px;">
+        {{ esp.linhas|length }} pessoa{{ esp.linhas|length|pluralize }}{% if esp.pendencias %} · <strong>{{ esp.pendencias }} com pendência</strong>{% endif %}.
+        Passe o mouse numa batida e clique no lápis para lançar ou corrigir; "Abonar" lança um atestado só para este dia.
+    </p>
+    <div class="table-responsive">
+        <table class="tabela-compacta">
+            <thead>
+                <tr>
+                    <th>Funcionário</th>
+                    {% for n in esp.numeros_dos_pares %}
+                        <th>Ent.{{ n }}</th><th>Saí.{{ n }}</th>
+                    {% endfor %}
+                    <th>Ajuste</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for linha in esp.linhas %}
+                {% with f=linha.funcionario dia=linha.dia %}
+                <tr {% if dia.sem_jornada %}style="background-color: var(--color-error-bg);"{% elif dia.folga %}style="background-color: var(--color-neutral-bg);"{% elif dia.marcacao_impar %}style="background-color: var(--color-pending-bg);"{% endif %}>
+                    <td>
+                        <a href="{% url 'ponto:listar_calculo' %}?funcionario={{ f.id }}&data_inicio={{ data_inicio }}&data_fim={{ data_fim }}" title="Abrir o espelho do período de {{ f.nome }}">{{ f.nome }}</a>
+                        {% if f.matricula %}<span class="espelho-ajuda">· {{ f.matricula }}</span>{% endif %}
+                        {% if linha.cor != 'aprovado' %}<br><span class="badge-status badge-status--{{ linha.cor }}">{{ linha.situacao }}</span>{% endif %}
+                    </td>
+                    {% for entrada, saida in dia.pares %}
+                        <td class="celula-ponto">
+                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{{ entrada.momento|marca_dia_turno:dia.data }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
+                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.marcacao_id %}&marcacao_original={{ entrada.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
+                        </td>
+                        <td class="celula-ponto">
+                            {% if saida %}{{ saida.momento|time:'H:i' }}{{ saida.momento|marca_dia_turno:dia.data }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
+                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.marcacao_id %}&marcacao_original={{ saida.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
+                        {% if forloop.last and dia.batidas_a_mais %}
+                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija ou anule pelo lápis.">
+                                a mais:{% for extra in dia.batidas_a_mais %}
+                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a></span>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                    <td>
+                        {% if linha.pode_abonar %}
+                        <details class="abono-dia">
+                            <summary class="btn-outline btn-sm">Abonar</summary>
+                            <form method="post" action="{% url 'lancar_atestado' f.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+                                <input type="hidden" name="data_inicio" value="{{ dia.data|date:'Y-m-d' }}">
+                                <input type="hidden" name="data_fim" value="{{ dia.data|date:'Y-m-d' }}">
+                                <input type="text" name="motivo" maxlength="200" placeholder="Motivo (opcional)">
+                                <button type="submit" class="btn-primario btn-sm">Lançar atestado em {{ dia.data|date:'d/m' }}</button>
+                            </form>
+                        </details>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endwith %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="espelho-ajuda">Nenhum funcionário ativo que bate ponto neste setor.</p>
+    {% endif %}
+</div>
