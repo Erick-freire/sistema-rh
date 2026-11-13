@@ -84,12 +84,12 @@ class DivisaoPerfisTests(TestCase):
 
     def test_dp_nao_concede_acesso_rh(self):
         self.client.force_login(self.user_dp)
-        self.client.get(reverse('alternar_acesso_rh', args=[self.colaborador.id]))
+        self.client.post(reverse('alternar_acesso_rh', args=[self.colaborador.id]))
         self.assertFalse(Usuario.objects.get(funcionario=self.colaborador).acesso_rh)
 
     def test_rh_concede_acesso_rh(self):
         self.client.force_login(self.user_rh)
-        self.client.get(reverse('alternar_acesso_rh', args=[self.colaborador.id]))
+        self.client.post(reverse('alternar_acesso_rh', args=[self.colaborador.id]))
         self.assertTrue(Usuario.objects.get(funcionario=self.colaborador).acesso_rh)
 
     def test_dp_nao_ve_o_modulo_de_epi(self):
@@ -200,7 +200,7 @@ class FichaEPIFluxoTests(TestCase):
         ItemEPI.objects.create(ficha=ficha, item_catalogo=self.botina)
         self.client.force_login(self.user_seguranca)
 
-        self.client.get(reverse('gerar_pdf_ficha_epi', args=[ficha.id]))
+        self.client.post(reverse('gerar_pdf_ficha_epi', args=[ficha.id]))
 
         ficha.refresh_from_db()
         self.assertTrue(ficha.arquivo_gerado)

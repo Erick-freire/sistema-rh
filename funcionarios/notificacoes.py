@@ -25,6 +25,7 @@ from django.utils import timezone
 from pywebpush import WebPushException, webpush
 
 from .models import InscricaoPush
+from .perfis import acesso_encerrado
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,9 @@ def notificar(usuarios, titulo, corpo, url, tag='', exceto=None, em_segundo_plan
     """
     if not push_configurado():
         return
-    ids = {u.pk for u in usuarios if u is not None and u.is_active}
+    # Quem saiu (CLT desligado, prestadora inativa) não recebe mais nada --
+    # um ex-gestor continuaria vendo no celular os pedidos da antiga equipe.
+    ids = {u.pk for u in usuarios if u is not None and u.is_active and not acesso_encerrado(u)}
     if exceto is not None:
         ids.discard(exceto.pk)
     if not ids:

@@ -19,7 +19,7 @@ Meus Documentos
                 {% csrf_token %}
                 <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">
                 <input type="hidden" name="origem" value="meus_documentos">
-                <input type="file" name="arquivo" id="arquivo-contrato" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo" id="arquivo-contrato" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-contrato" class="btn btn-sm">{% icon 'upload' %} Enviar</label>
             </form>
         </div>
@@ -46,7 +46,7 @@ Meus Documentos
             <a href="{% url 'ver_comodato' comodato.id 'gerado' %}" target="_blank" class="btn btn-sm">{% icon 'download' %} Baixar</a>
             <form method="post" action="{% url 'reenviar_comodato_assinado' comodato.id %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
-                <input type="file" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-comodato-{{ comodato.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
             </form>
             {% elif comodato.arquivo_assinado %}
@@ -77,7 +77,7 @@ Meus Documentos
             <a href="{% url 'ver_ficha_epi' ficha.id 'gerado' %}" target="_blank" class="btn btn-sm">{% icon 'download' %} Baixar</a>
             <form method="post" action="{% url 'reenviar_epi_assinado' ficha.id %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
-                <input type="file" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-epi-{{ ficha.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
             </form>
             {% elif ficha.arquivo_assinado %}
@@ -108,7 +108,7 @@ Meus Documentos
                 <div class="item-card__titulo">{{ tipo.nome }}</div>
                 {% with dica=tipo.nome|dica_documento %}{% if dica %}<div class="item-card__subtitulo">{{ dica }}</div>{% endif %}{% endwith %}
             </div>
-            <input type="file" name="arquivo" id="arquivo-pendente-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
+            <input type="file" accept="{% accept_documento %}" name="arquivo" id="arquivo-pendente-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
             <label for="arquivo-pendente-{{ tipo.id }}" class="btn btn-sm">Enviar</label>
         </form>
         {% endfor %}
@@ -130,7 +130,7 @@ Meus Documentos
                 <div class="item-card__titulo">{{ tipo.nome }}</div>
                 {% with dica=tipo.nome|dica_documento %}{% if dica %}<div class="item-card__subtitulo">{{ dica }}</div>{% endif %}{% endwith %}
             </div>
-            <input type="file" name="arquivo" id="arquivo-opcional-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
+            <input type="file" accept="{% accept_documento %}" name="arquivo" id="arquivo-opcional-{{ tipo.id }}" data-tipo-id="{{ tipo.id }}" style="display: none;" required onchange="this.form.submit()">
             <label for="arquivo-opcional-{{ tipo.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar</label>
         </form>
         {% endfor %}
@@ -155,7 +155,7 @@ Meus Documentos
                     {% csrf_token %}
                     <input type="hidden" name="tipo_documento" value="{{ documento.tipo_documento_id }}">
                     <input type="hidden" name="origem" value="meus_documentos">
-                    <input type="file" name="arquivo" id="arquivo-reenvio-{{ documento.id }}" style="display: none;" required onchange="this.form.submit()">
+                    <input type="file" accept="{% accept_documento %}" name="arquivo" id="arquivo-reenvio-{{ documento.id }}" style="display: none;" required onchange="this.form.submit()">
                     <label for="arquivo-reenvio-{{ documento.id }}" class="btn btn-sm">Reenviar</label>
                 </form>
                 {% else %}

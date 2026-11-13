@@ -161,6 +161,32 @@ class LinhaFechamento(models.Model):
         return bool(automaticos) and campo in automaticos and getattr(self, campo) != self.valor_automatico(campo)
 
 
+class AlteracaoCelula(models.Model):
+    """
+    Histórico da grade da folha: quem mudou qual valor de uma linha, quando, e
+    o que havia antes (decisão do usuário em 13/11/2026). Só o que alguém
+    digita na grade -- o recálculo automático não entra. Os valores ficam como
+    o texto exibido na célula ("1.234,56", "6%", "SIM"), igual ao que a pessoa viu.
+    """
+
+    linha = models.ForeignKey(LinhaFechamento, on_delete=models.CASCADE, related_name='alteracoes')
+    campo = models.CharField(max_length=40)
+    valor_anterior = models.CharField(max_length=60, blank=True)
+    valor_novo = models.CharField(max_length=60, blank=True)
+    alterado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+',
+    )
+    alterado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-alterado_em', '-id']
+        verbose_name = 'alteração da folha'
+        verbose_name_plural = 'alterações da folha'
+
+    def __str__(self):
+        return f'{self.linha.nome} · {self.campo}: {self.valor_anterior or "—"} → {self.valor_novo or "—"}'
+
+
 def normalizar_cargo(cargo):
     """'Auxiliar de Produção' e 'AUXILIAR DE PRODUCAO ' são o mesmo cargo para as regras."""
     sem_acento = unicodedata.normalize('NFKD', cargo or '').encode('ascii', 'ignore').decode()

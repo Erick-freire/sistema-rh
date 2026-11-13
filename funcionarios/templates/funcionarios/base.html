@@ -89,7 +89,7 @@
                 </li>
                 {% if usuario_atual.papel == 'gestor' %}
                 {# Sem DP/RH, o gestor usa o Espelho e os Ajustes pendentes pelo "Ponto da Equipe", só com a equipe dele. #}
-                <li class="{% if 'ponto_equipe' in request.resolver_match.url_name or request.resolver_match.app_name == 'ponto' and not usuario_atual.eh_dp_ou_rh %}active{% endif %}">
+                <li class="{% if 'ponto_equipe' in request.resolver_match.url_name or request.resolver_match.app_name == 'ponto' and not usuario_atual.eh_dp_ou_rh and 'equipamento' not in request.resolver_match.url_name %}active{% endif %}">
                     <a href="{% url 'ponto:ponto_equipe' %}">
                         {% icon 'clock' %} Ponto da Equipe
                         {% if badge_ajustes_pendentes and not usuario_atual.eh_dp_ou_rh %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
@@ -182,12 +182,22 @@
                     <a href="{% url 'meu_perfil' %}">{% icon 'user' %} Meu Perfil</a>
                 </li>
             </ul>
+
+            {% if usuario_atual.eh_administrador_do_sistema and not usuario_atual.eh_dp_ou_rh %}
+            {# DP/RH já chega aos relógios por Ponto > Equipamentos. #}
+            <div class="sidebar__section">TI</div>
+            <ul>
+                <li class="{% if request.resolver_match.app_name == 'ponto' and 'equipamento' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'ponto:listar_equipamentos' %}">{% icon 'clock' %} Relógios de ponto</a>
+                </li>
+            </ul>
+            {% endif %}
         </nav>
 
         <div class="sidebar__rodape">
             <a href="{% url 'meu_perfil' %}" class="sidebar__user" title="Meu perfil">
                 {% if usuario_atual.funcionario.foto %}
-                <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--sm avatar--foto">
+                <img src="{% url 'foto_funcionario' usuario_atual.funcionario.id %}" alt="" class="avatar avatar--sm avatar--foto">
                 {% else %}
                 <span class="avatar avatar--sm avatar--claro">{{ usuario_atual.funcionario.iniciais }}</span>
                 {% endif %}
@@ -196,7 +206,10 @@
                     <span class="sidebar__user-role">{% if usuario_atual.papel == 'colaborador' and usuario_atual.acesso_rh %}Recursos Humanos · {% elif usuario_atual.papel != 'colaborador' %}{{ usuario_atual.get_papel_display }}{% if usuario_atual.papel != 'rh' and usuario_atual.acesso_rh %} + RH{% endif %} · {% endif %}Matrícula {{ usuario_atual.funcionario.matricula }}</span>
                 </span>
             </a>
-            <a href="{% url 'logout' %}" class="sidebar__sair" title="Sair" aria-label="Sair">{% icon 'log-out' %}</a>
+            <form method="post" action="{% url 'logout' %}" class="sidebar__sair-form">
+                {% csrf_token %}
+                <button type="submit" class="sidebar__sair" title="Sair" aria-label="Sair">{% icon 'log-out' %}</button>
+            </form>
         </div>
         {% endblock %}
     </aside>
@@ -210,7 +223,7 @@
                 {% block appbar_avatar %}
                 <a href="{% url 'meu_perfil' %}" class="appbar__avatar" aria-label="Meu perfil">
                     {% if usuario_atual.funcionario.foto %}
-                    <img src="{{ usuario_atual.funcionario.foto.url }}" alt="" class="avatar avatar--foto">
+                    <img src="{% url 'foto_funcionario' usuario_atual.funcionario.id %}" alt="" class="avatar avatar--foto">
                     {% else %}
                     <span class="avatar avatar--claro">{{ usuario_atual.funcionario.iniciais }}</span>
                     {% endif %}

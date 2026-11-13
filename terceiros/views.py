@@ -8,13 +8,15 @@ from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.views.decorators.http import require_POST
 from xhtml2pdf import pisa
 
+from funcionarios.arquivos import resposta_de_arquivo
 from funcionarios.decorators import papel_required
 from funcionarios.perfis import responsavel_terceiro_de, usuario_de
 from funcionarios.utils import data_por_extenso
@@ -100,6 +102,7 @@ def listar_empresas_view(request):
 
 @login_required
 @papel_required('rh', 'dp')
+@never_cache  # mostra a senha gerada: o "voltar" do navegador não pode reexibi-la
 def cadastrar_empresa_view(request):
     if request.method == 'POST':
         form = CadastroEmpresaForm(request.POST)
@@ -193,6 +196,8 @@ def detalhe_empresa_view(request, empresa_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
+@never_cache  # mostra a senha gerada: o "voltar" do navegador não pode reexibi-la
 def resetar_senha_responsavel_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
     responsavel = getattr(empresa, 'responsavel', None)
@@ -217,6 +222,7 @@ def resetar_senha_responsavel_view(request, empresa_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def alternar_status_empresa_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
 
@@ -475,6 +481,7 @@ def editar_clausula_view(request, clausula_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def alternar_clausula_view(request, clausula_id):
     clausula = get_object_or_404(ClausulaContratual, id=clausula_id)
     clausula.ativa = not clausula.ativa
@@ -609,6 +616,7 @@ def rejeitar_documento_empresa_view(request, documento_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def validar_empresa_view(request, empresa_id):
     empresa = get_object_or_404(EmpresaTerceira, id=empresa_id)
 
@@ -910,6 +918,7 @@ def detalhe_colaborador_view(request, colaborador_id):
 
 @login_required
 @responsavel_required
+@require_POST
 def enviar_para_validacao_view(request):
     empresa = request.responsavel.empresa
 
@@ -963,7 +972,7 @@ def baixar_contrato_view(request, contrato_id):
         messages.error(request, 'Este contrato ainda não tem PDF gerado.')
         return redirect('dashboard')
 
-    return FileResponse(contrato.arquivo_gerado.open('rb'), filename=contrato.nome_arquivo)
+    return resposta_de_arquivo(contrato.arquivo_gerado, contrato.nome_arquivo)
 
 
 @login_required
@@ -977,7 +986,7 @@ def ver_documento_view(request, documento_id):
         messages.error(request, 'Você não tem permissão para acessar este documento.')
         return redirect('dashboard')
 
-    return FileResponse(documento.arquivo.open('rb'), filename=documento.nome_arquivo)
+    return resposta_de_arquivo(documento.arquivo, documento.nome_arquivo)
 
 
 @login_required
@@ -991,4 +1000,4 @@ def ver_documento_empresa_view(request, documento_id):
         messages.error(request, 'Você não tem permissão para acessar este documento.')
         return redirect('dashboard')
 
-    return FileResponse(documento.arquivo.open('rb'), filename=documento.nome_arquivo)
+    return resposta_de_arquivo(documento.arquivo, documento.nome_arquivo)

@@ -1,4 +1,6 @@
-const CACHE_ESTATICO = 'sistema-rh-estatico-v2';
+// v3: deixou de guardar /media/ (foto de perfil). Trocar a versão faz o
+// `activate` abaixo apagar, em cada aparelho, o cache antigo com as fotos.
+const CACHE_ESTATICO = 'sistema-rh-estatico-v3';
 const PAGINA_OFFLINE = '/offline/';
 
 const RECURSOS_ESTATICOS = [
@@ -36,7 +38,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
 
-  if (url.pathname.startsWith('/static/') || url.pathname.startsWith('/media/')) {
+  // Só /static/ (estilo, scripts, ícones). Arquivo de pessoa -- foto,
+  // documento -- nunca fica no aparelho: num celular compartilhado, ficaria
+  // para o próximo que pegasse.
+  if (url.pathname.startsWith('/static/')) {
     // Rede primeiro, cache só como reserva. Servir do cache primeiro fazia toda
     // mudança de CSS/JS aparecer apenas no carregamento seguinte: a tela vinha
     // com o estilo antigo e parecia quebrada. O arquivo não tem hash no nome

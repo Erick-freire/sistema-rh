@@ -6,9 +6,16 @@ from django.contrib.staticfiles.finders import find
 from django.templatetags.static import static
 from django.utils.safestring import mark_safe
 
+from ..arquivos import ACCEPT_DOCUMENTO
 from ..utils import DIAS_SEMANA
 
 register = template.Library()
+
+
+@register.simple_tag
+def accept_documento():
+    """Valor do `accept` nos <input type="file"> de documento (ver funcionarios/arquivos.py)."""
+    return ACCEPT_DOCUMENTO
 
 ICONS = {
     'home': '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
@@ -63,6 +70,12 @@ DICAS_DOCUMENTOS = {
 @register.filter
 def dica_documento(nome):
     return DICAS_DOCUMENTOS.get((nome or '').strip().lower(), '')
+
+
+@register.filter
+def pode_redefinir_senha_de(usuario, alvo):
+    """`{% if usuario_atual|pode_redefinir_senha_de:funcionario.usuario %}` -- a regra é a do model."""
+    return bool(usuario and alvo) and usuario.pode_redefinir_senha_de(alvo)
 
 
 @register.filter

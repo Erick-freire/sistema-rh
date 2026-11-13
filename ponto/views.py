@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,17 +11,20 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
+from django.views.decorators.http import require_POST
 
 from funcionarios import notificacoes
 from funcionarios.decorators import papel_required
 from funcionarios.forms import AtestadoForm
-from funcionarios.models import Usuario
+from funcionarios.models import MENSAGEM_ALTERACAO_RESTRITA, Usuario
+from funcionarios.perfis import usuario_de
 
 from . import espelho_pdf, services
 from .calculos import MAX_PARES_EXIBIDOS, calcular_periodo, situacao_do_dia, valores_do_periodo
 from .forms import (
     AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, ExportarEspelhoForm, FeriadoForm,
-    FuncionarioJornadaForm, HorarioDiaFormSet, HorarioForm, RejeitarAjusteForm, SolicitarAjusteForm,
+    FuncionarioJornadaForm, HorarioDiaFormSet, HorarioForm, MENSAGEM_PERIODO_LONGO, RejeitarAjusteForm,
+    SolicitarAjusteForm, periodo_longo_demais,
 )
 from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
 from .utils import intervalo_do_dia
@@ -56,8 +60,47 @@ def _funcionarios_permitidos(request):
     return request.user.usuario.funcionarios_que_opera()
 
 
+def _bloqueio_se_nao_altera(request, funcionario, destino):
+    """
+    Ver o ponto não é alterar: quem é DP/RH não ajusta, nem aprova, nem troca a
+    jornada do próprio ponto ou do de outro DP/RH (`Usuario.funcionarios_que_altera`).
+    """
+    if request.user.usuario.pode_alterar_ponto_e_folha_de(funcionario):
+        return None
+    messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+    return redirect(destino)
+
+
+MENSAGEM_RELOGIO_SO_TI = (
+    'Cadastrar, editar, testar, ativar/desativar e excluir relógio fica com a TI. '
+    'Aqui você recebe as batidas e envia os cadastros.'
+)
+
+
+def _so_ti(view_func):
+    """
+    Configurar relógio é só da TI, que no sistema é a conta de administrador
+    (superuser ou "membro da equipe" no /admin/). Quem troca o IP troca o
+    destino da senha de admin do relógio: o sistema a manda no login de cada
+    teste e de cada sincronização. A senha de conta de administrador o RH não
+    redefine (`Usuario.pode_redefinir_senha_de`), então não entra como a TI.
+    RH e DP ficam com receber batidas e enviar cadastros.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if request.user.is_superuser or request.user.is_staff:
+            return view_func(request, *args, **kwargs)
+        usuario = usuario_de(request.user)
+        if usuario and usuario.eh_dp_ou_rh():
+            messages.error(request, MENSAGEM_RELOGIO_SO_TI)
+            return redirect('ponto:listar_equipamentos')
+        messages.error(request, 'Você não tem permissão para acessar essa página.')
+        return redirect('dashboard')
+    return wrapper
+
+
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', ou_administrador=True)
 def listar_equipamentos_view(request):
     equipamentos = Equipamento.objects.all()
     desde = services.inicio_da_revinculacao()
@@ -69,7 +112,7 @@ def listar_equipamentos_view(request):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@_so_ti
 def cadastrar_equipamento_view(request):
     if request.method == 'POST':
         form = EquipamentoForm(request.POST)
@@ -84,7 +127,7 @@ def cadastrar_equipamento_view(request):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@_so_ti
 def editar_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
 
@@ -101,7 +144,8 @@ def editar_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@_so_ti
+@require_POST
 def testar_conexao_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
 
@@ -115,7 +159,8 @@ def testar_conexao_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@_so_ti
+@require_POST
 def alternar_status_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
     equipamento.ativo = not equipamento.ativo
@@ -130,7 +175,8 @@ def alternar_status_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@_so_ti
+@require_POST
 def excluir_equipamento_view(request, equipamento_id):
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
     nome = equipamento.nome
@@ -149,7 +195,8 @@ def excluir_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', ou_administrador=True)
+@require_POST
 def enviar_equipamento_view(request, equipamento_id):
     """
     "Enviar": só processa os cadastros pendentes desse equipamento (igual ao
@@ -171,7 +218,8 @@ def enviar_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', ou_administrador=True)
+@require_POST
 def receber_equipamento_view(request, equipamento_id):
     """"Receber": só puxa as marcações novas desse equipamento (igual ao Receber do Secullum)."""
     equipamento = get_object_or_404(Equipamento, id=equipamento_id)
@@ -181,7 +229,8 @@ def receber_equipamento_view(request, equipamento_id):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', ou_administrador=True)
+@require_POST
 def enviar_todos_view(request):
     processadas, sucesso = services.processar_pendencias()
 
@@ -196,7 +245,8 @@ def enviar_todos_view(request):
 
 
 @login_required
-@papel_required('rh', 'dp')
+@papel_required('rh', 'dp', ou_administrador=True)
+@require_POST
 def receber_todos_view(request):
     total_marcacoes = sum(services.coletar_marcacoes(e) for e in Equipamento.objects.filter(ativo=True))
     messages.success(request, f'{total_marcacoes} marcação(ões) nova(s).')
@@ -284,6 +334,7 @@ def editar_horario_view(request, horario_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def excluir_horario_view(request, horario_id):
     horario = get_object_or_404(Horario, id=horario_id)
     numero = horario.numero
@@ -319,6 +370,9 @@ def ajustar_marcacao_view(request, funcionario_id, data):
     url_voltar = voltar if voltar and url_has_allowed_host_and_scheme(
         voltar, allowed_hosts={request.get_host()}, require_https=request.is_secure()
     ) else f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+    bloqueio = _bloqueio_se_nao_altera(request, funcionario, url_voltar)
+    if bloqueio:
+        return bloqueio
 
     if request.method == 'POST':
         form = AjustarMarcacaoForm(request.POST)
@@ -370,13 +424,29 @@ def ajustar_marcacao_view(request, funcionario_id, data):
     })
 
 
+def _periodo_do_espelho(request, hoje):
+    """Período da URL; data malformada volta para o padrão (dia 1º do mês até hoje) com aviso, sem erro 500."""
+    padrao = (hoje.replace(day=1), hoje)
+    try:
+        return (
+            date.fromisoformat(request.GET.get('data_inicio') or padrao[0].isoformat()),
+            date.fromisoformat(request.GET.get('data_fim') or padrao[1].isoformat()),
+        )
+    except ValueError:
+        messages.warning(request, 'Data inválida no endereço: mostrando do dia 1º do mês até hoje.')
+        return padrao
+
+
 @login_required
 @papel_required('rh', 'dp', 'gestor')
 def listar_calculo_view(request):
     usuario = request.user.usuario
     hoje = timezone.now().date()
-    data_inicio = date.fromisoformat(request.GET.get('data_inicio') or hoje.replace(day=1).isoformat())
-    data_fim = date.fromisoformat(request.GET.get('data_fim') or hoje.isoformat())
+    data_inicio, data_fim = _periodo_do_espelho(request, hoje)
+    # Acima de 5 anos não calcula (nem o funcionário, nem o setor): avisa e deixa as datas para ajustar.
+    periodo_ok = not periodo_longo_demais(data_inicio, data_fim)
+    if not periodo_ok:
+        messages.error(request, MENSAGEM_PERIODO_LONGO)
 
     funcionario_id = request.GET.get('funcionario')
     funcionario = None
@@ -387,7 +457,7 @@ def listar_calculo_view(request):
     numeros_dos_pares = []
 
     filtro = request.GET.get('filtro') or 'funcionario'
-    if funcionario_id and filtro == 'funcionario':
+    if funcionario_id and filtro == 'funcionario' and periodo_ok:
         funcionario = get_object_or_404(usuario.funcionarios_que_opera(), id=funcionario_id)
         resultado = calcular_periodo(funcionario, data_inicio, data_fim)
         valores = valores_do_periodo(resultado['totais'], funcionario.salario)
@@ -408,7 +478,7 @@ def listar_calculo_view(request):
     # Setor: a mesma tela de ajuste, mas um dia por "página", com todos do setor.
     setor_id = request.GET.get('setor')
     espelho_setor = None
-    if filtro == 'setor' and setor_id and data_inicio <= data_fim:
+    if filtro == 'setor' and setor_id and data_inicio <= data_fim and periodo_ok:
         setor = get_object_or_404(filtro_form.fields['setor'].queryset, id=setor_id)
         dia = min(max(_data_do_get(request, 'dia', data_inicio), data_inicio), data_fim)
         espelho_setor = _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim)
@@ -524,8 +594,10 @@ def exportar_espelho_view(request):
             return resposta
         messages.error(request, 'Não foi possível gerar o PDF. Tente novamente.')
     else:
-        erros = [erro for lista in form.errors.values() for erro in lista]
-        messages.error(request, 'Não foi possível gerar o PDF: ' + ' '.join(erros))
+        # O aviso de período longo a própria tela mostra ao voltar -- sem repetir aqui.
+        erros = [erro for lista in form.errors.values() for erro in lista if erro != MENSAGEM_PERIODO_LONGO]
+        if erros:
+            messages.error(request, 'Não foi possível gerar o PDF: ' + ' '.join(erros))
     return redirect(f"{reverse('ponto:listar_calculo')}?{request.GET.urlencode()}")
 
 
@@ -533,6 +605,9 @@ def exportar_espelho_view(request):
 @papel_required('rh', 'dp', 'gestor')
 def atribuir_jornada_view(request, funcionario_id):
     funcionario = get_object_or_404(_funcionarios_permitidos(request), id=funcionario_id)
+    bloqueio = _bloqueio_se_nao_altera(request, funcionario, f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}")
+    if bloqueio:
+        return bloqueio
 
     if request.method == 'POST':
         form = FuncionarioJornadaForm(request.POST)
@@ -598,6 +673,7 @@ def cadastrar_feriado_view(request):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def excluir_feriado_view(request, feriado_id):
     feriado = get_object_or_404(Feriado, id=feriado_id)
     feriado.delete()
@@ -790,6 +866,15 @@ def ajustes_pendentes_view(request):
         .select_related('funcionario', 'solicitado_por')
         .order_by('criado_em')
     )
+    # O pedido do próprio DP/RH (ou de outro DP/RH) aparece, mas quem analisa é o
+    # gerente do RH (`Usuario.funcionarios_que_altera`).
+    alteraveis = set(
+        request.user.usuario.funcionarios_que_altera()
+        .filter(id__in=ajustes.values('funcionario_id')).values_list('id', flat=True)
+    )
+    ajustes = list(ajustes)
+    for ajuste in ajustes:
+        ajuste.pode_analisar = ajuste.funcionario_id in alteraveis
     return render(request, 'ponto/ajustes_pendentes.html', {
         'ajustes': ajustes,
         'form_rejeicao': RejeitarAjusteForm(),
@@ -798,8 +883,12 @@ def ajustes_pendentes_view(request):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
 def aprovar_ajuste_view(request, ajuste_id):
     ajuste = get_object_or_404(AjustePonto, id=ajuste_id, funcionario__in=_funcionarios_permitidos(request))
+    bloqueio = _bloqueio_se_nao_altera(request, ajuste.funcionario, 'ponto:ajustes_pendentes')
+    if bloqueio:
+        return bloqueio
 
     if ajuste.status != 'pendente':
         messages.error(request, 'Este ajuste já foi analisado.')
@@ -827,8 +916,12 @@ def aprovar_ajuste_view(request, ajuste_id):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
 def rejeitar_ajuste_view(request, ajuste_id):
     ajuste = get_object_or_404(AjustePonto, id=ajuste_id, funcionario__in=_funcionarios_permitidos(request))
+    bloqueio = _bloqueio_se_nao_altera(request, ajuste.funcionario, 'ponto:ajustes_pendentes')
+    if bloqueio:
+        return bloqueio
 
     if ajuste.status != 'pendente':
         messages.error(request, 'Este ajuste já foi analisado.')

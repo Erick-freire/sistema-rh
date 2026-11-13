@@ -220,9 +220,12 @@ a.sidebar__user:hover { background-color: rgba(255, 255, 255, 0.08); text-decora
     padding: 9px;
     border-radius: 10px;
     color: rgba(255, 255, 255, 0.7);
+    background-color: transparent;
     flex-shrink: 0;
 }
-.sidebar__sair:hover { background-color: rgba(255, 255, 255, 0.08); color: #fff; }
+.sidebar__sair:hover { background-color: rgba(255, 255, 255, 0.08); color: #fff; transform: none; box-shadow: none; }
+/* Sair é POST (um link de "sair" poderia ser disparado de fora): o form não vira caixa no rodapé. */
+.sidebar__sair-form { display: contents; }
 
 .sidebar-overlay {
     display: none;

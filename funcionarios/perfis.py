@@ -42,6 +42,22 @@ def responsavel_terceiro_de(user):
         return None
 
 
+def acesso_encerrado(user):
+    """
+    Conta de quem saiu: CLT desligado (`Funcionario.status` 'inativo', marcado
+    pela importação na data da demissão) ou responsável de prestadora que o RH
+    inativou. Não entra, não mantém sessão aberta e não recebe aviso -- ver
+    `backends.CpfOuLoginGestorBackend.user_can_authenticate`. Reativou, volta.
+    """
+    usuario = usuario_de(user)
+    if usuario is not None:
+        return usuario.funcionario.status == 'inativo'
+    responsavel = responsavel_terceiro_de(user)
+    if responsavel is not None:
+        return responsavel.empresa.status == 'inativo'
+    return False
+
+
 def perfil_de_acesso(user):
     """
     Devolve `(tipo, perfil)` -- `('colaborador', Usuario)`,

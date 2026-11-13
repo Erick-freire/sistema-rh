@@ -101,6 +101,10 @@ document.addEventListener('DOMContentLoaded', function () {
             body: new URLSearchParams({ campo: input.dataset.campo, valor: valorDoCampo(input) }),
         })
             .then(function (resposta) {
+                if (resposta.redirected) {
+                    // Sessão terminou (1 hora sem uso ou 12 horas de login): o servidor mandou para o login.
+                    return { ok: false, dados: { erro: 'Sua sessão terminou e o valor não foi salvo. Recarregue a página e entre de novo.' } };
+                }
                 return resposta.json().then(function (dados) { return { ok: resposta.ok, dados: dados }; });
             })
             .then(function (resultado) {

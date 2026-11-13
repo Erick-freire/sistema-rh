@@ -4,11 +4,19 @@
 {% block titulo %}Equipamentos de Ponto{% endblock %}
 
 {% block conteudo %}
+{% if usuario_atual.eh_dp_ou_rh %}
 {% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
+{% else %}
+<h1>Relógios de ponto</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">Cadastro e conexão dos relógios. RH e DP só recebem as batidas e enviam os cadastros.</p>
+{% endif %}
 
+{# Cadastrar, editar, testar, ativar/desativar e excluir: só a TI (conta de administrador) -- ver `_so_ti` em ponto/views.py. #}
 <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+    {% if usuario_atual.eh_administrador_do_sistema %}
     <a href="{% url 'ponto:cadastrar_equipamento' %}" class="btn btn-novo">{% icon 'plus' %} Novo equipamento</a>
+    {% endif %}
     <a href="#sincronizar-todos" class="btn-primario btn-novo">{% icon 'check-square' %} Sincronizar todos</a>
 </div>
 
@@ -69,7 +77,9 @@
                 <td>{{ equipamento.ultima_comunicacao|default:'—' }}</td>
                 <td>
                     <a href="#sincronizar-{{ equipamento.id }}" class="btn-outline btn-sm">{% icon 'check-square' %} Sincronizar</a>
+                    {% if usuario_atual.eh_administrador_do_sistema %}
                     <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm">Editar</a>
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}
@@ -101,7 +111,9 @@
         </div>
         <div style="display: flex; gap: 8px;">
             <a href="#sincronizar-{{ equipamento.id }}" class="btn-outline btn-sm" style="flex: 1;">{% icon 'check-square' %} Sincronizar</a>
+            {% if usuario_atual.eh_administrador_do_sistema %}
             <a href="{% url 'ponto:editar_equipamento' equipamento.id %}" class="btn-outline btn-sm" style="flex: 1;">Editar</a>
+            {% endif %}
         </div>
     </div>
     {% empty %}

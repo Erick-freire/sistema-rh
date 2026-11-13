@@ -31,6 +31,7 @@ urlpatterns = [
     path('funcionarios/<int:funcionario_id>/editar-dados/', views.editar_dados_funcionario_view, name='editar_dados_funcionario'),
     path('funcionarios/<int:funcionario_id>/validar/', views.validar_funcionario_view, name='validar_funcionario'),
     path('funcionarios/<int:funcionario_id>/', views.detalhe_funcionario_view, name='detalhe_funcionario'),
+    path('funcionarios/<int:funcionario_id>/foto/', views.ver_foto_funcionario_view, name='foto_funcionario'),
     path('trocar-senha/', views.trocar_senha_view, name='trocar_senha'),
     path('ferias/', views.solicitar_ferias_view, name='solicitar_ferias'),
     path('ferias/<int:solicitacao_id>/aceitar-sugestao/', views.aceitar_sugestao_ferias_view, name='aceitar_sugestao_ferias'),

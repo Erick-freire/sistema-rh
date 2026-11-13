@@ -120,7 +120,7 @@ class InscricaoPushViewTests(BasePush):
             content_type='application/json',
         )
 
-        self.client.get(reverse('logout'))
+        self.client.post(reverse('logout'))
 
         self.assertFalse(InscricaoPush.objects.exists())
 

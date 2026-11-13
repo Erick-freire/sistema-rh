@@ -81,11 +81,15 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     # Serve /static/ com DEBUG=False (o Django sozinho só serve estáticos em DEBUG)
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # Logo depois do WhiteNoise: marca `private` em tudo que não é estático.
+    'funcionarios.middleware.SoCacheDoNavegadorMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    # Depois da autenticação: encerra o login com mais de 12 horas.
+    'funcionarios.middleware.LimiteDoLoginMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'funcionarios.middleware.SenhaProvisoriaMiddleware',
 ]
@@ -170,6 +174,17 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 LOGIN_URL = 'login'
+
+# Sessão (decisão de 13/11/2026, igual para toda conta -- RH, gestor,
+# colaborador, terceiro e /admin/): sai depois de 1 hora sem uso, e o login vale
+# no máximo 12 horas mesmo em uso contínuo. Antes era o padrão do Django
+# (2 semanas desde o login).
+# - 1 hora sem uso: o próprio Django. SESSION_SAVE_EVERY_REQUEST renova o prazo
+#   (no banco e no cookie) a cada requisição, então conta o tempo sem uso.
+# - 12 horas: `funcionarios.middleware.LimiteDoLoginMiddleware`.
+SESSION_COOKIE_AGE = 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
+DURACAO_MAXIMA_DO_LOGIN = 12 * 60 * 60
 
 # Todo mundo entra pelo CPF; gestor também pelo primeiro nome.
 AUTHENTICATION_BACKENDS = ['funcionarios.backends.CpfOuLoginGestorBackend']

@@ -26,7 +26,7 @@
         <div class="card">
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
                 {% if funcionario.foto %}
-                <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}" style="width: 48px; height: 48px; border-radius: 999px; object-fit: cover;">
+                <img src="{% url 'foto_funcionario' funcionario.id %}" alt="{{ funcionario.nome }}" style="width: 48px; height: 48px; border-radius: 999px; object-fit: cover;">
                 {% else %}
                 <span class="avatar avatar--lg">{{ funcionario.iniciais }}</span>
                 {% endif %}
@@ -96,7 +96,10 @@
                 <span class="linha-dado__rotulo">Vale-transporte</span>
                 <span class="linha-dado__valor">{% if funcionario.usa_vale_transporte %}Usa{% elif funcionario.usa_vale_transporte is False %}Não usa (sem desconto){% else %}Ainda não respondeu{% endif %}</span>
             </div>
-            <a href="{% url 'gerar_contrato' funcionario.id %}" class="btn-outline btn-sm" style="margin-top: 10px; display: inline-block;" target="_blank">{% icon 'file' %} Gerar Contrato</a>
+            <form method="post" action="{% url 'gerar_contrato' funcionario.id %}" target="_blank" style="margin-top: 10px;">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline btn-sm">{% icon 'file' %} Gerar Contrato</button>
+            </form>
             {% else %}
             <div class="linha-dado">
                 <span class="linha-dado__rotulo">Matrícula</span>
@@ -150,10 +153,14 @@
             {% if funcionario.usuario.login_gestor %}
             <p style="font-size: 0.88rem; margin-top: 6px;">Entra com o CPF ou com o usuário <strong style="font-family: var(--font-mono);">{{ funcionario.usuario.login_gestor }}</strong>.</p>
             {% endif %}
+            {% if usuario_atual|pode_redefinir_senha_de:funcionario.usuario %}
             <form method="post" action="{% url 'resetar_senha_funcionario' funcionario.id %}" style="margin-top: 12px;">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline btn-sm">{% icon 'key' %} Gerar nova senha</button>
             </form>
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.85rem; margin-top: 12px;">{% icon 'lock' %} {{ funcionario.usuario.aviso_senha_restrita }}</p>
+            {% endif %}
             {% if funcionario.usuario.papel != 'rh' %}
                 {% if usuario_atual.eh_rh %}
                 <form method="post" action="{% url 'alternar_acesso_rh' funcionario.id %}" style="margin-top: 12px;">

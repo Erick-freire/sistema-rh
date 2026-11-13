@@ -14,19 +14,22 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Case, Count, IntegerField, Prefetch, Value, When
-from django.http import FileResponse, Http404
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.views.decorators.http import require_POST
 from xhtml2pdf import pisa
 
 from . import notificacoes
+from .arquivos import resposta_de_arquivo, validar_upload
 from .decorators import papel_required
 from .forms import FichaEPIForm, OcorrenciaEPIForm, RejeitarDocumentoForm, item_epi_formset
 from .models import FichaEPI, Funcionario, ItemCatalogoEPI, ItemEPI, MatrizEpiSetor, OcorrenciaEPI, Setor, Usuario
@@ -146,6 +149,7 @@ def _gerar_pdf_ficha(ficha):
 
 @login_required
 @papel_required('seguranca_trabalho', 'rh')
+@require_POST
 def gerar_pdf_ficha_epi_view(request, ficha_id):
     ficha = get_object_or_404(FichaEPI.objects.select_related('funcionario'), id=ficha_id)
 
@@ -178,7 +182,7 @@ def ver_ficha_epi_view(request, ficha_id, versao):
     if not arquivo:
         raise Http404('Ficha não disponível.')
 
-    return FileResponse(arquivo.open('rb'), filename=os.path.basename(arquivo.name))
+    return resposta_de_arquivo(arquivo)
 
 
 # Sem @papel_required de propósito: quem envia é o próprio colaborador, e a
@@ -197,7 +201,12 @@ def reenviar_epi_assinado_view(request, ficha_id):
         return redirect(destino)
 
     if request.method == 'POST' and request.FILES.get('arquivo_assinado'):
-        ficha.arquivo_assinado = request.FILES['arquivo_assinado']
+        try:
+            arquivo = validar_upload(request.FILES['arquivo_assinado'])
+        except ValidationError as erro:
+            messages.error(request, f'Ficha não enviada. {erro.messages[0]}')
+            return redirect(destino)
+        ficha.arquivo_assinado = arquivo
         ficha.status = 'em_validacao'
         ficha.motivo_rejeicao = ''
         ficha.save()
@@ -420,4 +429,4 @@ def ver_foto_ocorrencia_view(request, ocorrencia_id):
     ocorrencia = get_object_or_404(OcorrenciaEPI, id=ocorrencia_id)
     if not ocorrencia.foto:
         raise Http404('Ocorrência sem foto.')
-    return FileResponse(ocorrencia.foto.open('rb'), filename=os.path.basename(ocorrencia.foto.name))
+    return resposta_de_arquivo(ocorrencia.foto)

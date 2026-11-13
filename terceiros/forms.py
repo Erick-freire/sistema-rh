@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+from funcionarios.arquivos import ACCEPT_DOCUMENTO, validar_upload
+
 from .models import (
     MESES,
     ClausulaContratual,
@@ -215,6 +217,10 @@ class _DocumentoComCompetenciaForm(forms.ModelForm):
         self.fields['competencia_mes'].widget = forms.Select(
             choices=[('', '—')] + list(MESES)
         )
+        self.fields['arquivo'].widget.attrs['accept'] = ACCEPT_DOCUMENTO
+
+    def clean_arquivo(self):
+        return validar_upload(self.cleaned_data.get('arquivo'))
 
     def _validar_competencia(self, cleaned_data, exige_competencia):
         mes = cleaned_data.get('competencia_mes')

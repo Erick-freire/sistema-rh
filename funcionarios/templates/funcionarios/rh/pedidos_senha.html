@@ -31,12 +31,16 @@ Pedidos de senha
                 <td>{{ funcionario.setor|default:"—" }}</td>
                 <td>{{ pedido.criada_em|date:"d/m/Y H:i" }}</td>
                 <td>
+                    {% if usuario_atual|pode_redefinir_senha_de:pedido.usuario %}
                     <form method="post" action="{% url 'resetar_senha_funcionario' funcionario.id %}">
                         {% csrf_token %}
                         <button type="submit" class="btn-sm"
                                 data-confirmar="Gerar uma nova senha provisória para {{ funcionario.nome }}?"
                                 data-confirmar-titulo="Gerar nova senha">{% icon 'key' %} Gerar nova senha</button>
                     </form>
+                    {% else %}
+                    <span style="color: var(--color-text-muted); font-size: 0.85rem;">{% icon 'lock' %} {{ pedido.usuario.aviso_senha_restrita }}</span>
+                    {% endif %}
                 </td>
             </tr>
             {% endwith %}

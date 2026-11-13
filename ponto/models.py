@@ -1,10 +1,32 @@
+import ipaddress
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from funcionarios.models import Funcionario
 from integracao_gov.fields import EncryptedTextField
 
 from .turnos import DURACAO_MAXIMA_TURNO, duracao_do_turno
+
+REDES_INTERNAS = tuple(ipaddress.ip_network(rede) for rede in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'))
+
+
+def validar_ip_da_rede_interna(valor):
+    """
+    O sistema manda a senha de admin do relógio para este IP a cada teste e
+    sincronização: só endereço da rede interna, nunca um servidor na internet
+    nem o próprio servidor (127.x). IPv6 fica de fora (nenhum relógio usa).
+    """
+    try:
+        ip = ipaddress.ip_address(valor)
+    except ValueError:
+        return  # IP malformado: o próprio GenericIPAddressField já recusa
+    if not any(ip in rede for rede in REDES_INTERNAS):
+        raise ValidationError(
+            'Use um IP da rede interna: 10.x.x.x, 172.16.x.x a 172.31.x.x ou 192.168.x.x.',
+            code='ip_fora_da_rede_interna',
+        )
 
 
 class Equipamento(models.Model):
@@ -15,7 +37,7 @@ class Equipamento(models.Model):
     ]
 
     nome = models.CharField(max_length=100)
-    ip = models.GenericIPAddressField()
+    ip = models.GenericIPAddressField(validators=[validar_ip_da_rede_interna])
     porta = models.PositiveIntegerField(default=443)
     usa_https = models.BooleanField(
         default=True,

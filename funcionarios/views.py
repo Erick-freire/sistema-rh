@@ -17,20 +17,24 @@ from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.core.paginator import Paginator
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.utils import timezone
 from django.template.loader import render_to_string
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import Http404, HttpResponse
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
+from django.views.decorators.http import require_POST
 from xhtml2pdf import pisa
 
 from . import notificacoes
+from .arquivos import resposta_de_arquivo, resposta_de_arquivo_revalidada, validar_upload
 from .decorators import papel_required
 from .models import (
     Atestado, Usuario, Funcionario, Documento, TipoDocumento, SolicitacaoFerias, AvisoFerias,
-    TermoComodato, ItemCatalogoComodato, SolicitacaoSenha,
+    TermoComodato, ItemCatalogoComodato, SolicitacaoSenha, MENSAGEM_ALTERACAO_RESTRITA,
 )
-from .perfis import TIPO_TERCEIRO, perfil_de_acesso
+from .perfis import TIPO_TERCEIRO, perfil_de_acesso, usuario_de
 from .pwa_views import desvincular_push_da_sessao
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
@@ -176,10 +180,12 @@ def recuperar_acesso_view(request):
 @login_required
 @papel_required('rh', 'dp')
 def pedidos_senha_view(request):
-    pedidos = SolicitacaoSenha.pendentes().select_related('usuario__funcionario__setor')
+    # usuario__user: a tela confere, por pedido, se a conta é de administrador.
+    pedidos = SolicitacaoSenha.pendentes().select_related('usuario__funcionario__setor', 'usuario__user')
     return render(request, 'funcionarios/rh/pedidos_senha.html', {'pedidos': pedidos})
 
 
+@require_POST
 def logout_view(request):
     desvincular_push_da_sessao(request)
     logout(request)
@@ -387,23 +393,38 @@ def meu_perfil_view(request):
 
     if request.method == 'POST':
         form = MeuPerfilForm(request.POST, request.FILES, instance=funcionario)
-        if form.is_valid():
+
+        # Os documentos do filho chegam fora do form: conferidos antes de
+        # gravar qualquer coisa, para um arquivo recusado não deixar o perfil
+        # salvo pela metade.
+        arquivos_filho = {}
+        erros_arquivo = []
+        for tipo in tipos_documentos_filho:
+            arquivo = request.FILES.get(f'documento_filho_{tipo.id}')
+            if arquivo:
+                try:
+                    arquivos_filho[tipo] = validar_upload(arquivo)
+                except ValidationError as erro:
+                    erros_arquivo.append(f'{tipo.nome}: {erro.messages[0]}')
+
+        if form.is_valid() and not erros_arquivo:
             form.save()
 
-            for tipo in tipos_documentos_filho:
-                arquivo = request.FILES.get(f'documento_filho_{tipo.id}')
-                if arquivo:
-                    Documento.substituir_ou_criar(
-                        funcionario=funcionario,
-                        tipo_documento=tipo,
-                        arquivo=arquivo,
-                        enviado_por=request.user,
-                    )
+            for tipo, arquivo in arquivos_filho.items():
+                Documento.substituir_ou_criar(
+                    funcionario=funcionario,
+                    tipo_documento=tipo,
+                    arquivo=arquivo,
+                    enviado_por=request.user,
+                )
 
             avancar_status_por_documentos(funcionario)
             messages.success(request, 'Perfil atualizado com sucesso.')
 
             return redirect('meu_perfil')
+
+        for erro in erros_arquivo:
+            messages.error(request, erro)
     else:
         form = MeuPerfilForm(instance=funcionario)
 
@@ -438,6 +459,22 @@ def atualizar_foto_view(request):
             messages.error(request, 'Não foi possível atualizar a foto. Verifique o arquivo enviado.')
 
     return redirect('meu_perfil')
+
+
+@login_required
+def ver_foto_funcionario_view(request, funcionario_id):
+    """
+    Foto de perfil: o próprio colaborador e quem opera ele (DP/RH, gestor da
+    equipe) -- a mesma regra da ficha do funcionário. Para os demais, 404 em
+    vez de redirect com mensagem: quem pede a foto é um <img>, não uma pessoa.
+    """
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+    usuario = usuario_de(request.user)
+    if usuario is None or not funcionario.foto:
+        raise Http404
+    if not (usuario.funcionario_id == funcionario.id or usuario.opera(funcionario)):
+        raise Http404
+    return resposta_de_arquivo_revalidada(request, funcionario.foto)
 
 
 # ---------- Documentos ----------
@@ -565,7 +602,7 @@ def ver_documento_view(request, documento_id):
         messages.error(request, 'Você não tem permissão para acessar este documento.')
         return redirect('dashboard')
 
-    return FileResponse(documento.arquivo.open('rb'), filename=documento.nome_arquivo)
+    return resposta_de_arquivo(documento.arquivo, documento.nome_arquivo)
 
 
 @login_required
@@ -594,7 +631,7 @@ def ver_comodato_view(request, comodato_id, versao):
     if not arquivo:
         raise Http404('Termo não disponível.')
 
-    return FileResponse(arquivo.open('rb'), filename=os.path.basename(arquivo.name))
+    return resposta_de_arquivo(arquivo)
 
 
 # ---------- Funcionários (RH / Gestor) ----------
@@ -655,6 +692,7 @@ def listar_funcionarios_view(request):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@never_cache  # mostra a senha gerada: o "voltar" do navegador não pode reexibi-la
 def cadastrar_funcionario_view(request):
     if request.method == 'POST':
         form = PreCadastroFuncionarioForm(request.POST)
@@ -766,6 +804,11 @@ def editar_dados_funcionario_view(request, funcionario_id):
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
+    # Salário, cargo e setor: quem é DP/RH não mexe no próprio nem no de outro DP/RH.
+    if not usuario.pode_alterar_ponto_e_folha_de(funcionario):
+        messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
     if request.method == 'POST':
         form = DadosCadastraisForm(request.POST, instance=funcionario)
         if form.is_valid():
@@ -799,7 +842,9 @@ def lancar_atestado_view(request, funcionario_id):
         messages.error(request, 'Você não tem permissão para essa ação.')
         return redirect('dashboard')
 
-    if request.method == 'POST':
+    if request.method == 'POST' and not usuario.pode_alterar_ponto_e_folha_de(funcionario):
+        messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+    elif request.method == 'POST':
         form = AtestadoForm(request.POST)
         if form.is_valid():
             atestado = form.save(commit=False)
@@ -823,6 +868,8 @@ def lancar_atestado_view(request, funcionario_id):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
+@never_cache  # mostra a senha gerada: o "voltar" do navegador não pode reexibi-la
 def gerar_acesso_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -862,6 +909,8 @@ def gerar_acesso_funcionario_view(request, funcionario_id):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
+@never_cache  # mostra a senha gerada: o "voltar" do navegador não pode reexibi-la
 def resetar_senha_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -872,6 +921,10 @@ def resetar_senha_funcionario_view(request, funcionario_id):
 
     if not hasattr(funcionario, 'usuario'):
         messages.error(request, 'Este funcionário ainda não tem acesso ao sistema.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    if not usuario.pode_redefinir_senha_de(funcionario.usuario):
+        messages.error(request, funcionario.usuario.aviso_senha_restrita())
         return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 
     senha_gerada = secrets.token_urlsafe(9)
@@ -893,6 +946,7 @@ def resetar_senha_funcionario_view(request, funcionario_id):
 
 @login_required
 @papel_required('rh')  # conceder acesso_rh é exclusivo de RH: o DP não se promove sozinho
+@require_POST
 def alternar_acesso_rh_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -914,6 +968,7 @@ def alternar_acesso_rh_view(request, funcionario_id):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def gerar_contrato_view(request, funcionario_id):
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
 
@@ -995,6 +1050,7 @@ def aprovar_documento_view(request, documento_id):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
 def rejeitar_documento_view(request, documento_id):
     usuario = request.user.usuario
     documento = get_object_or_404(Documento, id=documento_id)
@@ -1026,6 +1082,7 @@ def rejeitar_documento_view(request, documento_id):
 
 @login_required
 @papel_required('rh', 'dp', 'gestor')
+@require_POST
 def validar_funcionario_view(request, funcionario_id):
     usuario = request.user.usuario
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
@@ -1142,6 +1199,7 @@ def solicitar_ferias_view(request):
 
 
 @login_required
+@require_POST
 def aceitar_sugestao_ferias_view(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
@@ -1204,6 +1262,7 @@ def propor_outra_data_ferias_view(request, solicitacao_id):
 
 
 @login_required
+@require_POST
 def adiar_ferias_view(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
@@ -1240,6 +1299,7 @@ def gestor_listar_ferias_view(request):
 
 @login_required
 @papel_required('gestor')
+@require_POST
 def gestor_aprovar_ferias_view(request, solicitacao_id):
     usuario = request.user.usuario
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
@@ -1337,6 +1397,7 @@ def concluir_ferias_view(request):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def rh_concluir_ferias_view(request, solicitacao_id):
     solicitacao = get_object_or_404(SolicitacaoFerias, id=solicitacao_id)
 
@@ -1409,6 +1470,7 @@ def criar_aviso_ferias_view(request, funcionario_id):
 
 @login_required
 @papel_required('gestor', 'rh', 'dp')
+@require_POST
 def marcar_aviso_visualizado_view(request, aviso_id):
     usuario = request.user.usuario
     aviso = get_object_or_404(AvisoFerias, id=aviso_id)
@@ -1479,6 +1541,7 @@ def listar_comodatos_view(request):
 
 @login_required
 @papel_required('rh', 'dp')
+@require_POST
 def gerar_pdf_comodato_view(request, comodato_id):
     comodato = get_object_or_404(TermoComodato, id=comodato_id)
 
@@ -1527,7 +1590,12 @@ def reenviar_comodato_assinado_view(request, comodato_id):
         return redirect(destino)
 
     if request.method == 'POST' and request.FILES.get('arquivo_assinado'):
-        comodato.arquivo_assinado = request.FILES['arquivo_assinado']
+        try:
+            arquivo = validar_upload(request.FILES['arquivo_assinado'])
+        except ValidationError as erro:
+            messages.error(request, f'Termo não enviado. {erro.messages[0]}')
+            return redirect(destino)
+        comodato.arquivo_assinado = arquivo
         comodato.status = 'em_validacao'
         comodato.motivo_rejeicao = ''
         comodato.save()

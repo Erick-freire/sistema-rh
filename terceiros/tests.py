@@ -80,7 +80,7 @@ def _criar_usuario_rh():
 
 
 def _arquivo(nome='doc.pdf'):
-    return SimpleUploadedFile(nome, b'conteudo-do-arquivo', content_type='application/pdf')
+    return SimpleUploadedFile(nome, b'%PDF-1.4 conteudo-do-arquivo', content_type='application/pdf')
 
 
 class CadastroEmpresaFormTests(TestCase):
@@ -1189,6 +1189,19 @@ class FormularioDeEnvioTests(TestCase):
         documento = self.colaborador.documentos.get()
         self.assertIsNone(documento.competencia_mes)
         self.assertIsNone(documento.competencia_ano)
+
+    def test_arquivo_que_abriria_como_pagina_e_recusado(self):
+        # O RH abre esses arquivos no popup de validação: um HTML/SVG aceito
+        # rodaria script com a sessão do RH.
+        pagina = b'<html><script>alert(1)</script></html>'
+        for nome, mensagem in (('aso.html', 'Formato não aceito'), ('aso.pdf', 'não é um PDF válido')):
+            with self.subTest(nome=nome):
+                resposta = self._postar({
+                    'tipo': 'aso', 'arquivo': SimpleUploadedFile(nome, pagina, content_type='application/pdf'),
+                })
+
+                self.assertEqual(self.colaborador.documentos.count(), 0)
+                self.assertContains(resposta, mensagem)
 
 
 class RenderizacaoDasTelasNovasTests(TestCase):

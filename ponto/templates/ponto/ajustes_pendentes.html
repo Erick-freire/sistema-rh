@@ -33,6 +33,7 @@
                     {% if ajuste.solicitado_por %}<div class="item-card__subtitulo">por {{ ajuste.solicitado_por.usuario.funcionario.nome|default:ajuste.solicitado_por.username }}</div>{% endif %}
                 </td>
                 <td>
+                    {% if ajuste.pode_analisar %}
                     <div style="display: flex; gap: 6px;">
                         <form method="post" action="{% url 'ponto:aprovar_ajuste' ajuste.id %}">
                             {% csrf_token %}
@@ -51,6 +52,9 @@
                                     data-confirmar-titulo="Rejeitar ajuste">Confirmar rejeição</button>
                         </form>
                     </div>
+                    {% else %}
+                    <span class="item-card__subtitulo">{% icon 'lock' %} Aguarda o gerente do RH</span>
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}
@@ -80,6 +84,7 @@
             Solicitado em {{ ajuste.criado_em|date:'d/m/Y H:i' }}
             {% if ajuste.solicitado_por %}por {{ ajuste.solicitado_por.usuario.funcionario.nome|default:ajuste.solicitado_por.username }}{% endif %}
         </div>
+        {% if ajuste.pode_analisar %}
         <div style="display: flex; gap: 8px;">
             <form method="post" action="{% url 'ponto:aprovar_ajuste' ajuste.id %}" style="flex: 1;">
                 {% csrf_token %}
@@ -98,6 +103,9 @@
                         data-confirmar-titulo="Rejeitar ajuste">Confirmar rejeição</button>
             </form>
         </div>
+        {% else %}
+        <span class="item-card__subtitulo">{% icon 'lock' %} Aguarda o gerente do RH</span>
+        {% endif %}
     </div>
     {% empty %}
     <p>Nenhum ajuste pendente.</p>

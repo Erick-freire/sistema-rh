@@ -469,16 +469,19 @@ class ConcorrenciaSincronizacaoTests(TransactionTestCase):
 
 
 class EquipamentoViewsTests(TestCase):
-    """Botões de desativar/ativar e excluir na tela de Equipamentos."""
+    """
+    Botões de desativar/ativar e excluir na tela de Equipamentos -- da TI
+    (conta de administrador); ver `test_relogios_so_ti` para o que o RH faz.
+    """
 
     def setUp(self):
-        setor = Setor.objects.create(nome='RH')
+        setor = Setor.objects.create(nome='TI')
         funcionario = Funcionario.objects.create(
-            nome='Rh Teste', matricula='9999', cargo='RH', setor=setor, cpf='22222222222',
+            nome='Ti Teste', matricula='9999', cargo='Analista de TI', setor=setor, cpf='22222222222',
         )
-        user = User.objects.create_user(username='rhteste', password='senha123')
-        Usuario.objects.create(user=user, funcionario=funcionario, papel='rh')
-        self.client.login(username='rhteste', password='senha123')
+        user = User.objects.create_user(username='titeste', password='senha123', is_staff=True)
+        Usuario.objects.create(user=user, funcionario=funcionario, papel='colaborador')
+        self.client.login(username='titeste', password='senha123')
 
     def test_lista_quem_bate_ponto_sem_cadastro(self):
         equipamento = _criar_equipamento()

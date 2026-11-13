@@ -39,7 +39,10 @@ Fichas de EPI
                         {% icon 'eye' %} Validar
                     </button>
                     {% elif ficha.status == 'aguardando_assinatura' and not ficha.arquivo_gerado %}
-                    <a href="{% url 'gerar_pdf_ficha_epi' ficha.id %}" class="btn btn-sm">Gerar PDF</a>
+                    <form method="post" action="{% url 'gerar_pdf_ficha_epi' ficha.id %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm">Gerar PDF</button>
+                    </form>
                     {% elif ficha.arquivo_assinado or ficha.arquivo_gerado %}
                     <button type="button" class="btn-outline btn-sm" data-abrir-termo
                             data-pdf="{% if ficha.arquivo_assinado %}{% url 'ver_ficha_epi' ficha.id 'assinado' %}{% else %}{% url 'ver_ficha_epi' ficha.id 'gerado' %}{% endif %}"

@@ -343,7 +343,7 @@ class OnboardingDocumentosTests(TestCase):
         Usuario.objects.create(user=self.user_rh, funcionario=funcionario_rh, papel='rh')
 
     def _arquivo(self, nome='arquivo.pdf'):
-        return SimpleUploadedFile(nome, b'conteudo', content_type='application/pdf')
+        return SimpleUploadedFile(nome, b'%PDF-1.4 conteudo', content_type='application/pdf')
 
     def test_envio_do_ultimo_documento_inicial_avanca_status(self):
         self.client.force_login(self.user_colaborador)
@@ -817,7 +817,7 @@ class AssinaturaGovViewTests(TestCase):
         self.client.force_login(self.user)
 
     def _arquivo(self, nome='arquivo.pdf'):
-        return SimpleUploadedFile(nome, b'conteudo', content_type='application/pdf')
+        return SimpleUploadedFile(nome, b'%PDF-1.4 conteudo', content_type='application/pdf')
 
     def test_mostra_link_externo_e_estado_vazio_sem_nada_para_assinar(self):
         response = self.client.get(reverse('minhas_assinaturas'))
@@ -1097,7 +1097,7 @@ class ServiceWorkerTests(TestCase):
         script = self.client.get(reverse('service_worker')).content.decode('utf-8')
 
         # O único `cache.put` do script tem de estar dentro do ramo de
-        # /static/ e /media/, e não no caminho de navegação.
+        # /static/, e não no caminho de navegação.
         trecho_navegacao = script.split("url.pathname.startsWith('/static/')")[-1]
         trecho_navegacao = trecho_navegacao.split('return;', 1)[-1]
 

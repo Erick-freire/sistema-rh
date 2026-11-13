@@ -14,14 +14,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from funcionarios.decorators import papel_required
-from funcionarios.models import Usuario
+from funcionarios.models import MENSAGEM_ALTERACAO_RESTRITA, Usuario
 from funcionarios.utils import formatar_moeda
 
 from . import colunas, exportacao, premios, services
 from .forms import RegraPremioForm, RegraProgramaForm, RegraSafraForm
 from .models import (
-    Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio, RegraPremioPrograma,
-    RegraPremioSafra, normalizar_cargo,
+    AlteracaoCelula, Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio,
+    RegraPremioPrograma, RegraPremioSafra, normalizar_cargo,
 )
 
 
@@ -34,7 +34,18 @@ def _competencia_do_post(texto):
         return None
 
 
-def _celula(linha, coluna):
+def _quem(user):
+    """Primeiro nome de quem alterou (o username é o CPF)."""
+    if user is None:
+        return 'conta removida'
+    try:
+        return user.usuario.funcionario.nome.split()[0].title()
+    except Usuario.DoesNotExist:
+        return user.get_full_name() or user.username
+
+
+def _celula(linha, coluna, alteracao=None):
+    """`alteracao`: a última `AlteracaoCelula` desta célula, se houver -- vira o texto do mouse."""
     celula = {
         'coluna': coluna,
         'texto': colunas.exibir_da_linha(linha, coluna),
@@ -49,7 +60,27 @@ def _celula(linha, coluna):
         automatico = colunas.exibir(coluna, linha.valor_automatico(coluna.campo)) or 'em branco'
         de_onde = 'calculado pelo ponto' if coluna.origem == 'ponto' else 'pela regra de prêmios'
         celula['titulo'] = f'Ajustado à mão. Valor {de_onde}: {automatico}.'
+    if alteracao is not None:
+        quando = timezone.localtime(alteracao.alterado_em)
+        rastro = (
+            f'Alterado por {_quem(alteracao.alterado_por)} em {quando:%d/%m %H:%M} '
+            f'(antes: {alteracao.valor_anterior or "em branco"}).'
+        )
+        celula['titulo'] = f"{celula['titulo']} {rastro}".strip()
     return celula
+
+
+def _ultimas_alteracoes(linhas):
+    """{(linha_id, campo): última AlteracaoCelula} das linhas da grade, numa consulta só."""
+    ultimas = {}
+    alteracoes = (
+        AlteracaoCelula.objects.filter(linha__in=linhas)
+        .select_related('alterado_por__usuario__funcionario')
+        .order_by('-alterado_em', '-id')
+    )
+    for alteracao in alteracoes:
+        ultimas.setdefault((alteracao.linha_id, alteracao.campo), alteracao)
+    return ultimas
 
 
 # O gestor opera a folha da equipe dele como o RH (lança, corrige, recalcula,
@@ -153,11 +184,19 @@ def detalhe_fechamento_view(request, fechamento_id):
     linhas = list(_da_equipe(request, fechamento.linhas.select_related('funcionario')))
     pendentes = sum(1 for linha in linhas if linha.ponto_pendente)
     # Enquanto o ponto é calculado, a tela só mostra o progresso (a grade estaria pela metade).
+    ultimas = {} if pendentes else _ultimas_alteracoes(linhas)
+    # Linhas que esta conta só vê: a própria e a de outro DP/RH, para quem não
+    # é o gerente do RH (`Usuario.funcionarios_que_altera`).
+    alteraveis = set(
+        request.user.usuario.funcionarios_que_altera()
+        .filter(id__in=[linha.funcionario_id for linha in linhas]).values_list('id', flat=True)
+    )
     grade = [] if pendentes else [
         {
             'linha': linha,
-            'celulas': [_celula(linha, coluna) for coluna in colunas.COLUNAS],
+            'celulas': [_celula(linha, coluna, ultimas.get((linha.id, coluna.campo))) for coluna in colunas.COLUNAS],
             'avisos': services.avisos(linha),
+            'editavel': linha.funcionario_id in alteraveis,
         }
         for linha in linhas
     ]
@@ -184,14 +223,20 @@ def detalhe_fechamento_view(request, fechamento_id):
 @papel_required('rh', 'dp', 'gestor')
 @require_POST
 def salvar_celula_view(request, linha_id):
-    """Grava uma célula da grade (a tela salva cada célula assim que o RH sai dela)."""
+    """
+    Grava uma célula da grade (a tela salva cada célula assim que o RH sai dela)
+    e guarda no histórico quem mudou, o valor antigo e o novo.
+    """
     linha = _linha_ou_404(request, linha_id)
+    if not request.user.usuario.pode_alterar_ponto_e_folha_de(linha.funcionario):
+        return JsonResponse({'erro': MENSAGEM_ALTERACAO_RESTRITA}, status=403)
     if not linha.fechamento.aberto:
         return JsonResponse({'erro': 'Este fechamento já foi fechado. Reabra para editar.'}, status=409)
     coluna = colunas.COLUNAS_POR_CAMPO.get(request.POST.get('campo'))
     if coluna is None or not coluna.editavel:
         return JsonResponse({'erro': 'Coluna inválida.'}, status=400)
 
+    antes = colunas.exibir_da_linha(linha, coluna)
     try:
         colunas.gravar(linha, coluna, request.POST.get('valor', ''))
     except colunas.ValorInvalido as erro:
@@ -205,7 +250,13 @@ def salvar_celula_view(request, linha_id):
     campos = ['vt_seis_porcento', 'vt_valor'] if coluna.tipo == 'vale_transporte' else [coluna.campo]
     linha.save(update_fields=campos)
 
-    celula = _celula(linha, coluna)
+    depois = colunas.exibir_da_linha(linha, coluna)
+    alteracao = None
+    if depois != antes:
+        alteracao = AlteracaoCelula.objects.create(
+            linha=linha, campo=coluna.campo, valor_anterior=antes, valor_novo=depois, alterado_por=request.user,
+        )
+    celula = _celula(linha, coluna, alteracao)
     return JsonResponse({
         'texto': celula['texto'],
         'marcado': celula['marcado'],
@@ -282,6 +333,9 @@ def incluir_funcionario_view(request, fechamento_id):
 @require_POST
 def remover_linha_view(request, linha_id):
     linha = _linha_ou_404(request, linha_id)
+    if not request.user.usuario.pode_alterar_ponto_e_folha_de(linha.funcionario):
+        messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+        return redirect('folha:detalhe', fechamento_id=linha.fechamento_id)
     bloqueio = _bloqueado_se_fechado(request, linha.fechamento)
     if bloqueio:
         return bloqueio

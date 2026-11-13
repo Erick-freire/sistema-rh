@@ -20,8 +20,8 @@ from ponto.models import Equipamento, FuncionarioJornada, Horario, HorarioDia, M
 
 from . import colunas, premios, services
 from .models import (
-    Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio, RegraPremioPrograma,
-    RegraPremioSafra,
+    AlteracaoCelula, Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio,
+    RegraPremioPrograma, RegraPremioSafra,
 )
 
 AGOSTO = date(2026, 8, 1)
@@ -284,8 +284,9 @@ class ServicesTests(BaseFolhaTestCase):
 class ViewsTests(BaseFolhaTestCase):
     def setUp(self):
         super().setUp()
-        # Inativo só para não entrar no fechamento: assim cada teste tem uma linha só (a da Ana).
-        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='inativo')
+        # Em admissão só para não entrar no fechamento (só ativo entra): assim cada teste tem uma
+        # linha só (a da Ana). Inativo não serve: desligado não entra no sistema.
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='em_validacao')
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')
@@ -449,6 +450,16 @@ class ViewsTests(BaseFolhaTestCase):
         self.assertEqual(resposta['Content-Type'], 'application/pdf')
         self.assertTrue(resposta.content.startswith(b'%PDF'))
 
+    def test_exportacoes_nao_ficam_no_cache_do_cloudflare(self):
+        """O endereço termina em .pdf/.xlsx: sem `private`, o Cloudflare guardaria e entregaria sem login."""
+        fechamento = self._abrir()
+
+        for nome in ('folha:exportar_pdf', 'folha:exportar_xlsx'):
+            with self.subTest(nome=nome):
+                resposta = self.client.get(reverse(nome, args=[fechamento.id]))
+                self.assertEqual(resposta.status_code, 200)
+                self.assertEqual(resposta['Cache-Control'], 'private')
+
 
 class RegrasPremioTests(TestCase):
     def setUp(self):
@@ -518,7 +529,7 @@ class RegrasPremioTests(TestCase):
 class PremiosViewsTests(BaseFolhaTestCase):
     def setUp(self):
         super().setUp()
-        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='inativo')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='em_validacao')
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')
@@ -706,7 +717,7 @@ class RegrasProgramaDoFechamentoTests(TestCase):
 class PremioProgramaViewsTests(BaseFolhaTestCase):
     def setUp(self):
         super().setUp()
-        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='inativo')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='em_validacao')
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')
@@ -825,7 +836,7 @@ class PremioSafraTests(TestCase):
 class PremioSafraViewsTests(BaseFolhaTestCase):
     def setUp(self):
         super().setUp()
-        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='inativo')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='em_validacao')
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')
@@ -1130,3 +1141,89 @@ class GestorNaFolhaTests(BaseFolhaTestCase):
         self.assertFalse(MembroPremioPrograma.objects.exists())
         self.assertEqual(list(RegraPremioSafra.objects.all()), [safra])
         self.assertFalse(MembroPremioSafra.objects.exists())
+
+
+class LinhaDeQuemEDpRhTests(BaseFolhaTestCase):
+    """
+    A própria linha (e a de outro DP/RH) só o gerente do RH altera; toda
+    alteração da grade fica no histórico (decisões do usuário em 13/11/2026).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.dora = Funcionario.objects.create(
+            nome='Dora Dp', matricula='2001', cargo='DP', setor=self.setor, cpf='20000000001', status='ativo',
+        )
+        self.user_dp = User.objects.create_user(username='20000000001', password='senha123')
+        Usuario.objects.create(user=self.user_dp, funcionario=self.dora, papel='dp')
+        self.gina = Funcionario.objects.create(
+            nome='Gina Gerente', matricula='2002', cargo='Gerente RH', setor=self.setor, cpf='20000000002', status='ativo',
+        )
+        self.user_gerente = User.objects.create_user(username='20000000002', password='senha123')
+        Usuario.objects.create(user=self.user_gerente, funcionario=self.gina, papel='gestor', acesso_rh=True)
+
+        self.fechamento = self._abrir_calculado()
+        self.linha_ana = self.fechamento.linhas.get(funcionario=self.ana)
+        self.linha_dora = self.fechamento.linhas.get(funcionario=self.dora)
+        self.linha_gina = self.fechamento.linhas.get(funcionario=self.gina)
+
+    def _salvar(self, linha, campo, valor):
+        return self.client.post(reverse('folha:salvar_celula', args=[linha.id]), {'campo': campo, 'valor': valor})
+
+    def test_dp_nao_lanca_na_propria_linha(self):
+        self.client.force_login(self.user_dp)
+
+        resposta = self._salvar(self.linha_dora, 'premio_bonus', '5.000,00')
+
+        self.assertEqual(resposta.status_code, 403)
+        self.assertIn('gerente do RH', resposta.json()['erro'])
+        self.linha_dora.refresh_from_db()
+        self.assertFalse(self.linha_dora.premio_bonus)
+        self.assertFalse(AlteracaoCelula.objects.exists())
+
+    def test_dp_nao_remove_a_propria_linha(self):
+        self.client.force_login(self.user_dp)
+
+        self.client.post(reverse('folha:remover_linha', args=[self.linha_dora.id]))
+
+        self.assertTrue(LinhaFechamento.objects.filter(id=self.linha_dora.id).exists())
+
+    def test_gerente_do_rh_lanca_na_propria_linha(self):
+        self.client.force_login(self.user_gerente)
+
+        resposta = self._salvar(self.linha_gina, 'comissao', '200,00')
+
+        self.assertEqual(resposta.status_code, 200)
+        self.linha_gina.refresh_from_db()
+        self.assertEqual(self.linha_gina.comissao, Decimal('200.00'))
+
+    def test_gerente_do_rh_lanca_na_linha_do_dp(self):
+        self.client.force_login(self.user_gerente)
+
+        self.assertEqual(self._salvar(self.linha_dora, 'comissao', '200,00').status_code, 200)
+
+    def test_alteracao_fica_no_historico_com_quem_e_o_valor_antigo(self):
+        self.client.force_login(self.user_dp)
+
+        self._salvar(self.linha_ana, 'comissao', '150,00')
+        self._salvar(self.linha_ana, 'comissao', '150,00')  # mesmo valor: não é alteração
+        resposta = self._salvar(self.linha_ana, 'comissao', '180,00')
+
+        historico = list(AlteracaoCelula.objects.filter(linha=self.linha_ana).order_by('id'))
+        self.assertEqual(
+            [(a.campo, a.valor_anterior, a.valor_novo, a.alterado_por) for a in historico],
+            [('comissao', '', '150,00', self.user_dp), ('comissao', '150,00', '180,00', self.user_dp)],
+        )
+        self.assertIn('Alterado por Dora', resposta.json()['titulo'])
+        self.assertIn('antes: 150,00', resposta.json()['titulo'])
+
+    def test_grade_mostra_quem_alterou_e_trava_a_propria_linha(self):
+        self.client.force_login(self.user_dp)
+        self._salvar(self.linha_ana, 'descontos', '50,00')
+
+        resposta = self.client.get(reverse('folha:detalhe', args=[self.fechamento.id]))
+
+        editavel = {item['linha'].funcionario_id: item['editavel'] for item in resposta.context['grade']}
+        self.assertEqual(editavel, {self.ana.id: True, self.dora.id: False, self.gina.id: True})
+        self.assertContains(resposta, 'Alterado por Dora')
+        self.assertContains(resposta, 'Só o gerente do RH altera esta linha')

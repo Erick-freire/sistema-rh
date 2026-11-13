@@ -1,9 +1,28 @@
 from django.contrib import admin
 
 from .models import (
-    Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio, RegraPremioPrograma,
-    RegraPremioSafra,
+    AlteracaoCelula, Fechamento, LinhaFechamento, MembroPremioPrograma, MembroPremioSafra, RegraPremio,
+    RegraPremioPrograma, RegraPremioSafra,
 )
+
+
+@admin.register(AlteracaoCelula)
+class AlteracaoCelulaAdmin(admin.ModelAdmin):
+    """Histórico da grade da folha. Só leitura: um rastro que se edita não é rastro."""
+
+    list_display = ('alterado_em', 'linha', 'campo', 'valor_anterior', 'valor_novo', 'alterado_por')
+    list_filter = ('linha__fechamento', 'campo')
+    search_fields = ('linha__nome', 'linha__matricula')
+    list_select_related = ('linha', 'alterado_por')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Fechamento)

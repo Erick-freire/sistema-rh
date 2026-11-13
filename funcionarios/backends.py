@@ -4,6 +4,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import User
 
 from .models import Usuario
+from .perfis import acesso_encerrado
 
 CPF_DIGITADO = re.compile(r'\s*[\d.\-\s]+\s*')
 
@@ -33,3 +34,25 @@ class CpfOuLoginGestorBackend(ModelBackend):
             if gestor:
                 username = gestor.user.username
         return super().authenticate(request, username=username, password=password, **kwargs)
+
+    def user_can_authenticate(self, user):
+        """
+        Além do `is_active`: quem saiu da empresa não entra (`acesso_encerrado`).
+
+        O Django passa por aqui no login, no /admin/ e em toda página (o
+        `get_user` abaixo revalida a sessão), então quem estava logado cai na
+        próxima página. A tela de login mostra a mesma mensagem de senha
+        errada -- decisão do usuário: não confirmar que o CPF existe.
+        """
+        return super().user_can_authenticate(user) and not acesso_encerrado(user)
+
+    def get_user(self, user_id):
+        # Igual ao ModelBackend, mas já trazendo o perfil: a checagem acima
+        # roda em toda requisição e, sem isso, custaria duas consultas a mais.
+        try:
+            user = User._default_manager.select_related(
+                'usuario__funcionario', 'responsavel_terceiro__empresa',
+            ).get(pk=user_id)
+        except User.DoesNotExist:
+            return None
+        return user if self.user_can_authenticate(user) else None

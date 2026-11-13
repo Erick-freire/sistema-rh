@@ -9,7 +9,10 @@
         <p style="color: var(--color-text-muted); font-size: 0.92rem;">
             Seu usuário ainda não está vinculado a um perfil de funcionário. Fale com o RH para liberar o seu acesso.
         </p>
-        <a href="{% url 'logout' %}" class="btn-outline btn-bloco" style="margin-top: 20px;">Sair</a>
+        <form method="post" action="{% url 'logout' %}" style="margin-top: 20px;">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline btn-bloco">Sair</button>
+        </form>
     </div>
 </div>
 {% endblock %}

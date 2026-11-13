@@ -15,7 +15,7 @@ Meu Perfil
             <div class="perfil-cabecalho">
                 <div class="perfil-foto">
                     {% if funcionario.foto %}
-                    <img src="{{ funcionario.foto.url }}" alt="{{ funcionario.nome }}">
+                    <img src="{% url 'foto_funcionario' funcionario.id %}" alt="{{ funcionario.nome }}">
                     {% else %}
                     <span class="avatar">{{ funcionario.iniciais }}</span>
                     {% endif %}
@@ -89,7 +89,7 @@ Meu Perfil
                         <label>{{ tipo.nome }}</label>
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <label for="documento_filho_{{ tipo.id }}" class="btn-outline btn-sm" style="cursor: pointer; white-space: nowrap; margin-bottom: 0;">{% icon 'upload' %} Escolher arquivo</label>
-                            <input type="file" name="documento_filho_{{ tipo.id }}" id="documento_filho_{{ tipo.id }}" style="display: none;">
+                            <input type="file" accept="{% accept_documento %}" name="documento_filho_{{ tipo.id }}" id="documento_filho_{{ tipo.id }}" style="display: none;">
                             <span class="nome-arquivo-filho" style="font-size: 0.85rem; color: var(--color-text-muted);">
                                 {% if tipo.id in tipos_documentos_filho_enviados %}{% icon 'check-circle' %} Já enviado{% else %}Nenhum arquivo selecionado{% endif %}
                             </span>

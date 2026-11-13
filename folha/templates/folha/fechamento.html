@@ -152,6 +152,7 @@
                     <th scope="row" class="grade-folha__fixa">
                         <div class="grade-folha__nome">
                             <span>{{ item.linha.nome }}</span>
+                            {% if not item.editavel %}<span class="grade-folha__aviso" title="Só o gerente do RH altera esta linha (própria ou de DP/RH).">{% icon 'lock' %}</span>{% endif %}
                             <span class="grade-folha__aviso" data-avisos title="{{ item.avisos|join:' ' }}"{% if not item.avisos %} hidden{% endif %}>{% icon 'alert-triangle' %}</span>
                         </div>
                         <div class="grade-folha__id">EMP {{ item.linha.codigo_empresa|default:'—' }} · mat. {{ item.linha.matricula|default:'—' }}</div>
@@ -159,17 +160,17 @@
                     {% for celula in item.celulas %}{% if celula.coluna.editavel %}
                     <td class="grade-folha__celula grade-folha__celula--{{ celula.coluna.tipo }}{% if celula.editado %} is-editada{% endif %}"{% if celula.titulo %} title="{{ celula.titulo }}"{% endif %}>
                         {% if celula.coluna.tipo == 'sim' or celula.coluna.tipo == 'sim_nao' %}
-                        <input type="checkbox" data-campo="{{ celula.coluna.campo }}" aria-label="{{ celula.coluna.rotulo }}"{% if celula.marcado %} checked{% endif %}{% if not fechamento.aberto %} disabled{% endif %}>
+                        <input type="checkbox" data-campo="{{ celula.coluna.campo }}" aria-label="{{ celula.coluna.rotulo }}"{% if celula.marcado %} checked{% endif %}{% if not fechamento.aberto or not item.editavel %} disabled{% endif %}>
                         {% else %}
-                        <input type="text" data-campo="{{ celula.coluna.campo }}" value="{{ celula.texto }}" inputmode="decimal" aria-label="{{ celula.coluna.rotulo }}"{% if celula.bloqueado %} placeholder="não usa" title="Informou em Meu Perfil que não usa vale-transporte: sem desconto."{% endif %}{% if not fechamento.aberto or celula.bloqueado and not celula.texto %} disabled{% endif %}>
+                        <input type="text" data-campo="{{ celula.coluna.campo }}" value="{{ celula.texto }}" inputmode="decimal" aria-label="{{ celula.coluna.rotulo }}"{% if celula.bloqueado %} placeholder="não usa" title="Informou em Meu Perfil que não usa vale-transporte: sem desconto."{% endif %}{% if not fechamento.aberto or not item.editavel or celula.bloqueado and not celula.texto %} disabled{% endif %}>
                         {% endif %}
                     </td>
                     {% endif %}{% endfor %}
                     {% if fechamento.aberto %}
                     <td class="grade-folha__acoes">
                         <button type="submit" form="form-recalcular-linha" formaction="{% url 'folha:recalcular_linha' item.linha.id %}" class="btn-icone" title="Recalcular o ponto desta pessoa">{% icon 'clock' %}</button>
-                        <button type="submit" form="form-remover-linha" formaction="{% url 'folha:remover_linha' item.linha.id %}" class="btn-icone" title="Remover deste fechamento"
-                                data-confirmar-titulo="Remover do fechamento" data-confirmar="{{ item.linha.nome }} sai do fechamento de {{ fechamento.competencia_extenso }}, com os lançamentos deste mês.">{% icon 'trash' %}</button>
+                        {% if item.editavel %}<button type="submit" form="form-remover-linha" formaction="{% url 'folha:remover_linha' item.linha.id %}" class="btn-icone" title="Remover deste fechamento"
+                                data-confirmar-titulo="Remover do fechamento" data-confirmar="{{ item.linha.nome }} sai do fechamento de {{ fechamento.competencia_extenso }}, com os lançamentos deste mês.">{% icon 'trash' %}</button>{% endif %}
                     </td>
                     {% endif %}
                 </tr>

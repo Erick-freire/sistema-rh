@@ -41,7 +41,10 @@ Comodatos
                         {% icon 'eye' %} Validar
                     </button>
                     {% elif comodato.status == 'aguardando_assinatura' and not comodato.arquivo_gerado %}
-                    <a href="{% url 'gerar_pdf_comodato' comodato.id %}" class="btn btn-sm">Gerar PDF</a>
+                    <form method="post" action="{% url 'gerar_pdf_comodato' comodato.id %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm">Gerar PDF</button>
+                    </form>
                     {% elif comodato.arquivo_assinado or comodato.arquivo_gerado %}
                     <button type="button" class="btn-outline btn-sm" data-abrir-termo
                             data-pdf="{% if comodato.arquivo_assinado %}{% url 'ver_comodato' comodato.id 'assinado' %}{% else %}{% url 'ver_comodato' comodato.id 'gerado' %}{% endif %}"

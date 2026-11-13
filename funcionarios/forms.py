@@ -7,6 +7,8 @@ from .models import (
 )
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
+from .arquivos import ACCEPT_DOCUMENTO, ACCEPT_IMAGEM, EXTENSOES_IMAGEM, validar_upload
+
 
 class MeuPerfilForm(forms.ModelForm):
     CAMPOS_OBRIGATORIOS = [c for c in Funcionario.CAMPOS_PESSOAIS_OBRIGATORIOS if c != 'cpf']
@@ -56,14 +58,29 @@ class FotoPerfilForm(forms.ModelForm):
     class Meta:
         model = Funcionario
         fields = ['foto']
+        # Campo simples: o padrão (ClearableFileInput) escreve "Atualmente:"
+        # com um link para /media/, que não serve mais arquivo -- a foto sai
+        # pela view `foto_funcionario`.
+        widgets = {'foto': forms.FileInput}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['foto'].widget.attrs['accept'] = ACCEPT_IMAGEM
+
+    def clean_foto(self):
+        return validar_upload(self.cleaned_data.get('foto'), EXTENSOES_IMAGEM)
 
 class EnviarDocumentoForm(forms.ModelForm):
     class Meta:
         model = Documento
         fields = ['tipo_documento', 'arquivo']
 
+    def clean_arquivo(self):
+        return validar_upload(self.cleaned_data.get('arquivo'))
+
     def __init__(self, *args, funcionario=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['arquivo'].widget.attrs['accept'] = ACCEPT_DOCUMENTO
         if funcionario is not None:
             queryset = self.fields['tipo_documento'].queryset.exclude(nome='PIS')
             if funcionario.status not in ('aguardando_assinatura', 'em_validacao'):
@@ -388,3 +405,7 @@ class OcorrenciaEPIForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['funcionario'].queryset = Funcionario.objects.exclude(status='inativo').order_by('nome')
         self.fields['item_catalogo'].queryset = ItemCatalogoEPI.objects.filter(ativo=True)
+        self.fields['foto'].widget.attrs['accept'] = ACCEPT_IMAGEM
+
+    def clean_foto(self):
+        return validar_upload(self.cleaned_data.get('foto'), EXTENSOES_IMAGEM)

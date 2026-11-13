@@ -308,7 +308,16 @@ class Funcionario(models.Model):
     def dias_pendentes_ferias(self):
         periodo = self._periodo_ferias_atual()
         return periodo['dias_pendentes'] if periodo else None
-    
+
+
+# Quando `Usuario.funcionarios_que_altera` barra a alteração (o próprio DP/RH
+# ou outro DP/RH): a mesma frase no ponto, na folha e na ficha.
+MENSAGEM_ALTERACAO_RESTRITA = (
+    'O ponto, a folha e o cadastro de quem é DP/RH são alterados só pelo gerente do RH. '
+    'Peça a correção a ele.'
+)
+
+
 class Usuario(models.Model):
     PAPEL_CHOICES = [
         ('colaborador', 'Colaborador'),
@@ -364,6 +373,62 @@ class Usuario(models.Model):
     def eh_rh(self):
         """RH de fato: vê tudo, inclusive os módulos exclusivos de RH."""
         return self.papel == 'rh' or self.acesso_rh
+
+    def tem_papel_no_sistema(self):
+        """Mais que colaborador: gestor, DP, segurança do trabalho, RH ou acesso de RH."""
+        return self.papel != 'colaborador' or self.acesso_rh
+
+    def eh_administrador_do_sistema(self):
+        """Entra no /admin/ do Django -- acima de qualquer papel do app."""
+        return self.user.is_superuser or self.user.is_staff
+
+    def aviso_senha_restrita(self):
+        """Quem redefine a senha desta conta, quando não é qualquer um que a opera; '' se for."""
+        if self.eh_administrador_do_sistema():
+            return 'Conta de administrador do sistema: a senha só é redefinida pela TI, no /admin/.'
+        if self.tem_papel_no_sistema():
+            return 'Conta com papel no sistema: a senha só é redefinida pelo RH.'
+        return ''
+
+    def pode_redefinir_senha_de(self, alvo):
+        """
+        Quem redefine vê a senha nova e pode entrar como o dono da conta, então
+        só redefine quem não ganharia poder com isso:
+        - colaborador comum: quem opera ele (DP/RH, gestor da equipe);
+        - conta com papel (gestor, DP, segurança do trabalho, RH): só o RH;
+        - administrador do sistema (superuser/staff): ninguém pelo app -- só
+          outro administrador, pelo /admin/ ou `manage.py changepassword`.
+        """
+        if alvo.eh_administrador_do_sistema():
+            return False
+        if alvo.tem_papel_no_sistema():
+            return self.eh_rh()
+        return self.opera(alvo.funcionario)
+
+    def eh_gerente_rh(self):
+        """Gestor com acesso de RH: quem responde pelo RH (ver `funcionarios_que_altera`)."""
+        return self.papel == 'gestor' and self.acesso_rh
+
+    def funcionarios_que_altera(self):
+        """
+        De quem esta conta altera ponto (ajuste, aprovação de pedido, jornada,
+        atestado), linha da folha e cadastro (salário, cargo, setor). Regra do
+        usuário (13/11/2026): o gerente do RH altera a si mesmo e a todos; quem
+        mais é DP/RH não altera a si mesmo nem a outro DP/RH -- pede a correção
+        ao gerente do RH. Fora isso, vale `funcionarios_que_opera`.
+        """
+        operados = self.funcionarios_que_opera()
+        if self.eh_gerente_rh():
+            return operados
+        dp_rh = (
+            Usuario.objects.filter(models.Q(papel__in=('dp', 'rh')) | models.Q(acesso_rh=True))
+            .exclude(papel='gestor', acesso_rh=True)
+            .values('funcionario_id')
+        )
+        return operados.exclude(id=self.funcionario_id).exclude(id__in=dp_rh)
+
+    def pode_alterar_ponto_e_folha_de(self, funcionario):
+        return self.funcionarios_que_altera().filter(id=funcionario.id).exists()
 
     def eh_dp_ou_rh(self):
         """Quem opera os módulos do dia a dia (funcionários, férias, ponto, comodatos...)."""

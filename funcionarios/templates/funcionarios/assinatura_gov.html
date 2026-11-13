@@ -46,7 +46,7 @@ Assinar com Gov.br
                 {% csrf_token %}
                 <input type="hidden" name="tipo_documento" value="{{ contrato_documento.tipo_documento_id }}">
                 <input type="hidden" name="origem" value="assinatura_gov">
-                <input type="file" name="arquivo" id="arquivo-contrato-assinado" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo" id="arquivo-contrato-assinado" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-contrato-assinado" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
             </form>
         </div>
@@ -71,7 +71,7 @@ Assinar com Gov.br
             <form method="post" action="{% url 'reenviar_comodato_assinado' comodato.id %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
                 <input type="hidden" name="origem" value="assinatura_gov">
-                <input type="file" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo_assinado" id="arquivo-comodato-{{ comodato.id }}" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-comodato-{{ comodato.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
             </form>
         </div>
@@ -89,7 +89,7 @@ Assinar com Gov.br
             <form method="post" action="{% url 'reenviar_epi_assinado' ficha.id %}" enctype="multipart/form-data" style="margin: 0;">
                 {% csrf_token %}
                 <input type="hidden" name="origem" value="assinatura_gov">
-                <input type="file" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
+                <input type="file" accept="{% accept_documento %}" name="arquivo_assinado" id="arquivo-epi-{{ ficha.id }}" style="display: none;" required onchange="this.form.submit()">
                 <label for="arquivo-epi-{{ ficha.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
             </form>
         </div>

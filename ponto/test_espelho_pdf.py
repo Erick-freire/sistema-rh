@@ -135,7 +135,7 @@ class ExportarEspelhoFormTests(BaseEspelhoTestCase):
 class ExportarEspelhoViewTests(BaseEspelhoTestCase):
     def setUp(self):
         super().setUp()
-        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.producao, cpf='99999999999', status='inativo')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9999', cargo='RH', setor=self.producao, cpf='99999999999', status='em_validacao')
         user = User.objects.create_user(username='rhteste', password='senha123')
         Usuario.objects.create(user=user, funcionario=rh, papel='rh')
         self.client.login(username='rhteste', password='senha123')

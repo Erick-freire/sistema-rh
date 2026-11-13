@@ -23,9 +23,12 @@ class EquipamentoForm(forms.ModelForm):
 
     class Meta:
         model = Equipamento
+        # senha_admin fica fora de `fields` de propósito: se estivesse aqui, o
+        # ModelForm gravaria o campo em branco no equipamento antes do save() e
+        # "deixe em branco para manter" apagaria a senha. Só o save() a grava.
         fields = [
             'nome', 'ip', 'porta', 'usa_https', 'modelo', 'local', 'numero_serie',
-            'ativo', 'usuario_admin', 'senha_admin',
+            'ativo', 'usuario_admin',
         ]
 
     def clean_senha_admin(self):
@@ -242,6 +245,26 @@ class FeriadoForm(forms.ModelForm):
 # = 20 s (cálculo + PDF); 2500 pessoas-dia fica perto de 40 s.
 LIMITE_PESSOAS_DIA_ESPELHO = 2500
 
+# Período máximo do espelho (tela e PDF), decisão de 13/11/2026: 5 anos cobre
+# de uma vez o prazo de um processo trabalhista. Sem limite, um endereço com
+# séculos de período prendia o servidor por horas (medido: 10 anos = 11 s só de
+# cálculo, para uma pessoa).
+ANOS_MAXIMOS_ESPELHO = 5
+MENSAGEM_PERIODO_LONGO = (
+    f'Escolha um período de até {ANOS_MAXIMOS_ESPELHO} anos. Para um período maior, gere um espelho de cada vez.'
+)
+
+
+def periodo_longo_demais(inicio, fim):
+    """Mais que `ANOS_MAXIMOS_ESPELHO` anos de calendário entre as duas datas (29/02 vira 28/02)."""
+    if fim.year - ANOS_MAXIMOS_ESPELHO < 1:
+        return False  # data final antes do ano 6: o período não chega a 5 anos (o ano 0 não existe)
+    try:
+        limite = fim.replace(year=fim.year - ANOS_MAXIMOS_ESPELHO)
+    except ValueError:
+        limite = fim.replace(year=fim.year - ANOS_MAXIMOS_ESPELHO, day=28)
+    return inicio < limite
+
 
 class ExportarEspelhoForm(forms.Form):
     """
@@ -280,6 +303,9 @@ class ExportarEspelhoForm(forms.Form):
         inicio, fim = dados.get('data_inicio'), dados.get('data_fim')
         if inicio and fim and fim < inicio:
             self.add_error('data_fim', 'A data final não pode ser antes da inicial.')
+            return dados
+        if inicio and fim and periodo_longo_demais(inicio, fim):
+            self.add_error(None, MENSAGEM_PERIODO_LONGO)
             return dados
 
         if dados.get('filtro') == 'funcionario':
