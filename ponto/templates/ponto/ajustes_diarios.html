@@ -1,0 +1,110 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+{% load ponto_extras %}
+
+{% block titulo %}Ajustes diários{% endblock %}
+
+{% block conteudo %}
+{% include 'ponto/_ponto_header.html' %}
+{% include 'ponto/_subnav.html' %}
+{% include 'ponto/_subnav_ajustes.html' %}
+
+<form method="get" class="form-busca ajustes-diarios__filtro">
+    <label>
+        <span class="item-card__campo-rotulo">Dia</span>
+        <input type="date" name="data" value="{{ dia|date:'Y-m-d' }}" max="{{ ontem|date:'Y-m-d' }}" onchange="this.form.submit()">
+    </label>
+    <label>
+        <span class="item-card__campo-rotulo">Setor</span>
+        <select name="setor" onchange="this.form.submit()">
+            <option value="">Todos os setores</option>
+            {% for s in setores %}
+            <option value="{{ s.id }}"{% if setor and s.id == setor.id %} selected{% endif %}>{{ s.nome }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <button type="submit" class="btn-outline">Filtrar</button>
+</form>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+        <a href="{{ url_dia_anterior }}" class="pagina-link">{% icon 'arrow-left' %} Dia anterior</a>
+        <strong>{{ dia|date:'d/m/Y' }} · {{ dia|dia_semana_curto }}</strong>
+        {% if url_dia_seguinte %}
+        <a href="{{ url_dia_seguinte }}" class="pagina-link">Dia seguinte {% icon 'chevron-right' %}</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+    </div>
+
+    {% if linhas %}
+    <p class="item-card__subtitulo" style="margin-bottom: 12px;">
+        <strong>{{ linhas|length }} pessoa{{ linhas|length|pluralize }} com o ponto a corrigir</strong>{% if setor %} em {{ setor.nome }}{% endif %}.
+        Clique numa batida para corrigi-la, em <strong>Lançar batida</strong> para incluir a que faltou,
+        ou em <strong>Abonar</strong> para lançar atestado ou outra justificativa do dia inteiro.
+    </p>
+    {% endif %}
+
+    <div class="lista-cards">
+        {% for linha in linhas %}
+        {% with f=linha.funcionario dia_calc=linha.dia %}
+        <div class="item-card item-card--ponto">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">
+                    <a href="{% url 'ponto:listar_calculo' %}?funcionario={{ f.id }}&data_inicio={{ mes_inicio }}&data_fim={{ dia|date:'Y-m-d' }}" title="Abrir o espelho do mês de {{ f.nome }}">{{ f.nome }}</a>
+                </div>
+                <div class="item-card__subtitulo">{% if f.matricula %}{{ f.matricula }} · {% endif %}{{ f.setor|default:'Sem setor' }}</div>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Esperado</span>
+                <span class="item-card__campo-valor">{% if dia_calc.entrada_esperada and dia_calc.saida_esperada %}{{ dia_calc.entrada_esperada|time:'H:i' }} – {{ dia_calc.saida_esperada|time:'H:i' }}{% else %}—{% endif %}</span>
+            </div>
+            <div class="item-card__campo">
+                <span class="item-card__campo-rotulo">Batidas registradas</span>
+                <span class="item-card__campo-valor batidas-corrigiveis">
+                    {% for evento in dia_calc.marcacoes %}
+                        {% if linha.pode_alterar %}
+                        <a href="{% url 'ponto:ajustar_marcacao' f.id dia|date:'Y-m-d' %}?tipo={% if forloop.counter|divisibleby:2 %}saida{% else %}entrada{% endif %}{% if evento.marcacao_id %}&marcacao_original={{ evento.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}" title="Corrigir esta batida">{{ evento.momento|time:'H:i' }}{{ evento.momento|marca_dia_turno:dia }}{% if evento.manual %}*{% endif %}</a>
+                        {% else %}
+                        <span>{{ evento.momento|time:'H:i' }}{{ evento.momento|marca_dia_turno:dia }}{% if evento.manual %}*{% endif %}</span>
+                        {% endif %}
+                    {% empty %}—{% endfor %}
+                </span>
+            </div>
+            <div class="item-card__extra">
+                <span class="badge-status badge-status--{{ dia_calc.situacao_cor }}">{{ dia_calc.situacao_texto }}</span>
+                {% if linha.tem_pedido %}
+                <a href="{% url 'ponto:ajustes_pendentes' %}" class="item-card__subtitulo">{% icon 'alert-triangle' %} Tem correção solicitada</a>
+                {% endif %}
+                {% if linha.pode_alterar %}
+                <div class="ajustes-diarios__acoes">
+                    <a href="{% url 'ponto:ajustar_marcacao' f.id dia|date:'Y-m-d' %}?tipo={{ dia_calc.tipo_sugerido }}&voltar={{ request.get_full_path|urlencode }}" class="btn-outline btn-sm">Lançar batida</a>
+                    <details class="abono-dia">
+                        <summary class="btn-outline btn-sm">Abonar</summary>
+                        <form method="post" action="{% url 'lancar_atestado' f.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+                            <input type="hidden" name="data_inicio" value="{{ dia|date:'Y-m-d' }}">
+                            <input type="hidden" name="data_fim" value="{{ dia|date:'Y-m-d' }}">
+                            <select name="tipo_justificativa" aria-label="Tipo de justificativa">
+                                {% for tipo in tipos_justificativa %}<option value="{{ tipo }}">{{ tipo }}</option>{% endfor %}
+                            </select>
+                            <input type="text" name="motivo" maxlength="150" placeholder="Detalhe: CID, motivo... (opcional)">
+                            <button type="submit" class="btn-primario btn-sm"
+                                    data-confirmar="Abonar o dia {{ dia|date:'d/m/Y' }} de {{ f.nome }}? O dia inteiro deixa de contar como falta."
+                                    data-confirmar-titulo="Abonar dia">Abonar {{ dia|date:'d/m' }}</button>
+                        </form>
+                    </details>
+                </div>
+                {% else %}
+                <span class="item-card__subtitulo">{% icon 'lock' %} Aguarda o gerente do RH</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endwith %}
+        {% empty %}
+        <p class="item-card__subtitulo">Nenhuma pendência de ponto em {{ dia|date:'d/m/Y' }}{% if setor %} em {{ setor.nome }}{% endif %}.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

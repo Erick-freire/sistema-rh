@@ -1,0 +1,306 @@
+[
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 1,
+  "fields": {
+    "nome": "RG",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 2,
+  "fields": {
+    "nome": "Contrato de Trabalho",
+    "obrigatorio": true,
+    "eh_contrato": true,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 3,
+  "fields": {
+    "nome": "CPF",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 4,
+  "fields": {
+    "nome": "TÍTULO DE ELEITOR",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 5,
+  "fields": {
+    "nome": "COMPROVANTE DE RESIDÊNCIA",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 6,
+  "fields": {
+    "nome": "CNH",
+    "obrigatorio": false,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 7,
+  "fields": {
+    "nome": "RESERVISTA",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sexo_masculino",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 8,
+  "fields": {
+    "nome": "CTPS",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 9,
+  "fields": {
+    "nome": "PIS",
+    "obrigatorio": false,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 10,
+  "fields": {
+    "nome": "COMPROVANTE DE ESCOLARIDADE",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 11,
+  "fields": {
+    "nome": "CARTÃO DE VACINA",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 12,
+  "fields": {
+    "nome": "CERTIDÃO DE NASCIMENTO",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "filho_menor_idade",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 14,
+  "fields": {
+    "nome": "CARTÃO DE VACINA INFANTIL",
+    "obrigatorio": true,
+    "eh_contrato": false,
+    "condicao": "filho_menor_idade",
+    "permite_varios": false
+  }
+},
+{
+  "model": "funcionarios.tipodocumento",
+  "pk": 18,
+  "fields": {
+    "nome": "Atestado Médico",
+    "obrigatorio": false,
+    "eh_contrato": false,
+    "condicao": "sempre",
+    "permite_varios": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 1,
+  "fields": {
+    "nome": "Respirador semifacial filtrante PFF2",
+    "numero_ca": "10578/38944",
+    "validade_ca": "2029-11-29",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 2,
+  "fields": {
+    "nome": "Botina Tipo B",
+    "numero_ca": "48413/47459",
+    "validade_ca": "2027-11-15",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 3,
+  "fields": {
+    "nome": "Protetor Auditivo",
+    "numero_ca": "5674/33835",
+    "validade_ca": "2027-09-26",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 4,
+  "fields": {
+    "nome": "Capacete Classe C",
+    "numero_ca": "29637",
+    "validade_ca": "2027-10-14",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 5,
+  "fields": {
+    "nome": "Respirador semifacial (sem filtro PFF)",
+    "numero_ca": "33596/10463",
+    "validade_ca": "2030-08-27",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 6,
+  "fields": {
+    "nome": "Cinturão de Segurança com Talabarte ou Trava-Queda",
+    "numero_ca": "35506",
+    "validade_ca": "2027-03-21",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 7,
+  "fields": {
+    "nome": "Luva contra Agentes Mecânicos e Químicos",
+    "numero_ca": "40506",
+    "validade_ca": "2027-07-14",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 8,
+  "fields": {
+    "nome": "Bota de Cano Longo Tipo D",
+    "numero_ca": "37455",
+    "validade_ca": "2028-07-13",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 9,
+  "fields": {
+    "nome": "Óculos de Proteção (ampla visão)",
+    "numero_ca": "11285/19628",
+    "validade_ca": "2027-09-08",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 10,
+  "fields": {
+    "nome": "Óculos de Proteção",
+    "numero_ca": "34082",
+    "validade_ca": "2028-10-30",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 11,
+  "fields": {
+    "nome": "Vestimenta para proteção do tronco (avental)",
+    "numero_ca": "28303",
+    "validade_ca": "2030-08-12",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 12,
+  "fields": {
+    "nome": "[TESTE] CA vencido há 15 dias",
+    "numero_ca": "TESTE-A",
+    "validade_ca": "2026-09-20",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 13,
+  "fields": {
+    "nome": "[TESTE] CA vence em 20 dias",
+    "numero_ca": "TESTE-B",
+    "validade_ca": "2026-10-25",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 14,
+  "fields": {
+    "nome": "[TESTE] CA válido por 1 ano",
+    "numero_ca": "TESTE-C",
+    "validade_ca": "2027-10-05",
+    "ativo": true
+  }
+},
+{
+  "model": "funcionarios.itemcatalogoepi",
+  "pk": 15,
+  "fields": {
+    "nome": "[TESTE] CA sem validade cadastrada",
+    "numero_ca": "TESTE-D",
+    "validade_ca": null,
+    "ativo": true
+  }
+}
+]

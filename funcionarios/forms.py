@@ -131,7 +131,23 @@ def _sem_acento_nem_caixa(texto):
     return ' '.join(sem_acento.casefold().split())
 
 
+# Abono do dia inteiro (vira um Atestado: sem falta, sem perder a assiduidade).
+# O tipo vai na frente do motivo, para o espelho e a ficha mostrarem o que foi.
+TIPOS_DE_JUSTIFICATIVA = [
+    'Atestado médico',
+    'Declaração de comparecimento',
+    'Falta legal (art. 473 da CLT)',
+    'Curso',
+    'Outra justificativa',
+]
+
+
 class AtestadoForm(forms.ModelForm):
+    # Só para exibir: `lancar_atestado_view` lê o POST e põe o tipo na frente do motivo.
+    tipo_justificativa = forms.ChoiceField(
+        label='Justificativa', choices=[(tipo, tipo) for tipo in TIPOS_DE_JUSTIFICATIVA], required=False,
+    )
+
     class Meta:
         model = Atestado
         fields = ['data_inicio', 'data_fim', 'motivo']

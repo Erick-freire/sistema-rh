@@ -41,7 +41,8 @@ urlpatterns = [
     path('equipe/', views.ponto_equipe_view, name='ponto_equipe'),
     path('equipe/<int:funcionario_id>/', views.ponto_equipe_funcionario_view, name='ponto_equipe_funcionario'),
 
-    # RH — fila de aprovação
+    # RH — ajustes do dia e fila de aprovação
+    path('ajustes/diarios/', views.ajustes_diarios_view, name='ajustes_diarios'),
     path('ajustes/pendentes/', views.ajustes_pendentes_view, name='ajustes_pendentes'),
     path('ajustes/<int:ajuste_id>/aprovar/', views.aprovar_ajuste_view, name='aprovar_ajuste'),
     path('ajustes/<int:ajuste_id>/rejeitar/', views.rejeitar_ajuste_view, name='rejeitar_ajuste'),

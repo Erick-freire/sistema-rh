@@ -1,11 +1,12 @@
 {% extends 'funcionarios/base.html' %}
 {% load rh_icons %}
 
-{% block titulo %}Ajustes Pendentes{% endblock %}
+{% block titulo %}Correções solicitadas{% endblock %}
 
 {% block conteudo %}
 {% include 'ponto/_ponto_header.html' %}
 {% include 'ponto/_subnav.html' %}
+{% include 'ponto/_subnav_ajustes.html' %}
 
 <div class="table-responsive desktop-only">
     <table>

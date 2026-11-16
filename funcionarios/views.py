@@ -39,7 +39,7 @@ from .pwa_views import desvincular_push_da_sessao
 from .forms import (
     MeuPerfilForm, FotoPerfilForm, EnviarDocumentoForm, FuncionarioForm, PreCadastroFuncionarioForm,
     DadosCadastraisForm, SolicitarFeriasForm, ProporOutraDataForm, SugerirAlteracaoForm, AvisoFeriasForm,
-    RejeitarDocumentoForm, AtestadoForm, TermoComodatoForm, ItemComodatoFormSet
+    RejeitarDocumentoForm, AtestadoForm, TermoComodatoForm, ItemComodatoFormSet, TIPOS_DE_JUSTIFICATIVA,
 )
 from .utils import formatar_cpf, formatar_moeda, salario_por_extenso, data_por_extenso, data_curta_por_extenso
 
@@ -845,15 +845,22 @@ def lancar_atestado_view(request, funcionario_id):
     if request.method == 'POST' and not usuario.pode_alterar_ponto_e_folha_de(funcionario):
         messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
     elif request.method == 'POST':
-        form = AtestadoForm(request.POST)
+        dados = request.POST.copy()
+        # Vindo dos Ajustes diários: o tipo da justificativa (atestado, declaração...) abre o motivo.
+        tipo = dados.get('tipo_justificativa', '')
+        if tipo in TIPOS_DE_JUSTIFICATIVA:
+            motivo = dados.get('motivo', '').strip()
+            dados['motivo'] = f'{tipo} — {motivo}' if motivo else tipo
+        form = AtestadoForm(dados)
         if form.is_valid():
             atestado = form.save(commit=False)
             atestado.funcionario = funcionario
             atestado.lancado_por = request.user
             atestado.save()
+            o_que = f'Abono ({tipo})' if tipo in TIPOS_DE_JUSTIFICATIVA else 'Atestado'
             messages.success(
                 request,
-                f'Atestado de {funcionario.nome} lançado: {atestado.data_inicio:%d/%m/%Y} a {atestado.data_fim:%d/%m/%Y}. '
+                f'{o_que} de {funcionario.nome} lançado: {atestado.data_inicio:%d/%m/%Y} a {atestado.data_fim:%d/%m/%Y}. '
                 'Esses dias não contam como falta nem tiram a assiduidade.',
             )
         else:

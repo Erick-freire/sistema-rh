@@ -2195,7 +2195,7 @@ class EspelhoSetorPorDiaTests(TestCase):
         self.assertIsNone(esp['url_anterior'])
         self.assertIn('dia=2026-08-04', esp['url_seguinte'])
         self.assertIsNone(resposta.context['resultado'])
-        self.assertNotContains(resposta, 'Atestados no período')  # nada do espelho de um funcionário
+        self.assertNotContains(resposta, 'Justificativas no período')  # nada do espelho de um funcionário
         self.assertNotContains(resposta, 'Normais')
         # Lápis de cada pessoa leva à correção daquela pessoa naquele dia, voltando para este dia do setor.
         self.assertContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.beto.id, '2026-08-03']))
@@ -2537,6 +2537,118 @@ class AjustesPendentesViewTests(TestCase):
         self.assertRedirects(resposta, reverse('dashboard'))
 
 
+class AjustesDiariosViewTests(TestCase):
+    """Sub-aba Ajustes diários: quem ficou com o ponto a corrigir no dia escolhido."""
+
+    SEGUNDA = date(2026, 8, 3)
+
+    def setUp(self):
+        rh_setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Teste', matricula='9990', cargo='RH', setor=rh_setor, cpf='66600000000')
+        user = User.objects.create_user(username='rhdiarios', password='senha123')
+        Usuario.objects.create(user=user, funcionario=rh, papel='rh')
+        self.client.login(username='rhdiarios', password='senha123')
+
+        self.producao = Setor.objects.create(nome='Produção')
+        self.envase = Setor.objects.create(nome='Envase')
+        horario = _criar_horario_util(4401)
+        self.equipamento = _criar_equipamento()
+
+        def pessoa(nome, cpf, setor):
+            funcionario = Funcionario.objects.create(nome=nome, matricula=cpf[-4:], cargo='Operador', setor=setor, cpf=cpf)
+            FuncionarioJornada.objects.create(funcionario=funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+            return funcionario
+
+        self.bia = pessoa('Bia Impar', '66611111111', self.producao)
+        self.caio = pessoa('Caio Completo', '66622222222', self.producao)
+        self.davi = pessoa('Davi Faltou', '66633333333', self.envase)
+        self.eva = pessoa('Eva Atestado', '66644444444', self.envase)
+        _bater_ponto(self.bia, self.equipamento, self.SEGUNDA, '08:00', '12:00', '13:00')
+        _bater_ponto(self.caio, self.equipamento, self.SEGUNDA, '08:00', '12:00', '13:00', '17:00')
+        Atestado.objects.create(funcionario=self.eva, data_inicio=self.SEGUNDA, data_fim=self.SEGUNDA)
+
+    def _get(self, consulta=''):
+        return self.client.get(reverse('ponto:ajustes_diarios') + consulta)
+
+    def test_lista_so_quem_tem_o_que_corrigir_no_dia(self):
+        resposta = self._get(f'?data={self.SEGUNDA.isoformat()}')
+
+        self.assertEqual(resposta.status_code, 200)
+        situacoes = {linha['funcionario']: linha['dia']['situacao_texto'] for linha in resposta.context['linhas']}
+        self.assertEqual(situacoes, {self.bia: 'Faltou marcação', self.davi: 'Dia falta'})
+        self.assertContains(
+            resposta, reverse('ponto:ajustar_marcacao', args=[self.bia.id, self.SEGUNDA.isoformat()]) + '?tipo=saida',
+        )
+        self.assertContains(resposta, reverse('lancar_atestado', args=[self.davi.id]))
+
+    def test_filtro_por_setor(self):
+        resposta = self._get(f'?data={self.SEGUNDA.isoformat()}&setor={self.envase.id}')
+
+        self.assertEqual([linha['funcionario'] for linha in resposta.context['linhas']], [self.davi])
+
+    def test_dia_padrao_e_ontem_e_hoje_nao_entra(self):
+        ontem = timezone.localdate() - timedelta(days=1)
+
+        self.assertEqual(self._get().context['dia'], ontem)
+        self.assertEqual(self._get(f'?data={timezone.localdate().isoformat()}').context['dia'], ontem)
+        self.assertEqual(self._get('?data=xyz&setor=abc').status_code, 200)
+
+    def test_sinaliza_correcao_ja_solicitada(self):
+        AjustePonto.objects.create(
+            funcionario=self.bia, data=self.SEGUNDA, tipo_evento='saida', horario_ajustado='17:00', motivo='Esqueci.',
+        )
+
+        linhas = self._get(f'?data={self.SEGUNDA.isoformat()}').context['linhas']
+
+        self.assertEqual({linha['funcionario']: linha['tem_pedido'] for linha in linhas}, {self.bia: True, self.davi: False})
+
+    def test_abonar_com_justificativa_tira_o_dia_da_lista(self):
+        url = reverse('ponto:ajustes_diarios') + f'?data={self.SEGUNDA.isoformat()}'
+
+        resposta = self.client.post(reverse('lancar_atestado', args=[self.davi.id]), {
+            'data_inicio': self.SEGUNDA.isoformat(), 'data_fim': self.SEGUNDA.isoformat(),
+            'tipo_justificativa': 'Declaração de comparecimento', 'motivo': 'Consulta', 'proxima': url,
+        })
+
+        self.assertRedirects(resposta, url, fetch_redirect_response=False)
+        self.assertEqual(Atestado.objects.get(funcionario=self.davi).motivo, 'Declaração de comparecimento — Consulta')
+        self.assertEqual([linha['funcionario'] for linha in self.client.get(url).context['linhas']], [self.bia])
+
+    def test_tipo_de_justificativa_fora_da_lista_e_recusado(self):
+        self.client.post(reverse('lancar_atestado', args=[self.davi.id]), {
+            'data_inicio': self.SEGUNDA.isoformat(), 'data_fim': self.SEGUNDA.isoformat(),
+            'tipo_justificativa': 'Qualquer coisa', 'motivo': 'Consulta',
+        })
+
+        self.assertFalse(Atestado.objects.filter(funcionario=self.davi).exists())
+
+    def test_espelho_abona_com_justificativa(self):
+        url = reverse('ponto:listar_calculo') + f'?funcionario={self.davi.id}&data_inicio=2026-08-03&data_fim=2026-08-07'
+
+        espelho = self.client.get(url)
+        self.client.post(reverse('lancar_atestado', args=[self.davi.id]), {
+            'data_inicio': '2026-08-04', 'data_fim': '2026-08-05', 'tipo_justificativa': 'Curso', 'motivo': '', 'proxima': url,
+        })
+
+        self.assertContains(espelho, 'Justificativas no período')
+        self.assertContains(espelho, '<option value="Curso">Curso</option>', html=True)
+        self.assertContains(self.client.get(url), '04/08/2026 a 05/08/2026 — Curso')
+
+    def test_sub_abas_nas_duas_telas(self):
+        for nome in ('ponto:ajustes_diarios', 'ponto:ajustes_pendentes'):
+            with self.subTest(nome=nome):
+                resposta = self.client.get(reverse(nome))
+                self.assertContains(resposta, 'Ajustes diários')
+                self.assertContains(resposta, 'Correções solicitadas')
+
+    def test_colaborador_nao_acessa(self):
+        user = User.objects.create_user(username='biadiarios', password='senha123')
+        Usuario.objects.create(user=user, funcionario=self.bia, papel='colaborador')
+        self.client.login(username='biadiarios', password='senha123')
+
+        self.assertRedirects(self._get(), reverse('dashboard'), fetch_redirect_response=False)
+
+
 class AprovarRejeitarAjusteViewTests(TestCase):
     def setUp(self):
         setor = Setor.objects.create(nome='RH')
@@ -2736,6 +2848,16 @@ class GestorOperaPontoDaEquipeTests(TestCase):
 
         self.assertContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.bia.id, segunda.isoformat()]) + '?tipo=saida')
         self.assertNotContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.davi.id, segunda.isoformat()]) + '?tipo=saida')
+
+    def test_ajustes_diarios_so_da_equipe(self):
+        segunda = date(2026, 8, 3)
+        FuncionarioJornada.objects.create(
+            funcionario=self.de_fora, data_inicio=date(2026, 8, 1), horario=_criar_horario_util(4303),
+        )
+
+        resposta = self.client.get(reverse('ponto:ajustes_diarios') + f'?data={segunda.isoformat()}')
+
+        self.assertCountEqual([linha['funcionario'] for linha in resposta.context['linhas']], [self.bia, self.davi])
 
     def test_atestado_lancado_pelo_gestor_abona_a_falta_e_mantem_a_assiduidade(self):
         url = reverse('ponto:listar_calculo') + f'?funcionario={self.bia.id}&data_inicio=2026-08-03&data_fim=2026-08-07'

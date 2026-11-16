@@ -1065,7 +1065,7 @@ class LancarAtestadoViewTests(TestCase):
         })
 
         self.assertContains(ficha, 'R$ 2.500,00')
-        self.assertContains(ficha, 'Lançar atestado')
+        self.assertContains(ficha, 'Abonar com justificativa')
         self.assertEqual(Atestado.objects.get(funcionario=self.funcionario).lancado_por, user_gestor)
 
     def test_colaborador_comum_nao_lanca_atestado_de_terceiros(self):

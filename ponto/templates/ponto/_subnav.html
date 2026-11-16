@@ -4,7 +4,7 @@
     <a href="{% url 'ponto:ponto_equipe' %}" class="tabs__link{% if request.resolver_match.url_name == 'ponto_equipe' %} is-ativo{% endif %}">Equipe no dia</a>
     {% endif %}
     <a href="{% url 'ponto:listar_calculo' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_calculo' %} is-ativo{% endif %}">Espelho e cálculo</a>
-    <a href="{% url 'ponto:ajustes_pendentes' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_pendentes' %} is-ativo{% endif %}">
+    <a href="{% url 'ponto:ajustes_diarios' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_pendentes' or request.resolver_match.url_name == 'ajustes_diarios' %} is-ativo{% endif %}">
         Ajustes pendentes
         {% if badge_ajustes_pendentes %}<span class="tabs__badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
     </a>

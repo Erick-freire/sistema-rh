@@ -1,0 +1,8 @@
+{# Sub-abas de "Ajustes pendentes": o que o RH corrige por dia e o que o colaborador pediu. #}
+<div class="tabs tabs--sub">
+    <a href="{% url 'ponto:ajustes_diarios' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_diarios' %} is-ativo{% endif %}">Ajustes diários</a>
+    <a href="{% url 'ponto:ajustes_pendentes' %}" class="tabs__link{% if request.resolver_match.url_name == 'ajustes_pendentes' %} is-ativo{% endif %}">
+        Correções solicitadas
+        {% if badge_ajustes_pendentes %}<span class="tabs__badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
+    </a>
+</div>

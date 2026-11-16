@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from funcionarios import notificacoes
 from funcionarios.decorators import papel_required
-from funcionarios.forms import AtestadoForm
+from funcionarios.forms import TIPOS_DE_JUSTIFICATIVA, AtestadoForm
 from funcionarios.models import MENSAGEM_ALTERACAO_RESTRITA, Usuario
 from funcionarios.perfis import usuario_de
 
@@ -852,6 +852,75 @@ def ponto_equipe_funcionario_view(request, funcionario_id):
         'data_inicio': data_inicio,
         'data_fim': data_fim,
         **_navegacao_periodo(data_inicio, data_fim, hoje),
+    })
+
+
+# ---------- RH e gestor: ajustes diários ----------
+# Primeira sub-aba de "Ajustes pendentes": o RH escolhe um dia e vê só quem
+# ficou com o ponto a corrigir naquele dia (marcação ímpar, sem batidas,
+# falta/atraso -- o mesmo critério do "Pedir correção" do colaborador, ver
+# `situacao_do_dia`). Dali mesmo lança a batida, corrige uma existente ou
+# abona o dia com atestado/outra justificativa. Hoje não entra: o dia ainda
+# não terminou e `situacao_do_dia` nunca o marca como pendência.
+
+def _pendencias_do_dia(request, dia, setor=None):
+    hoje = timezone.localdate()
+    pessoas = espelho_pdf.funcionarios_que_batem_ponto().filter(
+        id__in=_funcionarios_permitidos(request).values('id'),
+    ).select_related('setor').order_by('nome')
+    if setor is not None:
+        pessoas = pessoas.filter(setor=setor)
+
+    # Pedido do colaborador ainda na fila para este dia: o RH vê antes de lançar em dobro.
+    com_pedido = set(
+        AjustePonto.objects.filter(status='pendente', data=dia, funcionario__in=pessoas)
+        .values_list('funcionario_id', flat=True)
+    )
+    alteraveis = set(
+        request.user.usuario.funcionarios_que_altera()
+        .filter(id__in=pessoas.values('id')).values_list('id', flat=True)
+    )
+
+    linhas = []
+    for funcionario in pessoas:
+        resultado_dia = _com_correcao(calcular_periodo(funcionario, dia, dia)['dias'][0], hoje)
+        if not resultado_dia['pode_corrigir']:
+            continue
+        if resultado_dia['dia_falta']:
+            resultado_dia['situacao_texto'] = 'Dia falta'
+        linhas.append({
+            'funcionario': funcionario,
+            'dia': resultado_dia,
+            'tem_pedido': funcionario.id in com_pedido,
+            'pode_alterar': funcionario.id in alteraveis,
+        })
+    return linhas
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+def ajustes_diarios_view(request):
+    ontem = timezone.localdate() - timedelta(days=1)
+    dia = min(_data_do_get(request, 'data', ontem), ontem)
+
+    usuario = request.user.usuario
+    setores = ExportarEspelhoForm(usuario=usuario).fields['setor'].queryset
+    setor_id = request.GET.get('setor', '')
+    setor = setores.filter(id=setor_id).first() if setor_id.isdigit() else None
+
+    linhas = _pendencias_do_dia(request, dia, setor)
+    parametros_setor = f'&setor={setor.id}' if setor else ''
+    return render(request, 'ponto/ajustes_diarios.html', {
+        'dia': dia,
+        'ontem': ontem,
+        'setores': setores,
+        'setor': setor,
+        'linhas': linhas,
+        'url_dia_anterior': f'?data={(dia - timedelta(days=1)).isoformat()}{parametros_setor}',
+        'url_dia_seguinte': f'?data={(dia + timedelta(days=1)).isoformat()}{parametros_setor}' if dia < ontem else None,
+        # O espelho do mês do dia, para quem quiser ver o contexto da pessoa.
+        'mes_inicio': dia.replace(day=1).isoformat(),
+        'tipos_justificativa': TIPOS_DE_JUSTIFICATIVA,
     })
 
 

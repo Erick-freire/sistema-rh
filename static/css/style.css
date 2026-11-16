@@ -2295,3 +2295,12 @@ form .login-campo input#password { padding-right: 46px; }
 .abono-dia summary::-webkit-details-marker { display: none; }
 .abono-dia[open] form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; min-width: 200px; }
 .batidas-a-mais { font-size: 0.72rem; color: var(--color-pending); white-space: nowrap; margin-top: 2px; }
+
+/* Ajustes pendentes: sub-abas (Ajustes diários / Correções solicitadas) e a lista do dia */
+.tabs--sub { margin-top: 12px; }
+.tabs--sub .tabs__link { padding: 8px 14px; font-size: 0.85rem; }
+.ajustes-diarios__filtro { align-items: flex-end; }
+.ajustes-diarios__filtro label { display: flex; flex-direction: column; gap: 4px; }
+.batidas-corrigiveis { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.batidas-corrigiveis a { text-decoration: underline dotted; }
+.ajustes-diarios__acoes { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; }
