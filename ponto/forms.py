@@ -7,8 +7,11 @@ from django.utils import timezone
 
 from funcionarios.models import Funcionario, Setor
 
+from .calculos import calcular_periodo
 from .espelho_pdf import funcionarios_do_setor, funcionarios_que_batem_ponto
-from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .models import (
+    AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio, TrocaDeDia,
+)
 from .turnos import DURACAO_MAXIMA_TURNO, duracao_do_turno
 from .utils import intervalo_do_dia
 
@@ -226,6 +229,47 @@ class SolicitarAjusteForm(forms.ModelForm):
                 'Aguarde o RH decidir a primeira antes de enviar outra.'
             )
 
+        return cleaned_data
+
+
+class TrocaDeDiaForm(forms.ModelForm):
+    """
+    Falta combinada com o gestor, a ser paga pelas horas de outro dia. Só dia
+    de trabalho (com horário previsto) pode ser o da falta, e um dia só tem uma
+    troca. `funcionario` vem da view.
+    """
+
+    class Meta:
+        model = TrocaDeDia
+        fields = ['data_falta', 'data_compensacao', 'motivo']
+        labels = {'data_falta': 'Dia da falta', 'data_compensacao': 'Compensa em', 'motivo': 'Combinado (opcional)'}
+        widgets = {
+            'data_falta': forms.DateInput(attrs={'type': 'date'}),
+            'data_compensacao': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, funcionario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.funcionario = funcionario
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data_falta = cleaned_data.get('data_falta')
+        if data_falta is None or self.funcionario is None:
+            return cleaned_data
+        if TrocaDeDia.objects.filter(funcionario=self.funcionario, data_falta=data_falta).exists():
+            raise forms.ValidationError(
+                f'Já existe uma compensação combinada para {data_falta:%d/%m/%Y}. Exclua a anterior para lançar outra.'
+            )
+        bloqueio = TrocaDeDia(data_falta=data_falta, data_compensacao=cleaned_data.get('data_compensacao')).bloqueio_por_fechamento()
+        if bloqueio:
+            raise forms.ValidationError(bloqueio)
+        dia = calcular_periodo(self.funcionario, data_falta, data_falta)['dias'][0]
+        if not dia['segundos_esperados']:
+            raise forms.ValidationError(
+                f'{data_falta:%d/%m/%Y} não é dia de trabalho de {self.funcionario.nome} '
+                '(folga, feriado, férias, atestado ou sem jornada): não há horas faltando para compensar.'
+            )
         return cleaned_data
 
 

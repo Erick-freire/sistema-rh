@@ -27,6 +27,10 @@ urlpatterns = [
     path('espelho-pdf/', views.exportar_espelho_view, name='exportar_espelho'),
     path('calculo/<int:funcionario_id>/atribuir-jornada/', views.atribuir_jornada_view, name='atribuir_jornada'),
     path('calculo/<int:funcionario_id>/<str:data>/ajustar/', views.ajustar_marcacao_view, name='ajustar_marcacao'),
+    path('calculo/<int:funcionario_id>/salvar/', views.salvar_espelho_view, name='salvar_espelho'),
+    path('calculo/setor/<int:setor_id>/salvar/', views.salvar_espelho_setor_view, name='salvar_espelho_setor'),
+    path('calculo/<int:funcionario_id>/troca-de-dia/', views.lancar_troca_de_dia_view, name='lancar_troca_de_dia'),
+    path('trocas-de-dia/<int:troca_id>/excluir/', views.excluir_troca_de_dia_view, name='excluir_troca_de_dia'),
 
     path('feriados/', views.listar_feriados_view, name='listar_feriados'),
     path('feriados/novo/', views.cadastrar_feriado_view, name='cadastrar_feriado'),

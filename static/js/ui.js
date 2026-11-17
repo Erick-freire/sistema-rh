@@ -266,4 +266,61 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // Espelho de ponto editável (Espelho dia a dia e espelho do setor): cada
+    // batida é uma caixa de texto e um "Salvar" grava todas. As caixas podem
+    // ficar fora do <form> (atributo form=, no espelho do setor), por isso
+    // `form.elements` e não querySelectorAll.
+    document.querySelectorAll('form[data-espelho-edicao]').forEach(function (form) {
+        var caixas = Array.prototype.filter.call(form.elements, function (el) {
+            return el.classList.contains('batida-input');
+        });
+        var contador = form.querySelector('[data-espelho-alteracoes]');
+        var salvar = form.querySelector('[data-espelho-salvar]');
+        var desfazer = form.querySelector('[data-espelho-desfazer]');
+        var enviando = false;
+
+        // "805" -> "08:05"; o que não for horário fica como está (o servidor recusa e explica).
+        var formatar = function (texto) {
+            var limpo = texto.trim();
+            var m = limpo.match(/^(\d{1,2}):?(\d{2})$/);
+            if (!m) return limpo;
+            return ('0' + m[1]).slice(-2) + ':' + m[2];
+        };
+        var atualizar = function () {
+            var alteradas = caixas.filter(function (caixa) {
+                var mudou = formatar(caixa.value) !== caixa.dataset.original;
+                caixa.classList.toggle('batida-input--alterada', mudou);
+                return mudou;
+            }).length;
+            if (contador) contador.textContent = alteradas ? alteradas + (alteradas > 1 ? ' batidas alteradas' : ' batida alterada') : '';
+            if (salvar) salvar.disabled = !alteradas;
+            if (desfazer) desfazer.disabled = !alteradas;
+            return alteradas;
+        };
+        caixas.forEach(function (caixa, i) {
+            caixa.addEventListener('input', atualizar);
+            caixa.addEventListener('blur', function () { caixa.value = formatar(caixa.value); atualizar(); });
+            // Enter vai para a próxima caixa em vez de salvar sem querer.
+            caixa.addEventListener('keydown', function (evento) {
+                if (evento.key !== 'Enter') return;
+                evento.preventDefault();
+                if (caixas[i + 1]) caixas[i + 1].focus();
+            });
+        });
+        if (desfazer) {
+            desfazer.addEventListener('click', function () {
+                caixas.forEach(function (caixa) { caixa.value = caixa.dataset.original; });
+                atualizar();
+            });
+        }
+        form.addEventListener('submit', function () {
+            caixas.forEach(function (caixa) { caixa.value = formatar(caixa.value); });
+            enviando = true;
+        });
+        window.addEventListener('beforeunload', function (evento) {
+            if (!enviando && atualizar()) { evento.preventDefault(); evento.returnValue = ''; }
+        });
+        atualizar();
+    });
+
 });

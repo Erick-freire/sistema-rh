@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 from functools import wraps
 
@@ -19,14 +20,16 @@ from funcionarios.forms import TIPOS_DE_JUSTIFICATIVA, AtestadoForm
 from funcionarios.models import MENSAGEM_ALTERACAO_RESTRITA, Usuario
 from funcionarios.perfis import usuario_de
 
-from . import espelho_pdf, services
+from . import edicao_espelho, espelho_pdf, services
 from .calculos import MAX_PARES_EXIBIDOS, calcular_periodo, situacao_do_dia, valores_do_periodo
 from .forms import (
     AjustarMarcacaoForm, DIAS_SEMANA_INICIAIS, EquipamentoForm, ExportarEspelhoForm, FeriadoForm,
     FuncionarioJornadaForm, HorarioDiaFormSet, HorarioForm, MENSAGEM_PERIODO_LONGO, RejeitarAjusteForm,
-    SolicitarAjusteForm, periodo_longo_demais,
+    SolicitarAjusteForm, TrocaDeDiaForm, periodo_longo_demais,
 )
-from .models import AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio
+from .models import (
+    AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia, MarcacaoRelogio, TrocaDeDia,
+)
 from .utils import intervalo_do_dia
 
 JANELA_MEU_PONTO_DIAS = 30
@@ -467,6 +470,12 @@ def listar_calculo_view(request):
             'lancado_por__usuario__funcionario',
         )
         numeros_dos_pares = list(range(1, resultado['pares_no_periodo'] + 1))
+        # Caixas de texto das batidas; depois de um "Salvar" com erro, voltam com o que foi digitado.
+        digitados = request.session.pop(_chave_digitados(funcionario), {})
+        for dia in resultado['dias']:
+            dia['celulas'] = edicao_espelho.celulas_do_dia(dia, digitados)
+        for item in resultado['totais']['trocas_de_dia']:
+            item['troca'].lancado_por_nome = _nome_de_quem_lancou(item['troca'].lancado_por)
 
     # O filtro da tela serve aos dois botões: Calcular (este espelho na tela) e
     # Gerar PDF (o mesmo funcionário, ou o setor inteiro -- ver exportar_espelho_view).
@@ -501,9 +510,121 @@ def listar_calculo_view(request):
         'jornada_form': FuncionarioJornadaForm(),
         'atestados': atestados,
         'atestado_form': AtestadoForm(auto_id='atestado_%s'),  # a jornada também tem `data_inicio`
+        'troca_form': TrocaDeDiaForm(auto_id='troca_%s'),
         'numeros_dos_pares': numeros_dos_pares,
+        'pode_alterar': bool(funcionario) and usuario.pode_alterar_ponto_e_folha_de(funcionario),
+        'motivo_padrao': edicao_espelho.MOTIVO_PADRAO,
         'espelho_setor': espelho_setor,
     })
+
+
+def _chave_digitados(funcionario):
+    return f'espelho_digitado_{funcionario.id}'
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+@require_POST
+def salvar_espelho_view(request, funcionario_id):
+    """
+    "Salvar" do Espelho dia a dia: grava de uma vez todas as batidas digitadas
+    (ver `edicao_espelho`). Com erro, nada é gravado e o que foi digitado volta
+    para a tela.
+    """
+    funcionario = get_object_or_404(_funcionarios_permitidos(request), id=funcionario_id)
+    voltar = request.POST.get('proxima')
+    if not (voltar and url_has_allowed_host_and_scheme(voltar, allowed_hosts={request.get_host()}, require_https=request.is_secure())):
+        voltar = f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+    bloqueio = _bloqueio_se_nao_altera(request, funcionario, voltar)
+    if bloqueio:
+        return bloqueio
+
+    salvas, erros = edicao_espelho.salvar_batidas(
+        funcionario, request.POST, request.user, request.POST.get('motivo', '')[:500],
+    )
+    if erros:
+        request.session[_chave_digitados(funcionario)] = {
+            chave: valor for chave, valor in request.POST.items() if chave.startswith('b_')
+        }
+        for erro in erros:
+            messages.error(request, erro)
+        messages.error(request, 'Nada foi salvo. O que você digitou continua na tela: corrija e salve de novo.')
+    elif salvas:
+        messages.success(
+            request,
+            f'{salvas} alteraç{"ões" if salvas > 1 else "ão"} de batida salva{"s" if salvas > 1 else ""} '
+            f'no ponto de {funcionario.nome}.',
+        )
+    else:
+        messages.warning(request, 'Nenhuma batida foi alterada.')
+    return redirect(voltar)
+
+
+def _chave_digitados_setor(setor):
+    return f'espelho_setor_digitado_{setor.id}'
+
+
+_PREFIXO_DE_FUNCIONARIO = re.compile(r'^f(\d+)_b_')
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+@require_POST
+def salvar_espelho_setor_view(request, setor_id):
+    """
+    "Salvar" do espelho do setor (um dia, várias pessoas): confere as caixas de
+    todo mundo e só grava se ninguém tiver erro (ver `edicao_espelho`).
+    """
+    usuario = request.user.usuario
+    setor = get_object_or_404(ExportarEspelhoForm(usuario=usuario).fields['setor'].queryset, id=setor_id)
+    voltar = request.POST.get('proxima')
+    if not (voltar and url_has_allowed_host_and_scheme(voltar, allowed_hosts={request.get_host()}, require_https=request.is_secure())):
+        voltar = f"{reverse('ponto:listar_calculo')}?filtro=setor&setor={setor.id}"
+
+    ids = {int(m[1]) for m in map(_PREFIXO_DE_FUNCIONARIO.match, request.POST) if m}
+    pessoas = list(usuario.funcionarios_que_altera().filter(
+        id__in=usuario.funcionarios_que_opera().filter(id__in=ids).values('id'),
+    ).order_by('nome'))
+    erros = []
+    if len(pessoas) != len(ids):
+        erros.append(MENSAGEM_ALTERACAO_RESTRITA)
+    conferidos = []
+    for funcionario in pessoas:
+        operacoes, erros_da_pessoa = edicao_espelho.conferir_batidas(
+            funcionario, request.POST, edicao_espelho.prefixo_do_funcionario(funcionario),
+        )
+        erros += [f'{funcionario.nome} — {erro}' for erro in erros_da_pessoa]
+        if operacoes:
+            conferidos.append((funcionario, operacoes))
+
+    if erros:
+        request.session[_chave_digitados_setor(setor)] = {
+            chave: valor for chave, valor in request.POST.items() if _PREFIXO_DE_FUNCIONARIO.match(chave)
+        }
+        for erro in erros:
+            messages.error(request, erro)
+        messages.error(request, 'Nada foi salvo. O que você digitou continua na tela: corrija e salve de novo.')
+    elif conferidos:
+        motivo = request.POST.get('motivo', '')[:500]
+        with transaction.atomic():
+            for funcionario, operacoes in conferidos:
+                edicao_espelho.gravar_batidas(funcionario, operacoes, request.user, motivo)
+        total = sum(len(operacoes) for _, operacoes in conferidos)
+        messages.success(
+            request,
+            f'{total} alteraç{"ões" if total > 1 else "ão"} de batida salva{"s" if total > 1 else ""} '
+            f'({len(conferidos)} pessoa{"s" if len(conferidos) > 1 else ""}).',
+        )
+    else:
+        messages.warning(request, 'Nenhuma batida foi alterada.')
+    return redirect(voltar)
+
+
+def _nome_de_quem_lancou(user):
+    if user is None:
+        return ''
+    funcionario = getattr(getattr(user, 'usuario', None), 'funcionario', None)
+    return funcionario.nome if funcionario else user.username
 
 
 # Um setor de 40 pessoas num mês dá 30 "páginas"; acima disso a fileira de dias fica comprida demais.
@@ -521,6 +642,11 @@ def _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim):
     pessoas = espelho_pdf.funcionarios_do_setor(setor).filter(
         id__in=request.user.usuario.funcionarios_que_opera().values('id'),
     )
+    alteraveis = set(
+        request.user.usuario.funcionarios_que_altera().filter(id__in=pessoas.values('id')).values_list('id', flat=True)
+    )
+    # Depois de um "Salvar" com erro, as caixas voltam com o que foi digitado.
+    digitados = request.session.pop(_chave_digitados_setor(setor), {})
     linhas = []
     for funcionario in pessoas:
         resultado_dia = calcular_periodo(funcionario, dia, dia)['dias'][0]
@@ -534,12 +660,12 @@ def _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim):
             'cor': cor,
             # Abono por atestado só faz sentido em dia de trabalho ainda não abonado.
             'pode_abonar': bool(resultado_dia['segundos_esperados']) and not resultado_dia['atestado'],
+            'pode_trocar': bool(resultado_dia['segundos_esperados']) and not resultado_dia['troca'],
+            'pode_alterar': funcionario.id in alteraveis,
+            'celulas': edicao_espelho.celulas_do_dia(
+                resultado_dia, digitados, edicao_espelho.prefixo_do_funcionario(funcionario),
+            ),
         })
-
-    # Todas as linhas com o mesmo número de colunas de batida.
-    pares = max((len(linha['dia']['pares']) for linha in linhas), default=MAX_PARES_EXIBIDOS)
-    for linha in linhas:
-        linha['dia']['pares'] += [(None, None)] * (pares - len(linha['dia']['pares']))
 
     def url_do_dia(outro_dia):
         parametros = request.GET.copy()
@@ -559,7 +685,9 @@ def _espelho_do_setor_no_dia(request, setor, dia, data_inicio, data_fim):
         'setor': setor,
         'dia': dia,
         'linhas': linhas,
-        'numeros_dos_pares': range(1, pares + 1),
+        'numeros_dos_pares': range(1, MAX_PARES_EXIBIDOS + 1),
+        'algum_alteravel': bool(alteraveis),
+        'motivo_padrao': edicao_espelho.MOTIVO_PADRAO,
         'dias': dias,
         'url_anterior': url_do_dia(anterior) if anterior >= data_inicio else None,
         'url_seguinte': url_do_dia(seguinte) if seguinte <= data_fim else None,
@@ -853,6 +981,71 @@ def ponto_equipe_funcionario_view(request, funcionario_id):
         'data_fim': data_fim,
         **_navegacao_periodo(data_inicio, data_fim, hoje),
     })
+
+
+# ---------- RH e gestor: troca de dia ----------
+# "Faltei hoje, compenso vindo no sábado": o dia da falta não desconta o dia
+# nem o DSR, e as horas dele são pagas pelas extras do dia combinado (ver
+# `calculos._aplicar_trocas_de_dia`). Quem lança é quem corrige o ponto: o RH
+# para todos, o gestor para a equipe.
+
+def _voltar_para(request, padrao):
+    proxima = request.POST.get('proxima')
+    if proxima and url_has_allowed_host_and_scheme(proxima, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(proxima)
+    return redirect(padrao)
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+@require_POST
+def lancar_troca_de_dia_view(request, funcionario_id):
+    funcionario = get_object_or_404(_funcionarios_permitidos(request), id=funcionario_id)
+    espelho = f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+    if not request.user.usuario.pode_alterar_ponto_e_folha_de(funcionario):
+        messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+        return _voltar_para(request, espelho)
+
+    form = TrocaDeDiaForm(request.POST, funcionario=funcionario)
+    if form.is_valid():
+        troca = form.save(commit=False)
+        troca.funcionario = funcionario
+        troca.lancado_por = request.user
+        troca.save()
+        messages.success(
+            request,
+            f'Compensação de {funcionario.nome} lançada: as horas que faltaram em {troca.data_falta:%d/%m/%Y} serão '
+            f'pagas com as horas extras de {troca.data_compensacao:%d/%m/%Y}. O dia não conta como Dia falta, não '
+            'desconta DSR nem tira a assiduidade; o que as horas desse dia não cobrirem é descontado em horas.',
+        )
+    else:
+        erros = ' '.join(erro for lista in form.errors.values() for erro in lista)
+        messages.error(request, f'Não foi possível lançar a compensação. {erros}')
+    return _voltar_para(request, espelho)
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+@require_POST
+def excluir_troca_de_dia_view(request, troca_id):
+    troca = get_object_or_404(TrocaDeDia, id=troca_id, funcionario__in=_funcionarios_permitidos(request))
+    funcionario = troca.funcionario
+    espelho = f"{reverse('ponto:listar_calculo')}?funcionario={funcionario.id}"
+    if not request.user.usuario.pode_alterar_ponto_e_folha_de(funcionario):
+        messages.error(request, MENSAGEM_ALTERACAO_RESTRITA)
+        return _voltar_para(request, espelho)
+
+    bloqueio = troca.bloqueio_por_fechamento()
+    if bloqueio:
+        messages.error(request, bloqueio)
+        return _voltar_para(request, espelho)
+
+    troca.delete()
+    messages.success(
+        request,
+        f'Compensação de {funcionario.nome} em {troca.data_falta:%d/%m/%Y} excluída: o dia volta ao cálculo normal.',
+    )
+    return _voltar_para(request, espelho)
 
 
 # ---------- RH e gestor: ajustes diários ----------

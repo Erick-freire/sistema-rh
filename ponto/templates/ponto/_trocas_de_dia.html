@@ -1,0 +1,63 @@
+{% comment %}
+Compensações combinadas do período (falta ou atraso combinado com o gestor,
+pago pelas horas de outro dia; o model é `TrocaDeDia`) e o formulário para lançar outra. Espera `funcionario`, `resultado`
+(de calcular_periodo) e `troca_form`. Ver ponto.calculos._aplicar_trocas_de_dia.
+{% endcomment %}
+{% load ponto_extras %}
+{% with trocas=resultado.totais.trocas_de_dia %}
+{% if trocas %}
+    <ul style="font-size: 0.88rem; padding-left: 18px; margin-bottom: 14px;">
+        {% for item in trocas %}
+        {% with t=item.troca %}
+        <li>
+            {% if item.falta_segundos %}Faltaram {{ item.falta_segundos|horas }} em{% else %}Nada faltou em{% endif %} <strong>{{ t.data_falta|date:"d/m/Y" }}</strong>, compensa em <strong>{{ t.data_compensacao|date:"d/m/Y" }}</strong>{% if t.motivo %} — {{ t.motivo }}{% endif %}:
+            {{ item.compensado_segundos|horas }} compensadas{% if item.a_descontar_segundos %},
+                {% if item.acerto_no_periodo %}<span style="color: var(--color-error);">{{ item.a_descontar_segundos|horas }} descontadas em horas</span>{% else %}o restante é acertado no período de {{ t.data_compensacao|date:"d/m/Y" }}{% endif %}{% endif %}.
+            {% if t.lancado_por_nome %}<span style="color: var(--color-text-muted);">· lançada por {{ t.lancado_por_nome }}</span>{% endif %}
+            <form method="post" action="{% url 'ponto:excluir_troca_de_dia' t.id %}" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+                <button type="submit" class="btn-outline btn-sm"
+                        data-confirmar="Excluir a compensação de {{ t.data_falta|date:'d/m/Y' }}? O dia volta ao cálculo normal: Dia falta com desconto do DSR, se não teve batida; atraso abatido pelas extras do mês."
+                        data-confirmar-titulo="Excluir compensação">Excluir</button>
+            </form>
+        </li>
+        {% endwith %}
+        {% endfor %}
+    </ul>
+{% else %}
+    <p style="color: var(--color-text-muted); font-size: 0.88rem; margin-bottom: 14px;">Nenhuma compensação combinada no período.</p>
+{% endif %}
+{% endwith %}
+
+<button type="button" class="btn-outline btn-sm" data-toggle-alvo="form-troca-de-dia" data-texto-alternativo="Cancelar">Compensar em outro dia</button>
+
+<div id="form-troca-de-dia" style="display: none; margin-top: 14px;">
+    <form method="post" action="{% url 'ponto:lancar_troca_de_dia' funcionario.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+        <div class="form-grid">
+            <div>
+                <label for="{{ troca_form.data_falta.id_for_label }}">{{ troca_form.data_falta.label }}</label>
+                {{ troca_form.data_falta }}
+            </div>
+            <div>
+                <label for="{{ troca_form.data_compensacao.id_for_label }}">{{ troca_form.data_compensacao.label }}</label>
+                {{ troca_form.data_compensacao }}
+            </div>
+            <div>
+                <label for="{{ troca_form.motivo.id_for_label }}">{{ troca_form.motivo.label }}</label>
+                {{ troca_form.motivo }}
+            </div>
+        </div>
+        <button type="submit" class="btn-outline btn-sm" style="margin-top: 10px;">Salvar compensação</button>
+    </form>
+    <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 8px;">
+        Vale para falta do dia inteiro ou atraso/saída antecipada. O dia não conta como Dia falta, não desconta o DSR
+        e não tira a assiduidade. As horas que faltaram são pagas só pelas horas extras do dia combinado, que deixam de
+        ser pagas como extra; o que não for coberto é descontado em horas (sem usar as outras extras do mês).
+        Sem lançar nada, atrasos já são abatidos por qualquer hora extra do mesmo mês.
+        Não dá para lançar nem excluir em mês com a folha já fechada: o RH reabre o fechamento antes.
+        Se a folha do mês já foi calculada, recalcule o ponto da pessoa no fechamento.
+    </p>
+</div>

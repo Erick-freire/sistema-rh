@@ -41,7 +41,8 @@
     <p class="item-card__subtitulo" style="margin-bottom: 12px;">
         <strong>{{ linhas|length }} pessoa{{ linhas|length|pluralize }} com o ponto a corrigir</strong>{% if setor %} em {{ setor.nome }}{% endif %}.
         Clique numa batida para corrigi-la, em <strong>Lançar batida</strong> para incluir a que faltou,
-        ou em <strong>Abonar</strong> para lançar atestado ou outra justificativa do dia inteiro.
+        em <strong>Abonar</strong> para lançar atestado ou outra justificativa do dia inteiro,
+        ou em <strong>Compensar em outro dia</strong> quando a falta ou o atraso foi combinado para ser pago com as horas de outro dia.
     </p>
     {% endif %}
 
@@ -93,6 +94,21 @@
                             <button type="submit" class="btn-primario btn-sm"
                                     data-confirmar="Abonar o dia {{ dia|date:'d/m/Y' }} de {{ f.nome }}? O dia inteiro deixa de contar como falta."
                                     data-confirmar-titulo="Abonar dia">Abonar {{ dia|date:'d/m' }}</button>
+                        </form>
+                    </details>
+                    <details class="abono-dia">
+                        <summary class="btn-outline btn-sm">Compensar em outro dia</summary>
+                        <form method="post" action="{% url 'ponto:lancar_troca_de_dia' f.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+                            <input type="hidden" name="data_falta" value="{{ dia|date:'Y-m-d' }}">
+                            <label class="item-card__campo-rotulo">Compensa em
+                                <input type="date" name="data_compensacao" required>
+                            </label>
+                            <input type="text" name="motivo" maxlength="200" placeholder="Combinado (opcional)">
+                            <button type="submit" class="btn-primario btn-sm"
+                                    data-confirmar="Compensar as horas que {{ f.nome }} deixou de trabalhar em {{ dia|date:'d/m/Y' }}? Elas serão pagas com as horas extras do dia combinado; o dia não conta como Dia falta nem desconta o DSR."
+                                    data-confirmar-titulo="Compensar em outro dia">Compensar</button>
                         </form>
                     </details>
                 </div>

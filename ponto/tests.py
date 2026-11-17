@@ -11,12 +11,13 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from folha.models import Fechamento
 from funcionarios.models import Atestado, Funcionario, Setor, SolicitacaoFerias, Usuario
 from .calculos import calcular_periodo, intervalo_curto, intervalo_minimo, situacao_do_dia, valores_do_periodo
 from .controlid_client import ControlIdAPIError, ControlIdTimeoutError, ControlIdUsuarioNaoEncontradoError
 from .models import (
     AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia,
-    MarcacaoRelogio, SincronizacaoFuncionario,
+    MarcacaoRelogio, SincronizacaoFuncionario, TrocaDeDia,
 )
 from .services import (
     _hash_dados_funcionario,
@@ -2100,8 +2101,8 @@ class EspelhoCalculoViewTests(TestCase):
 
         self.assertContains(resposta, '>+1</sup>', count=1)
         self.assertNotContains(resposta, '>−1</sup>')
-        # O lápis da batida leva a marcação a corrigir, pra virar correção e não batida a mais.
-        self.assertContains(resposta, f'marcacao_original={saida.id}')
+        # A caixa da batida leva a marcação que mostra, pra virar correção e não batida a mais.
+        self.assertContains(resposta, f'value="m{saida.id}"')
 
     def test_dia_de_feriado_aparece_como_feriado(self):
         horario = _criar_horario_util(4504)
@@ -2197,8 +2198,9 @@ class EspelhoSetorPorDiaTests(TestCase):
         self.assertIsNone(resposta.context['resultado'])
         self.assertNotContains(resposta, 'Justificativas no período')  # nada do espelho de um funcionário
         self.assertNotContains(resposta, 'Normais')
-        # Lápis de cada pessoa leva à correção daquela pessoa naquele dia, voltando para este dia do setor.
-        self.assertContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.beto.id, '2026-08-03']))
+        # Caixas de cada pessoa, ligadas ao Salvar do setor.
+        self.assertContains(resposta, f'name="f{self.beto.id}_b_20260803_0"')
+        self.assertContains(resposta, reverse('ponto:salvar_espelho_setor', args=[self.producao.id]))
         self.assertContains(resposta, reverse('lancar_atestado', args=[self.beto.id]))
 
     def test_dia_sem_batidas_mostra_os_3_pares(self):
@@ -2894,3 +2896,556 @@ class GestorOperaPontoDaEquipeTests(TestCase):
         for nome in ('ponto:listar_calculo', 'ponto:ajustes_pendentes'):
             with self.subTest(nome=nome):
                 self.assertRedirects(self.client.get(reverse(nome)), reverse('dashboard'), fetch_redirect_response=False)
+
+
+class TrocaDeDiaTests(TestCase):
+    """
+    Falta combinada com o gestor ("faltei hoje, compenso vindo no sábado"): sem
+    Dia Falta nem DSR, mantém a assiduidade, e só as horas do dia combinado pagam
+    as horas da falta. O que sobrar é descontado em horas, no período do último dos dois dias.
+    """
+
+    def setUp(self):
+        self.equipamento = _criar_equipamento()
+        self.funcionario = _criar_funcionario(cpf='55555555556')
+        FuncionarioJornada.objects.create(
+            funcionario=self.funcionario, data_inicio=date(2026, 7, 1), horario=_criar_horario_util(4951),
+        )
+        self.segunda = date(2026, 8, 3)
+        self.terca = date(2026, 8, 4)
+        self.sabado = date(2026, 8, 8)  # folga: todo minuto trabalhado é extra 50%
+
+    def _trocar(self, falta, compensacao):
+        return TrocaDeDia.objects.create(funcionario=self.funcionario, data_falta=falta, data_compensacao=compensacao)
+
+    def test_compensa_inteira_no_dia_combinado(self):
+        self._trocar(self.segunda, self.sabado)
+        _bater_ponto(self.funcionario, self.equipamento, self.sabado, '08:00', '12:00', '13:00', '17:00')  # 8h
+
+        resultado = calcular_periodo(self.funcionario, self.segunda, self.sabado)
+
+        totais = resultado['totais']
+        self.assertFalse(resultado['dias'][0]['dia_falta'])
+        self.assertEqual(totais['dias_falta'], 4)  # terça a sexta: sem troca, continuam Dia falta
+        self.assertEqual(totais['falta_segundos'], 0)
+        self.assertEqual(totais['extra_50_segundos'], 0)  # as 8h do sábado pagaram a falta
+        self.assertEqual(resultado['dias'][5]['segundos_usados_em_troca'], 8 * 3600)
+
+    def test_falta_trocada_nao_desconta_dsr_nem_tira_assiduidade(self):
+        self._trocar(self.segunda, self.sabado)
+        _bater_ponto(self.funcionario, self.equipamento, self.sabado, '08:00', '12:00', '13:00', '17:00')
+
+        totais = calcular_periodo(self.funcionario, self.segunda, self.segunda)['totais']
+
+        self.assertEqual(totais['dias_falta'], 0)
+        self.assertEqual(totais['dsr_perdidos'], 0)
+        self.assertFalse(totais['perdeu_assiduidade'])
+        self.assertEqual(totais['falta_segundos'], 0)
+
+    def test_sobra_do_dia_combinado_continua_extra(self):
+        self._trocar(self.segunda, self.sabado)
+        _bater_ponto(self.funcionario, self.equipamento, self.sabado, '07:00', '12:00', '13:00', '18:00')  # 10h
+
+        totais = calcular_periodo(self.funcionario, self.sabado, self.sabado)['totais']
+
+        self.assertEqual(totais['extra_50_segundos'], 2 * 3600)
+        self.assertEqual(totais['falta_segundos'], 0)
+
+    def test_nao_veio_compensar_desconta_em_horas_sem_dsr(self):
+        self._trocar(self.segunda, self.sabado)
+        for dia in range(4, 8):  # terça a sexta normais
+            _bater_ponto(self.funcionario, self.equipamento, date(2026, 8, dia), '08:00', '12:00', '13:00', '17:00')
+
+        totais = calcular_periodo(self.funcionario, self.segunda, self.sabado)['totais']
+
+        self.assertEqual(totais['dias_falta'], 0)
+        self.assertEqual(totais['dsr_perdidos'], 0)
+        self.assertFalse(totais['perdeu_assiduidade'])
+        self.assertEqual(totais['falta_segundos'], 8 * 3600)
+        self.assertEqual(totais['falta_troca_segundos'], 8 * 3600)
+
+    def test_so_as_horas_do_dia_combinado_pagam_a_falta(self):
+        self._trocar(self.segunda, self.sabado)
+        for dia in range(5, 8):  # quarta a sexta normais
+            _bater_ponto(self.funcionario, self.equipamento, date(2026, 8, dia), '08:00', '12:00', '13:00', '17:00')
+        _bater_ponto(self.funcionario, self.equipamento, self.terca, '08:00', '12:00', '13:00', '19:00')  # +2h na terça
+        _bater_ponto(self.funcionario, self.equipamento, self.sabado, '08:00', '12:00')  # 4h no sábado
+
+        totais = calcular_periodo(self.funcionario, self.segunda, self.sabado)['totais']
+
+        self.assertEqual(totais['extra_50_segundos'], 2 * 3600)  # a extra da terça é paga
+        self.assertEqual(totais['falta_segundos'], 4 * 3600)  # e não cobre o que o sábado não cobriu
+
+    def test_dia_combinado_no_mes_seguinte_acerta_no_mes_seguinte(self):
+        sexta, sabado_seguinte = date(2026, 7, 31), date(2026, 8, 1)
+        self._trocar(sexta, sabado_seguinte)
+
+        julho = calcular_periodo(self.funcionario, sexta, sexta)['totais']
+        agosto_sem_vir = calcular_periodo(self.funcionario, sabado_seguinte, sabado_seguinte)['totais']
+        _bater_ponto(self.funcionario, self.equipamento, sabado_seguinte, '08:00', '12:00', '13:00', '17:00')
+        agosto = calcular_periodo(self.funcionario, sabado_seguinte, sabado_seguinte)['totais']
+
+        self.assertEqual((julho['falta_segundos'], julho['dias_falta'], julho['dsr_perdidos']), (0, 0, 0))
+        self.assertFalse(julho['trocas_de_dia'][0]['acerto_no_periodo'])
+        self.assertEqual(agosto_sem_vir['falta_segundos'], 8 * 3600)
+        self.assertEqual((agosto['falta_segundos'], agosto['extra_50_segundos']), (0, 0))
+
+    def test_compensou_antes_de_faltar(self):
+        sabado_anterior = date(2026, 8, 1)
+        self._trocar(self.segunda, sabado_anterior)
+        _bater_ponto(self.funcionario, self.equipamento, sabado_anterior, '08:00', '12:00', '13:00', '17:00')
+
+        so_sabado = calcular_periodo(self.funcionario, sabado_anterior, sabado_anterior)['totais']
+        so_segunda = calcular_periodo(self.funcionario, self.segunda, self.segunda)['totais']
+
+        self.assertEqual(so_sabado['extra_50_segundos'], 0)  # já reservadas para a falta
+        self.assertEqual((so_segunda['falta_segundos'], so_segunda['dias_falta']), (0, 0))
+
+    def test_duas_faltas_no_mesmo_dia_combinado_dividem_as_extras(self):
+        self._trocar(self.segunda, self.sabado)
+        self._trocar(self.terca, self.sabado)
+        _bater_ponto(self.funcionario, self.equipamento, self.sabado, '06:00', '12:00', '13:00', '19:00')  # 12h
+
+        totais = calcular_periodo(self.funcionario, self.segunda, self.sabado)['totais']
+
+        self.assertEqual(totais['falta_segundos'], 4 * 3600)  # 16h de falta - 12h
+        self.assertEqual(totais['extra_50_segundos'], 0)
+        self.assertEqual(
+            [(t['compensado_segundos'], t['a_descontar_segundos']) for t in totais['trocas_de_dia']],
+            [(8 * 3600, 0), (4 * 3600, 4 * 3600)],
+        )
+
+    def test_atraso_sem_troca_ja_e_abatido_por_qualquer_extra_do_mes(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.segunda, '10:00', '12:00', '13:00', '17:00')  # -2h
+        _bater_ponto(self.funcionario, self.equipamento, self.terca, '08:00', '12:00', '13:00', '19:00')  # +2h
+
+        totais = calcular_periodo(self.funcionario, self.segunda, self.terca)['totais']
+
+        self.assertEqual((totais['falta_segundos'], totais['extra_50_segundos']), (0, 0))
+
+    def test_atraso_combinado_e_pago_pelas_horas_do_dia_combinado(self):
+        self._trocar(self.segunda, self.terca)
+        _bater_ponto(self.funcionario, self.equipamento, self.segunda, '10:00', '12:00', '13:00', '17:00')  # -2h
+        _bater_ponto(self.funcionario, self.equipamento, self.terca, '08:00', '12:00', '13:00', '19:00')  # +2h
+
+        resultado = calcular_periodo(self.funcionario, self.segunda, self.terca)
+
+        totais = resultado['totais']
+        self.assertEqual((totais['falta_segundos'], totais['extra_50_segundos']), (0, 0))
+        self.assertEqual(totais['trocas_de_dia'][0]['compensado_segundos'], 2 * 3600)
+        self.assertEqual(resultado['dias'][1]['segundos_usados_em_troca'], 2 * 3600)
+
+    def test_atraso_no_fim_do_mes_compensado_no_mes_seguinte(self):
+        sexta, sabado_seguinte = date(2026, 7, 31), date(2026, 8, 1)
+        self._trocar(sexta, sabado_seguinte)
+        _bater_ponto(self.funcionario, self.equipamento, sexta, '10:00', '12:00', '13:00', '17:00')  # -2h
+        _bater_ponto(self.funcionario, self.equipamento, sabado_seguinte, '08:00', '10:00')  # 2h na folga
+
+        julho = calcular_periodo(self.funcionario, sexta, sexta)['totais']
+        agosto = calcular_periodo(self.funcionario, sabado_seguinte, sabado_seguinte)['totais']
+
+        self.assertEqual(julho['falta_segundos'], 0)  # o acerto fica para agosto
+        self.assertEqual((agosto['falta_segundos'], agosto['extra_50_segundos']), (0, 0))
+
+    def test_situacao_do_dia_nao_pede_correcao(self):
+        self._trocar(self.segunda, self.sabado)
+
+        dia = calcular_periodo(self.funcionario, self.segunda, self.segunda)['dias'][0]
+
+        self.assertEqual(situacao_do_dia(dia, self.terca), ('Compensa em 08/08', 'inativo', False))
+
+
+class TrocaDeDiaViewTests(TestCase):
+    """Gestor lança e exclui a troca de dia da equipe pelas telas de ajuste."""
+
+    SEGUNDA = date(2026, 8, 3)
+    SABADO = date(2026, 8, 8)
+
+    def setUp(self):
+        producao = Setor.objects.create(nome='Produção')
+        gestor = Funcionario.objects.create(
+            nome='Gil Gestor', matricula='3201', cargo='Gerente', setor=producao, cpf='79911111111',
+        )
+        producao.gestor = gestor
+        producao.save()
+        self.gestor_user = User.objects.create_user(username='giltroca', password='senha123')
+        Usuario.objects.create(user=self.gestor_user, funcionario=gestor, papel='gestor')
+        self.client.login(username='giltroca', password='senha123')
+
+        horario = _criar_horario_util(4961)
+        self.bia = Funcionario.objects.create(
+            nome='Bia Troca', matricula='3202', cargo='Operadora', setor=producao, cpf='79922222222',
+        )
+        FuncionarioJornada.objects.create(funcionario=self.bia, data_inicio=date(2026, 8, 1), horario=horario)
+        financeiro = Setor.objects.create(nome='Financeiro')
+        self.de_fora = Funcionario.objects.create(
+            nome='Caio Fora', matricula='3203', cargo='Analista', setor=financeiro, cpf='79933333333',
+        )
+        FuncionarioJornada.objects.create(funcionario=self.de_fora, data_inicio=date(2026, 8, 1), horario=horario)
+        self.url_diarios = reverse('ponto:ajustes_diarios') + f'?data={self.SEGUNDA.isoformat()}'
+
+    def _lancar(self, funcionario, falta=SEGUNDA, compensacao=SABADO):
+        return self.client.post(reverse('ponto:lancar_troca_de_dia', args=[funcionario.id]), {
+            'data_falta': falta.isoformat(), 'data_compensacao': compensacao.isoformat(),
+            'motivo': 'Combinado', 'proxima': self.url_diarios,
+        })
+
+    def test_ajustes_diarios_oferece_e_lanca_a_troca(self):
+        self.assertContains(self.client.get(self.url_diarios), reverse('ponto:lancar_troca_de_dia', args=[self.bia.id]))
+
+        resposta = self._lancar(self.bia)
+
+        self.assertRedirects(resposta, self.url_diarios, fetch_redirect_response=False)
+        troca = TrocaDeDia.objects.get(funcionario=self.bia)
+        self.assertEqual(
+            (troca.data_falta, troca.data_compensacao, troca.lancado_por), (self.SEGUNDA, self.SABADO, self.gestor_user),
+        )
+        self.assertEqual(self.client.get(self.url_diarios).context['linhas'], [])  # sai da lista de pendências
+
+    def test_atraso_tambem_pode_ser_compensado_em_outro_dia(self):
+        _bater_ponto(self.bia, _criar_equipamento(), self.SEGUNDA, '10:00', '12:00', '13:00', '17:00')  # 2h de atraso
+
+        diarios = self.client.get(self.url_diarios)
+        self.assertEqual(diarios.context['linhas'][0]['dia']['situacao_texto'], 'Falta/atraso')
+        self.assertContains(diarios, 'Compensar em outro dia')
+
+        self._lancar(self.bia, compensacao=self.SEGUNDA + timedelta(days=1))
+
+        self.assertEqual(self.client.get(self.url_diarios).context['linhas'], [])
+
+    def test_gestor_nao_lanca_para_fora_da_equipe(self):
+        resposta = self._lancar(self.de_fora)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertFalse(TrocaDeDia.objects.exists())
+
+    def test_recusa_dia_repetido_mesmo_dia_e_folga(self):
+        self._lancar(self.bia)
+        self._lancar(self.bia, compensacao=date(2026, 8, 9))  # repetido
+        terca = self.SEGUNDA + timedelta(days=1)
+        self._lancar(self.bia, falta=terca, compensacao=terca)  # o mesmo dia
+        self._lancar(self.bia, falta=self.SABADO, compensacao=self.SEGUNDA)  # sábado é folga
+
+        self.assertEqual(TrocaDeDia.objects.count(), 1)
+        self.assertEqual(TrocaDeDia.objects.get().data_compensacao, self.SABADO)
+
+    def test_espelho_mostra_e_exclui_a_troca(self):
+        url = reverse('ponto:listar_calculo') + f'?funcionario={self.bia.id}&data_inicio=2026-08-03&data_fim=2026-08-08'
+        self._lancar(self.bia)
+        troca = TrocaDeDia.objects.get()
+
+        espelho = self.client.get(url)
+        self.assertContains(espelho, 'Compensações combinadas no período')
+        self.assertContains(espelho, 'Compensa em 08/08')
+        self.assertContains(espelho, reverse('ponto:excluir_troca_de_dia', args=[troca.id]))
+
+        self.client.post(reverse('ponto:excluir_troca_de_dia', args=[troca.id]), {'proxima': url})
+        self.assertFalse(TrocaDeDia.objects.exists())
+
+    def test_nao_lanca_troca_que_toca_mes_com_folha_fechada(self):
+        Fechamento.objects.create(competencia=date(2026, 7, 1), status='fechado')
+
+        # Compensou em julho (fechado) para faltar em agosto: as extras de julho já foram pagas.
+        resposta = self._lancar(self.bia, falta=self.SEGUNDA, compensacao=date(2026, 7, 31))
+
+        self.assertFalse(TrocaDeDia.objects.exists())
+        mensagens = [str(m) for m in get_messages(resposta.wsgi_request)]
+        self.assertTrue(any('folha de julho/2026 já foi fechada' in m for m in mensagens), mensagens)
+
+    def test_mes_aberto_nao_bloqueia(self):
+        Fechamento.objects.create(competencia=date(2026, 8, 1), status='aberto')
+
+        self._lancar(self.bia)
+
+        self.assertTrue(TrocaDeDia.objects.exists())
+
+    def test_nao_exclui_troca_depois_de_fechar_o_mes(self):
+        self._lancar(self.bia)
+        troca = TrocaDeDia.objects.get()
+        fechamento = Fechamento.objects.create(competencia=date(2026, 8, 1), status='fechado')
+
+        self.client.post(reverse('ponto:excluir_troca_de_dia', args=[troca.id]))
+        self.assertTrue(TrocaDeDia.objects.filter(id=troca.id).exists())
+
+        fechamento.status = 'aberto'  # o RH reabriu
+        fechamento.save()
+        self.client.post(reverse('ponto:excluir_troca_de_dia', args=[troca.id]))
+        self.assertFalse(TrocaDeDia.objects.exists())
+
+    def test_espelho_do_setor_oferece_troca(self):
+        url = reverse('ponto:listar_calculo') + (
+            f'?filtro=setor&setor={self.bia.setor_id}&data_inicio=2026-08-03&data_fim=2026-08-08&dia=2026-08-03'
+        )
+
+        self.assertContains(self.client.get(url), reverse('ponto:lancar_troca_de_dia', args=[self.bia.id]))
+
+
+class EdicaoEspelhoTests(TestCase):
+    """Espelho dia a dia editável: as batidas digitadas nas caixas são salvas de uma vez."""
+
+    SEGUNDA = date(2026, 8, 3)
+    TERCA = date(2026, 8, 4)
+
+    def setUp(self):
+        setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Edita', matricula='9980', cargo='RH', setor=setor, cpf='22200000001')
+        self.rh_user = User.objects.create_user(username='rhedita', password='senha123')
+        Usuario.objects.create(user=self.rh_user, funcionario=rh, papel='rh')
+        self.client.login(username='rhedita', password='senha123')
+        self.equipamento = _criar_equipamento()
+        self.funcionario = _criar_funcionario(cpf='22200000002')
+        FuncionarioJornada.objects.create(
+            funcionario=self.funcionario, data_inicio=date(2026, 8, 1), horario=_criar_horario_util(4971),
+        )
+        self.url_espelho = (
+            reverse('ponto:listar_calculo')
+            + f'?funcionario={self.funcionario.id}&data_inicio=2026-08-03&data_fim=2026-08-04'
+        )
+
+    def _form(self):
+        """O POST como o navegador mandaria sem mexer em nada: todas as caixas e origens da tela."""
+        resposta = self.client.get(self.url_espelho)
+        dados = {'proxima': self.url_espelho}
+        for dia in resposta.context['resultado']['dias']:
+            for celula in dia['celulas']:
+                dados[celula['nome']] = celula['valor']
+                dados[celula['nome_origem']] = celula['origem']
+        return dados
+
+    def _salvar(self, dados):
+        return self.client.post(reverse('ponto:salvar_espelho', args=[self.funcionario.id]), dados)
+
+    def _mensagens(self, resposta):
+        return [str(m) for m in get_messages(resposta.wsgi_request)]
+
+    def test_espelho_mostra_caixas_e_botao_salvar(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '08:05')
+
+        resposta = self.client.get(self.url_espelho)
+
+        self.assertContains(resposta, reverse('ponto:salvar_espelho', args=[self.funcionario.id]))
+        self.assertContains(resposta, 'name="b_20260803_0" value="08:05"')
+        self.assertContains(resposta, 'data-espelho-salvar')
+        self.assertNotContains(resposta, reverse('ponto:ajustar_marcacao', args=[self.funcionario.id, '2026-08-03']))
+
+    def test_varias_correcoes_de_uma_vez(self):
+        entrada = _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '08:30', '12:00', '13:00')[0]
+        dados = self._form()
+        dados['b_20260803_0'] = '0800'  # corrige a entrada do relógio
+        dados['b_20260803_3'] = '17:00'  # saída que faltou
+        dados['b_20260804_0'] = '08:00'  # terça inteira, que não tinha nada
+        dados['b_20260804_1'] = '12:00'
+        dados['b_20260804_2'] = '13:00'
+        dados['b_20260804_3'] = '17:00'
+        dados['motivo'] = 'Relógio parado'
+
+        resposta = self._salvar(dados)
+
+        self.assertRedirects(resposta, self.url_espelho, fetch_redirect_response=False)
+        self.assertEqual(AjustePonto.objects.filter(funcionario=self.funcionario, status='aprovado').count(), 6)
+        correcao = AjustePonto.objects.get(marcacao_original=entrada)
+        self.assertEqual((correcao.horario_ajustado.strftime('%H:%M'), correcao.motivo), ('08:00', 'Relógio parado'))
+        self.assertEqual(correcao.analisado_por, self.rh_user)
+        totais = calcular_periodo(self.funcionario, self.SEGUNDA, self.TERCA)['totais']
+        self.assertEqual((totais['falta_segundos'], totais['dias_falta']), (0, 0))
+
+    def test_sem_alteracao_nao_grava_nada(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '08:00', '12:00')
+
+        resposta = self._salvar(self._form())
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertIn('Nenhuma batida foi alterada.', self._mensagens(resposta))
+
+    def test_erro_nao_grava_nada_e_devolve_o_digitado(self):
+        dados = self._form()
+        dados['b_20260803_0'] = '08:00'  # válido
+        dados['b_20260803_1'] = '25:99'  # inválido
+
+        resposta = self._salvar(dados)
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertTrue(any('"25:99" não é um horário' in m for m in self._mensagens(resposta)))
+        tela = self.client.get(self.url_espelho)
+        self.assertContains(tela, 'name="b_20260803_1" value="25:99"')
+        self.assertContains(tela, 'name="b_20260803_0" value="08:00"')
+        # Uma vez só: recarregando, volta o que está gravado.
+        self.assertContains(self.client.get(self.url_espelho), 'name="b_20260803_0" value=""')
+
+    def test_horario_fora_de_ordem_e_recusado(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '08:00', '12:00')
+        dados = self._form()
+        dados['b_20260803_2'] = '11:00'  # volta do almoço antes da saída
+
+        resposta = self._salvar(dados)
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertTrue(any('fica antes da batida anterior (12:00)' in m for m in self._mensagens(resposta)))
+
+    def test_saida_depois_da_meia_noite_vai_para_o_dia_seguinte(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '18:00')
+        dados = self._form()
+        dados['b_20260803_1'] = '02:00'
+
+        self._salvar(dados)
+
+        ajuste = AjustePonto.objects.get()
+        self.assertEqual((ajuste.data, ajuste.tipo_evento), (self.TERCA, 'saida'))
+
+    def test_batida_do_relogio_nao_pode_ser_apagada(self):
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '08:00', '12:00')
+        dados = self._form()
+        dados['b_20260803_1'] = ''
+
+        resposta = self._salvar(dados)
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertTrue(any('não pode ser apagada' in m for m in self._mensagens(resposta)))
+
+    def test_ajuste_manual_alterado_e_substituido_e_apagado_e_removido(self):
+        dados = self._form()
+        dados['b_20260803_0'] = '08:00'
+        dados['b_20260803_1'] = '12:00'
+        self._salvar(dados)
+        entrada = AjustePonto.objects.get(tipo_evento='entrada')
+
+        dados = self._form()
+        dados['b_20260803_0'] = '08:10'  # troca a entrada lançada
+        dados['b_20260803_1'] = ''  # e apaga a saída lançada
+        self._salvar(dados)
+
+        entrada.refresh_from_db()
+        self.assertEqual(entrada.status, 'rejeitado')
+        self.assertIn('Substituído no espelho', entrada.observacao_rh)
+        aprovados = AjustePonto.objects.filter(status='aprovado')
+        self.assertEqual([a.horario_ajustado.strftime('%H:%M') for a in aprovados], ['08:10'])
+        self.assertEqual(AjustePonto.objects.get(tipo_evento='saida').observacao_rh, 'Removido no espelho de ponto.')
+
+    def test_espelho_mudou_depois_de_aberto_nao_grava(self):
+        dados = self._form()
+        _bater_ponto(self.funcionario, self.equipamento, self.SEGUNDA, '07:55')  # chegou do relógio nesse meio-tempo
+        dados['b_20260803_0'] = '08:00'
+
+        resposta = self._salvar(dados)
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertTrue(any('mudaram depois que a tela foi aberta' in m for m in self._mensagens(resposta)))
+
+    def test_quem_nao_altera_nao_ve_caixas_nem_salva(self):
+        user = User.objects.create_user(username='dpproprio', password='senha123')
+        dp = Usuario.objects.create(user=user, funcionario=self.funcionario, papel='dp')
+        self.client.login(username='dpproprio', password='senha123')
+        self.assertFalse(dp.pode_alterar_ponto_e_folha_de(self.funcionario))  # DP não altera o próprio ponto
+
+        tela = self.client.get(self.url_espelho)
+        self.client.post(reverse('ponto:salvar_espelho', args=[self.funcionario.id]), {
+            'b_20260803_0': '08:00', 'o_20260803_0': '',
+        })
+
+        self.assertNotContains(tela, 'data-espelho-salvar')
+        self.assertFalse(AjustePonto.objects.exists())
+
+    def test_gestor_nao_salva_fora_da_equipe(self):
+        producao = Setor.objects.create(nome='Produção')
+        gestor = Funcionario.objects.create(nome='Gil', matricula='9981', cargo='Gerente', setor=producao, cpf='22200000003')
+        producao.gestor = gestor
+        producao.save()
+        user = User.objects.create_user(username='gilfora', password='senha123')
+        Usuario.objects.create(user=user, funcionario=gestor, papel='gestor')
+        self.client.login(username='gilfora', password='senha123')
+
+        resposta = self.client.post(reverse('ponto:salvar_espelho', args=[self.funcionario.id]), {
+            'b_20260803_0': '08:00', 'o_20260803_0': '',
+        })
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertFalse(AjustePonto.objects.exists())
+
+
+class EdicaoEspelhoSetorTests(TestCase):
+    """Espelho do setor editável: as caixas de várias pessoas no mesmo dia, um Salvar para todas."""
+
+    SEGUNDA = date(2026, 8, 3)
+
+    def setUp(self):
+        rh_setor = Setor.objects.create(nome='RH')
+        rh = Funcionario.objects.create(nome='Rh Setor', matricula='9970', cargo='RH', setor=rh_setor, cpf='33300000001')
+        self.rh_user = User.objects.create_user(username='rhsetoredita', password='senha123')
+        Usuario.objects.create(user=self.rh_user, funcionario=rh, papel='rh')
+        self.client.login(username='rhsetoredita', password='senha123')
+        self.equipamento = _criar_equipamento()
+        self.producao = Setor.objects.create(nome='Produção')
+        horario = _criar_horario_util(4981)
+        self.ana = Funcionario.objects.create(nome='Ana Setor', matricula='4981', cargo='Op', setor=self.producao, cpf='33300000002')
+        self.beto = Funcionario.objects.create(nome='Beto Setor', matricula='4982', cargo='Op', setor=self.producao, cpf='33300000003')
+        for funcionario in (self.ana, self.beto):
+            FuncionarioJornada.objects.create(funcionario=funcionario, data_inicio=date(2026, 8, 1), horario=horario)
+        self.url_tela = reverse('ponto:listar_calculo') + (
+            f'?filtro=setor&setor={self.producao.id}&data_inicio=2026-08-03&data_fim=2026-08-07&dia=2026-08-03'
+        )
+        self.url_salvar = reverse('ponto:salvar_espelho_setor', args=[self.producao.id])
+
+    def _form(self):
+        dados = {'proxima': self.url_tela}
+        for linha in self.client.get(self.url_tela).context['espelho_setor']['linhas']:
+            for celula in linha['celulas']:
+                dados[celula['nome']] = celula['valor']
+                dados[celula['nome_origem']] = celula['origem']
+        return dados
+
+    def _mensagens(self, resposta):
+        return [str(m) for m in get_messages(resposta.wsgi_request)]
+
+    def test_salva_varias_pessoas_de_uma_vez(self):
+        entrada_ana = _bater_ponto(self.ana, self.equipamento, self.SEGUNDA, '08:20', '12:00', '13:00', '17:00')[0]
+        dados = self._form()
+        dados[f'f{self.ana.id}_b_20260803_0'] = '08:00'
+        for indice, horario in enumerate(['08:00', '12:00', '13:00', '17:00']):
+            dados[f'f{self.beto.id}_b_20260803_{indice}'] = horario
+
+        resposta = self._salvar(dados)
+
+        self.assertRedirects(resposta, self.url_tela, fetch_redirect_response=False)
+        self.assertEqual(AjustePonto.objects.get(funcionario=self.ana).marcacao_original, entrada_ana)
+        self.assertEqual(AjustePonto.objects.filter(funcionario=self.beto, status='aprovado').count(), 4)
+        self.assertIn('5 alterações de batida salvas (2 pessoas).', self._mensagens(resposta))
+
+    def test_erro_de_uma_pessoa_nao_salva_ninguem(self):
+        dados = self._form()
+        dados[f'f{self.ana.id}_b_20260803_0'] = '08:00'
+        dados[f'f{self.beto.id}_b_20260803_0'] = 'abc'
+
+        resposta = self._salvar(dados)
+
+        self.assertFalse(AjustePonto.objects.exists())
+        self.assertTrue(any(m.startswith('Beto Setor — ') for m in self._mensagens(resposta)))
+        tela = self.client.get(self.url_tela)
+        self.assertContains(tela, f'name="f{self.beto.id}_b_20260803_0" value="abc"')
+        self.assertContains(tela, f'name="f{self.ana.id}_b_20260803_0" value="08:00"')
+
+    def test_caixas_ficam_fora_do_form_ligadas_pelo_atributo_form(self):
+        tela = self.client.get(self.url_tela)
+
+        self.assertContains(tela, 'id="espelho-setor-form"')
+        self.assertContains(tela, f'form="espelho-setor-form" class="batida-input" name="f{self.ana.id}_b_20260803_0"')
+        self.assertContains(tela, reverse('lancar_atestado', args=[self.ana.id]))  # os forms de Abonar continuam
+
+    def test_pessoa_que_nao_pode_alterar_recusa_tudo(self):
+        Usuario.objects.create(
+            user=User.objects.create_user(username='betodp', password='senha123'), funcionario=self.beto, papel='dp',
+        )
+        self.client.login(username='betodp', password='senha123')  # DP não altera o próprio ponto
+        dados = {
+            f'f{self.ana.id}_b_20260803_0': '08:00', f'f{self.ana.id}_o_20260803_0': '',
+            f'f{self.beto.id}_b_20260803_0': '08:00', f'f{self.beto.id}_o_20260803_0': '',
+        }
+
+        tela = self.client.get(self.url_tela)
+        self._salvar(dados)
+
+        self.assertNotContains(tela, f'name="f{self.beto.id}_b_20260803_0"')
+        self.assertContains(tela, f'name="f{self.ana.id}_b_20260803_0"')
+        self.assertFalse(AjustePonto.objects.exists())
+
+    def _salvar(self, dados):
+        return self.client.post(self.url_salvar, dados)

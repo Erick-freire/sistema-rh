@@ -139,6 +139,15 @@ document.addEventListener('DOMContentLoaded', function () {
 {% if resultado %}
 <div class="card">
     <div class="card__header">
+        <span class="card__title">Compensações combinadas no período</span>
+    </div>
+    {% include 'ponto/_trocas_de_dia.html' %}
+</div>
+{% endif %}
+
+{% if resultado %}
+<div class="card">
+    <div class="card__header">
         <span class="card__title">Totais do período</span>
     </div>
     <div class="totais-grid totais-grid--5">
@@ -157,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <div class="totais-grid__valor totais-grid__valor--alerta">{{ resultado.totais.falta_segundos|horas }}</div>
             {% if valores %}<div class="totais-grid__rotulo">{{ valores.falta|moeda }}</div>{% endif %}
         </div>
-        <div class="totais-grid__tile" title="Dia de trabalho sem nenhuma batida. Não é compensado com hora extra.">
+        <div class="totais-grid__tile" title="Dia de trabalho sem nenhuma batida: desconta o dia e o DSR, e as horas extras não são usadas para cobri-lo. Falta compensada em outro dia não conta aqui.">
             <div class="totais-grid__rotulo">Dias falta</div>
             <div class="totais-grid__valor {% if resultado.totais.dias_falta %}totais-grid__valor--alerta{% endif %}">{{ resultado.totais.dias_falta }}</div>
             {% if valores %}<div class="totais-grid__rotulo">{{ valores.dias_falta|moeda }}</div>{% endif %}
@@ -217,6 +226,10 @@ document.addEventListener('DOMContentLoaded', function () {
             <button type="button" class="btn-outline btn-sm" onclick="document.getElementById('espelho-scroll').scrollBy({left: 240, behavior: 'smooth'});">{% icon 'chevron-right' %}</button>
         </div>
     </div>
+    {% if pode_alterar %}<form method="post" action="{% url 'ponto:salvar_espelho' funcionario.id %}" data-espelho-edicao>
+        {% csrf_token %}
+        <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+    {% endif %}
     <div class="table-responsive" id="espelho-scroll">
         <table class="tabela-compacta">
             <thead>
@@ -235,20 +248,31 @@ document.addEventListener('DOMContentLoaded', function () {
             <tbody>
                 {% for dia in resultado.dias %}
                 <tr {% if dia.sem_jornada %}style="background-color: var(--color-error-bg);"{% elif dia.folga %}style="background-color: var(--color-neutral-bg);"{% elif dia.marcacao_impar %}style="background-color: var(--color-pending-bg);"{% endif %}
-                    title="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.sem_jornada %}Sem jornada cadastrada{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% elif dia.dia_falta %}Dia falta{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
-                    <td>{{ dia.data|date:'d/m' }} - {{ dia.data|date:'D' }}</td>
-                    {% for entrada, saida in dia.pares %}
+                    title="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.sem_jornada %}Sem jornada cadastrada{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% elif dia.dia_falta %}Dia falta{% elif dia.troca %}Combinado: compensa em {{ dia.troca.data_compensacao|date:'d/m/Y' }}{% elif dia.marcacao_impar %}Marcação ímpar{% else %}Normal{% endif %}">
+                    <td>
+                        {{ dia.data|date:'d/m' }} - {{ dia.data|date:'D' }}
+                        {% if dia.troca %}<br><span class="espelho-ajuda">Compensa em {{ dia.troca.data_compensacao|date:'d/m' }}</span>{% endif %}
+                        {% for c in dia.compensa %}<br><span class="espelho-ajuda" title="Horas deste dia usadas para pagar a falta ou o atraso combinado (não entram como extra).">Paga horas de {{ c.troca.data_falta|date:'d/m' }}: {{ c.segundos|horas }}</span>{% endfor %}
+                    </td>
+                    {% for celula in dia.celulas %}
                         <td class="celula-ponto">
-                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{{ entrada.momento|marca_dia_turno:dia.data }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.marcacao_id %}&marcacao_original={{ entrada.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
-                        </td>
-                        <td class="celula-ponto">
-                            {% if saida %}{{ saida.momento|time:'H:i' }}{{ saida.momento|marca_dia_turno:dia.data }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.marcacao_id %}&marcacao_original={{ saida.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
-                        {% if forloop.last and dia.batidas_a_mais %}
-                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija ou anule pelo lápis.">
+                            {% with evento=celula.evento %}
+                            {% if pode_alterar %}
+                                <input type="text" class="batida-input{% if evento.manual %} batida-input--manual{% endif %}" name="{{ celula.nome }}" value="{{ celula.valor }}"
+                                       data-original="{{ celula.original }}" inputmode="numeric" maxlength="5" autocomplete="off"
+                                       placeholder="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}"
+                                       aria-label="{% if celula.tipo == 'entrada' %}Entrada{% else %}Saída{% endif %} de {{ dia.data|date:'d/m' }}"
+                                       title="{% if evento.manual %}Lançada manualmente{% elif evento %}Batida do relógio: corrija digitando outro horário{% else %}Digite o horário da batida que faltou{% endif %}">
+                                <input type="hidden" name="{{ celula.nome_origem }}" value="{{ celula.origem }}">
+                                {% if evento %}{{ evento.momento|marca_dia_turno:dia.data }}{% endif %}
+                            {% else %}
+                                {% if evento %}{{ evento.momento|time:'H:i' }}{{ evento.momento|marca_dia_turno:dia.data }}{% if evento.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% elif dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}
+                            {% endif %}
+                            {% endwith %}
+                            {% if forloop.last and dia.batidas_a_mais %}
+                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija pelo lápis.">
                                 a mais:{% for extra in dia.batidas_a_mais %}
-                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a></span>{% endfor %}
+                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}{% if pode_alterar %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' funcionario.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>{% endif %}</span>{% endfor %}
                             </div>
                             {% endif %}
                         </td>
@@ -263,6 +287,21 @@ document.addEventListener('DOMContentLoaded', function () {
             </tbody>
         </table>
     </div>
+    {% if pode_alterar %}
+        <div class="espelho-salvar">
+            <p class="espelho-ajuda">
+                Digite o horário (ex.: 0805 vira 08:05) e salve. Batida do relógio corrigida ou que faltou entra como ajuste aprovado;
+                sublinhado tracejado = lançada manualmente (apagar remove o ajuste). Horário antes da batida anterior vai para o dia seguinte quando é saída depois da meia-noite.
+            </p>
+            <div class="espelho-salvar__acoes">
+                <span class="espelho-ajuda" data-espelho-alteracoes></span>
+                <input type="text" name="motivo" maxlength="500" placeholder="Motivo (opcional): {{ motivo_padrao }}" aria-label="Motivo das correções">
+                <button type="button" class="btn-outline" data-espelho-desfazer disabled>Desfazer</button>
+                <button type="submit" class="btn-primario" data-espelho-salvar disabled>{% icon 'check-circle' %} Salvar</button>
+            </div>
+        </div>
+    </form>
+    {% endif %}
 </div>
 {% endif %}
 </div>

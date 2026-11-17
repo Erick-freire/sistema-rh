@@ -80,9 +80,14 @@ def _observacao(dia):
         return 'Folga' if not dia['marcacoes'] else 'Folga trabalhada'
     if dia['dia_falta']:
         return 'Dia falta'
+    partes = []
+    if dia.get('troca'):
+        partes.append(f"Compensa em {dia['troca'].data_compensacao:%d/%m}")
+    for compensa in dia.get('compensa', []):
+        partes.append(f"Paga horas de {compensa['troca'].data_falta:%d/%m} ({_horas(compensa['segundos']) or '00:00'})")
     if dia['marcacao_impar']:
-        return 'Marcação ímpar'
-    return ''
+        partes.append('Marcação ímpar')
+    return ' '.join(partes)
 
 
 def dados_do_espelho(funcionario, data_inicio, data_fim):

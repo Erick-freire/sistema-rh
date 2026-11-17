@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     AjustePonto, Equipamento, Feriado, FuncionarioJornada, Horario, HorarioDia,
-    MarcacaoRelogio, SincronizacaoFuncionario,
+    MarcacaoRelogio, SincronizacaoFuncionario, TrocaDeDia,
 )
 
 
@@ -68,3 +68,10 @@ class FuncionarioJornadaAdmin(admin.ModelAdmin):
     list_display = ('funcionario', 'data_inicio', 'horario')
     search_fields = ('funcionario__nome', 'funcionario__matricula')
     list_filter = ('horario',)
+
+
+@admin.register(TrocaDeDia)
+class TrocaDeDiaAdmin(admin.ModelAdmin):
+    list_display = ('funcionario', 'data_falta', 'data_compensacao', 'motivo', 'lancado_por', 'criado_em')
+    search_fields = ('funcionario__nome', 'funcionario__matricula')
+    readonly_fields = ('criado_em',)

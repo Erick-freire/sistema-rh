@@ -386,3 +386,58 @@ class FuncionarioJornada(models.Model):
     def trabalha_no_dia_12x36(self, data):
         """Só chamar quando `horario.eh_12x36` -- `data_inicio` é sempre um dia de trabalho, o ciclo alterna dia sim, dia não a partir dele."""
         return (data - self.data_inicio).days % 2 == 0
+
+
+class TrocaDeDia(models.Model):
+    """
+    Falta ou atraso combinado com o gestor: "faltei hoje, compenso vindo no
+    sábado" ou "cheguei 2h atrasado, fico 2h a mais amanhã". Na tela é
+    "Compensar em outro dia".
+
+    O dia deixa de ser Dia Falta (não desconta o dia nem o DSR e não tira a
+    assiduidade) e sai da compensação comum do mês. As horas que faltaram nele são pagas SÓ pelas horas
+    extras do dia combinado (`data_compensacao`), que deixam de ser pagas como
+    extra. O que essas horas não cobrirem é descontado em horas -- não vira Dia
+    Falta de novo nem entra na compensação com as outras extras (decisões do
+    usuário em 16/11/2026). Ver `calculos._aplicar_trocas_de_dia`.
+    """
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.CASCADE, related_name='trocas_de_dia')
+    data_falta = models.DateField()
+    data_compensacao = models.DateField(help_text='Dia em que o funcionário vem compensar as horas da falta.')
+    motivo = models.CharField(max_length=200, blank=True)
+    lancado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='trocas_de_dia_lancadas',
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-data_falta']
+        constraints = [
+            models.UniqueConstraint(fields=['funcionario', 'data_falta'], name='uma_troca_por_dia_de_falta'),
+        ]
+
+    def __str__(self):
+        return f'{self.funcionario.nome}: falta {self.data_falta:%d/%m/%Y}, compensa {self.data_compensacao:%d/%m/%Y}'
+
+    def clean(self):
+        if self.data_falta and self.data_compensacao and self.data_falta == self.data_compensacao:
+            raise ValidationError({'data_compensacao': 'O dia da compensação precisa ser outro dia, não o da falta.'})
+
+    def bloqueio_por_fechamento(self):
+        """
+        Mensagem de erro se o dia da falta ou o combinado cai num mês com a folha
+        já fechada; senão None. A troca liga dois meses: lançada ou excluída
+        depois de um deles fechar, o mês aberto sairia errado (extra paga e
+        falta não descontada, ou o contrário). Quem reabre é o DP/RH.
+        """
+        from folha.models import Fechamento
+
+        competencias = {data.replace(day=1) for data in (self.data_falta, self.data_compensacao) if data}
+        fechados = Fechamento.objects.filter(competencia__in=competencias, status='fechado').order_by('competencia')
+        if not fechados:
+            return None
+        meses = ' e '.join(f.competencia_extenso for f in fechados)
+        return (
+            f'A folha de {meses} já foi fechada. Para lançar ou excluir esta compensação, '
+            'o RH precisa reabrir o fechamento antes (depois, recalcule o ponto da pessoa).'
+        )

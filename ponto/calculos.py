@@ -23,9 +23,14 @@ Regras (confirmadas com o usuário):
   de 100%. Só o saldo depois de compensar vira "extra a pagar" ou "falta a
   descontar".
 - Dia Falta: dia de trabalho já encerrado sem nenhuma batida. Não entra na
-  compensação (hora extra não abate dia inteiro), desconta o DSR da semana
-  (segunda a domingo; várias faltas na mesma semana perdem um DSR só) e tira a
-  assiduidade do período. Atestado, férias, feriado e folga nunca são Dia Falta.
+  compensação (hora extra não abate dia inteiro; as extras do período ficam
+  inteiras), desconta o dia e o DSR da semana (segunda a domingo; várias
+  faltas na mesma semana perdem um DSR só) e tira a assiduidade do período.
+  Atestado, férias, feriado e folga nunca são Dia Falta.
+- Troca de dia (`TrocaDeDia`, lançada pelo gestor ou RH): a falta combinada
+  não é Dia Falta (sem desconto do dia e do DSR, mantém a assiduidade); as
+  horas dela são pagas só pelas extras do dia combinado, e o que sobrar é
+  descontado em horas. Ver `_aplicar_trocas_de_dia`.
 - Hora noturna (decisão do DP em 30/10/2026, igual ao Secullum): esperado,
   normais, saldo, faltas, extras e as horas noturnas do dia são todos no
   relógio, sem a redução da hora de 52min30s. A redução só aparece no total do
@@ -60,7 +65,7 @@ from typing import Optional
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio
+from .models import AjustePonto, Feriado, FuncionarioJornada, MarcacaoRelogio, TrocaDeDia
 from .turnos import agrupar_batidas_em_turnos, em_hora_noturna, segundos_noturnos, turno_previsto_do_dia
 from .utils import intervalo_do_dia
 
@@ -107,6 +112,8 @@ class _Evento:
     momento: object
     manual: bool
     marcacao_id: Optional[int] = None
+    # Só nos ajustes manuais: é por ele que a edição do espelho substitui ou remove o ajuste.
+    ajuste_id: Optional[int] = None
 
 
 def _segundos_esperados(horario_dia):
@@ -339,7 +346,7 @@ def _eventos_por_data(funcionario, data_inicio, data_fim, info=None):
         if m.id not in ids_corrigidos
     ]
     eventos.extend(
-        _Evento(momento=timezone.make_aware(datetime.combine(a.data, a.horario_ajustado)), manual=True)
+        _Evento(momento=timezone.make_aware(datetime.combine(a.data, a.horario_ajustado)), manual=True, ajuste_id=a.id)
         for a in ajustes
     )
 
@@ -400,7 +407,8 @@ def _horario_dia_de(funcionario, data):
     return horario_dia
 
 
-def calcular_periodo(funcionario, data_inicio, data_fim):
+def _dias_do_periodo(funcionario, data_inicio, data_fim):
+    """Cada dia de `data_inicio` a `data_fim` calculado sozinho, antes das trocas de dia e dos totais."""
     dias = []
     hoje = timezone.localdate()
     dias_ferias = _dias_ferias_aprovadas(funcionario)
@@ -488,6 +496,95 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         })
         dia_atual += timedelta(days=1)
 
+    for dia in dias:
+        # Preenchidos por `_aplicar_trocas_de_dia`.
+        dia['troca'] = None
+        dia['compensa'] = []
+        dia['segundos_usados_em_troca'] = 0
+    return dias
+
+
+def _aplicar_trocas_de_dia(funcionario, dias, data_inicio, data_fim):
+    """
+    Aplica as trocas de dia (`TrocaDeDia`) que tocam o período e devolve
+    (segundos de falta a descontar direto, resumo de cada troca).
+
+    Para cada troca: falta = horas que faltaram no dia da falta; compensado =
+    o quanto as horas extras do dia combinado cobrem disso (várias trocas no
+    mesmo dia combinado consomem as extras dele na ordem das faltas).
+    - Dia da falta: deixa de ser Dia Falta e sai da compensação comum.
+    - Dia combinado: as horas usadas (`segundos_usados_em_troca`) deixam de ser extra.
+    - O que sobrar (falta - compensado) é descontado em horas, sem compensar
+      com as outras extras, no período do ÚLTIMO dos dois dias. Assim, quando o
+      dia combinado cai no mês seguinte, o mês da falta não desconta nada e o
+      acerto (inclusive o desconto, se a pessoa não vier) sai no mês da
+      compensação -- nenhum mês desconta ou paga em dobro.
+    Os dias de fora do período são calculados à parte, só para essa conta.
+    """
+    no_periodo = Q(data_falta__gte=data_inicio, data_falta__lte=data_fim) | Q(
+        data_compensacao__gte=data_inicio, data_compensacao__lte=data_fim,
+    )
+    datas_compensacao = set(
+        TrocaDeDia.objects.filter(no_periodo, funcionario=funcionario).values_list('data_compensacao', flat=True)
+    )
+    if not datas_compensacao:
+        return 0, []
+    # Todas as trocas que dividem um dia combinado com as do período: elas disputam as mesmas extras.
+    trocas = list(
+        TrocaDeDia.objects.filter(funcionario=funcionario, data_compensacao__in=datas_compensacao)
+        .order_by('data_falta', 'id')
+    )
+
+    por_data = {dia['data']: dia for dia in dias}
+    de_fora = {}
+
+    def dia_calculado(data):
+        if data in por_data:
+            return por_data[data]
+        if data not in de_fora:
+            de_fora[data] = _dias_do_periodo(funcionario, data, data)[0]
+        return de_fora[data]
+
+    extra_disponivel = {}
+    falta_direta = 0
+    resumo = []
+    for troca in trocas:
+        dia_da_falta, dia_combinado = dia_calculado(troca.data_falta), dia_calculado(troca.data_compensacao)
+        falta = max(0, -dia_da_falta['saldo_segundos'])
+        if troca.data_compensacao not in extra_disponivel:
+            extra_disponivel[troca.data_compensacao] = max(0, dia_combinado['saldo_segundos'])
+        compensado = min(falta, extra_disponivel[troca.data_compensacao])
+        extra_disponivel[troca.data_compensacao] -= compensado
+        a_descontar = falta - compensado
+
+        falta_no_periodo = troca.data_falta in por_data
+        comp_no_periodo = troca.data_compensacao in por_data
+        if not (falta_no_periodo or comp_no_periodo):
+            continue  # só divide o dia combinado com uma troca do período
+        if falta_no_periodo:
+            dia_da_falta['troca'] = troca
+            dia_da_falta['dia_falta'] = False
+        if comp_no_periodo:
+            dia_combinado['compensa'].append({'troca': troca, 'segundos': compensado})
+            dia_combinado['segundos_usados_em_troca'] += compensado
+        acerto_no_periodo = max(troca.data_falta, troca.data_compensacao) in por_data
+        if acerto_no_periodo:
+            falta_direta += a_descontar
+        resumo.append({
+            'troca': troca,
+            'falta_segundos': falta,
+            'compensado_segundos': compensado,
+            'a_descontar_segundos': a_descontar,
+            # Falso quando o acerto (e o desconto do que sobrar) fica para o período do dia combinado.
+            'acerto_no_periodo': acerto_no_periodo,
+        })
+    return falta_direta, resumo
+
+
+def calcular_periodo(funcionario, data_inicio, data_fim):
+    dias = _dias_do_periodo(funcionario, data_inicio, data_fim)
+    falta_troca, trocas = _aplicar_trocas_de_dia(funcionario, dias, data_inicio, data_fim)
+
     # Sempre os 3 pares do horário (Ent.1..Saí.3), mesmo em dia sem batida.
     pares_no_periodo = MAX_PARES_EXIBIDOS
     for dia in dias:
@@ -495,10 +592,17 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
         dia['batidas_a_mais'] = [evento for par in dia['pares'][MAX_PARES_EXIBIDOS:] for evento in par if evento]
         dia['pares'] = dia['pares'][:pares_no_periodo] + [(None, None)] * (pares_no_periodo - len(dia['pares']))
 
-    superavit_50 = sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 50)
-    superavit_100 = sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 100)
+    # As horas do dia combinado que pagaram uma troca de dia não são mais extra.
+    def extra_do_dia(dia):
+        return dia['saldo_segundos'] - dia['segundos_usados_em_troca']
+
+    superavit_50 = sum(extra_do_dia(d) for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 50)
+    superavit_100 = sum(extra_do_dia(d) for d in dias if d['saldo_segundos'] > 0 and d['taxa_extra'] == 100)
     # Dia Falta fica fora da compensação: é descontado como dia, não como horas.
-    deficit = -sum(d['saldo_segundos'] for d in dias if d['saldo_segundos'] < 0 and not d['dia_falta'])
+    # O dia da troca também: só as horas do dia combinado pagam por ele.
+    deficit = -sum(
+        d['saldo_segundos'] for d in dias if d['saldo_segundos'] < 0 and not d['dia_falta'] and not d['troca']
+    )
 
     consumo_50 = min(deficit, superavit_50)
     deficit_restante = deficit - consumo_50
@@ -510,7 +614,10 @@ def calcular_periodo(funcionario, data_inicio, data_fim):
     totais = {
         'extra_50_segundos': superavit_50 - consumo_50,
         'extra_100_segundos': superavit_100 - consumo_100,
-        'falta_segundos': deficit_restante - consumo_100,
+        'falta_segundos': deficit_restante - consumo_100 + falta_troca,
+        # Parte de `falta_segundos`: o que as trocas de dia não cobriram.
+        'falta_troca_segundos': falta_troca,
+        'trocas_de_dia': trocas,
         'noturno_segundos': noturno_segundos,
         # Na hora de 52min30s: base do adicional noturno em R$ e da coluna da folha.
         'noturno_convertido_segundos': em_hora_noturna(noturno_segundos),
@@ -588,6 +695,9 @@ def situacao_do_dia(dia, hoje):
 
     if dia['marcacao_impar']:
         texto, cor = 'Faltou marcação', 'pendente'
+    elif dia.get('troca'):
+        # Falta ou atraso combinado com o gestor: não é pendência de correção.
+        return f"Compensa em {dia['troca'].data_compensacao:%d/%m}", 'inativo', False
     elif dia['segundos_trabalhados'] == 0:
         texto, cor = 'Sem batidas', 'rejeitado'
     elif dia['saldo_segundos'] < 0:

@@ -1,7 +1,8 @@
 {% comment %}
 Espelho do setor, um dia por "página": as batidas de todos do setor naquele dia,
-com o mesmo lápis do espelho individual (lançar/corrigir batida) e o abono por
-atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
+em caixas de texto como no espelho individual (um "Salvar" grava todo mundo) e
+o abono por atestado. As caixas ficam ligadas ao form de salvar pelo atributo
+`form=` porque cada linha já tem os forms de Abonar/Compensar (form não aninha). Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
 {% endcomment %}
 {% load rh_icons %}
 {% load ponto_extras %}
@@ -35,7 +36,8 @@ atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
     {% if esp.linhas %}
     <p class="espelho-ajuda" style="margin-bottom: 10px;">
         {{ esp.linhas|length }} pessoa{{ esp.linhas|length|pluralize }}{% if esp.pendencias %} · <strong>{{ esp.pendencias }} com pendência</strong>{% endif %}.
-        Passe o mouse numa batida e clique no lápis para lançar ou corrigir; "Abonar" lança um atestado só para este dia.
+        Digite os horários (ex.: 0805 vira 08:05) e clique em Salvar, embaixo, para gravar todo mundo de uma vez; "Abonar" lança um atestado só para este dia;
+        "Compensar em outro dia" registra a falta ou o atraso combinado para ser pago com as horas de outro dia.
     </p>
     <div class="table-responsive">
         <table class="tabela-compacta">
@@ -57,18 +59,25 @@ atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
                         {% if f.matricula %}<span class="espelho-ajuda">· {{ f.matricula }}</span>{% endif %}
                         {% if linha.cor != 'aprovado' %}<br><span class="badge-status badge-status--{{ linha.cor }}">{{ linha.situacao }}</span>{% endif %}
                     </td>
-                    {% for entrada, saida in dia.pares %}
+                    {% for celula in linha.celulas %}
                         <td class="celula-ponto">
-                            {% if entrada %}{{ entrada.momento|time:'H:i' }}{{ entrada.momento|marca_dia_turno:dia.data }}{% if entrada.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=entrada{% if entrada.marcacao_id %}&marcacao_original={{ entrada.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
-                        </td>
-                        <td class="celula-ponto">
-                            {% if saida %}{{ saida.momento|time:'H:i' }}{{ saida.momento|marca_dia_turno:dia.data }}{% if saida.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
-                            <a class="ajuste-ponto-link" title="Lançar ou corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=saida{% if saida.marcacao_id %}&marcacao_original={{ saida.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>
-                        {% if forloop.last and dia.batidas_a_mais %}
-                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija ou anule pelo lápis.">
+                            {% with evento=celula.evento %}
+                            {% if linha.pode_alterar %}
+                                <input type="text" form="espelho-setor-form" class="batida-input{% if evento.manual %} batida-input--manual{% endif %}" name="{{ celula.nome }}" value="{{ celula.valor }}"
+                                       data-original="{{ celula.original }}" inputmode="numeric" maxlength="5" autocomplete="off"
+                                       placeholder="{% if dia.ferias %}Férias{% elif dia.atestado %}Atestado{% elif dia.feriado %}Feriado{% elif dia.folga %}Folga{% else %}—{% endif %}"
+                                       aria-label="{% if celula.tipo == 'entrada' %}Entrada{% else %}Saída{% endif %} de {{ f.nome }}"
+                                       title="{% if evento.manual %}Lançada manualmente{% elif evento %}Batida do relógio: corrija digitando outro horário{% else %}Digite o horário da batida que faltou{% endif %}">
+                                <input type="hidden" form="espelho-setor-form" name="{{ celula.nome_origem }}" value="{{ celula.origem }}">
+                                {% if evento %}{{ evento.momento|marca_dia_turno:dia.data }}{% endif %}
+                            {% else %}
+                                {% if evento %}{{ evento.momento|time:'H:i' }}{{ evento.momento|marca_dia_turno:dia.data }}{% if evento.manual %}<span title="Lançado manualmente">*</span>{% endif %}{% else %}—{% endif %}
+                            {% endif %}
+                            {% endwith %}
+                            {% if forloop.last and dia.batidas_a_mais %}
+                            <div class="batidas-a-mais" title="Batidas além do 3º par: entram na conta do dia. Corrija pelo lápis.">
                                 a mais:{% for extra in dia.batidas_a_mais %}
-                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a></span>{% endfor %}
+                                <span class="celula-ponto">{{ extra.momento|time:'H:i' }}{% if extra.manual %}*{% endif %}{% if linha.pode_alterar %}<a class="ajuste-ponto-link" title="Corrigir esta batida" href="{% url 'ponto:ajustar_marcacao' f.id dia.data|date:'Y-m-d' %}?tipo=saida{% if extra.marcacao_id %}&marcacao_original={{ extra.marcacao_id }}{% endif %}&voltar={{ request.get_full_path|urlencode }}">{% icon 'pen' %}</a>{% endif %}</span>{% endfor %}
                             </div>
                             {% endif %}
                         </td>
@@ -87,6 +96,19 @@ atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
                             </form>
                         </details>
                         {% endif %}
+                        {% if linha.pode_trocar %}
+                        <details class="abono-dia">
+                            <summary class="btn-outline btn-sm">Compensar em outro dia</summary>
+                            <form method="post" action="{% url 'ponto:lancar_troca_de_dia' f.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+                                <input type="hidden" name="data_falta" value="{{ dia.data|date:'Y-m-d' }}">
+                                <label class="espelho-ajuda">Compensa em <input type="date" name="data_compensacao" required></label>
+                                <input type="text" name="motivo" maxlength="200" placeholder="Combinado (opcional)">
+                                <button type="submit" class="btn-primario btn-sm">Compensar {{ dia.data|date:'d/m' }}</button>
+                            </form>
+                        </details>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endwith %}
@@ -94,6 +116,22 @@ atestado. Espera `esp` (ver ponto.views._espelho_do_setor_no_dia).
             </tbody>
         </table>
     </div>
+    {% if esp.algum_alteravel %}
+    <form method="post" action="{% url 'ponto:salvar_espelho_setor' esp.setor.id %}" id="espelho-setor-form" data-espelho-edicao class="espelho-salvar">
+        {% csrf_token %}
+        <input type="hidden" name="proxima" value="{{ request.get_full_path }}">
+        <p class="espelho-ajuda">
+            Batida do relógio corrigida ou que faltou entra como ajuste aprovado; sublinhado tracejado = lançada manualmente
+            (apagar remove o ajuste). Com erro em qualquer pessoa, nada é salvo.
+        </p>
+        <div class="espelho-salvar__acoes">
+            <span class="espelho-ajuda" data-espelho-alteracoes></span>
+            <input type="text" name="motivo" maxlength="500" placeholder="Motivo (opcional): {{ esp.motivo_padrao }}" aria-label="Motivo das correções">
+            <button type="button" class="btn-outline" data-espelho-desfazer disabled>Desfazer</button>
+            <button type="submit" class="btn-primario" data-espelho-salvar disabled>{% icon 'check-circle' %} Salvar</button>
+        </div>
+    </form>
+    {% endif %}
     {% else %}
         <p class="espelho-ajuda">Nenhum funcionário ativo que bate ponto neste setor.</p>
     {% endif %}

@@ -2304,3 +2304,17 @@ form .login-campo input#password { padding-right: 46px; }
 .batidas-corrigiveis { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .batidas-corrigiveis a { text-decoration: underline dotted; }
 .ajustes-diarios__acoes { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Espelho dia a dia editável: cada batida é uma caixa de texto, um "Salvar" grava todas */
+.batida-input {
+    width: 4.6em; padding: 3px 4px; font: inherit; color: inherit; text-align: center;
+    border: 1px solid transparent; border-radius: 4px; background: transparent;
+}
+.batida-input:hover { border-color: var(--color-border); }
+.batida-input:focus { outline: none; border-color: var(--color-primary); background: var(--color-surface); }
+.batida-input::placeholder { color: var(--color-text-muted); }
+.batida-input--manual { border-bottom: 1px dashed var(--color-primary); }
+.batida-input--alterada { border-color: var(--color-pending); background: var(--color-pending-bg); font-weight: 600; }
+.espelho-salvar { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.espelho-salvar__acoes { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.espelho-salvar__acoes input[name="motivo"] { flex: 0 1 320px; min-width: 0; }
