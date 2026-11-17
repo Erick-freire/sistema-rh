@@ -55,6 +55,8 @@ COLUNAS = [
     Coluna('faltas_minutos', 'FALTAS HORAS |226| r', 'Faltas (horas)', 'horas', 'ponto', 12.44, '226'),
     Coluna('faltas_dias', 'FALTAS|023|R', 'Faltas (dias)', 'dias', 'ponto', 16.0, '023'),
     Coluna('assiduidade', 'ASSIDUIDADE', 'Assiduidade', 'sim_nao', 'ponto', 17.66),
+    # Não existia no modelo de set/2026: entrou em 17/11/2026, com a mesma regra da assiduidade.
+    Coluna('vale_alimentacao', 'V.A', 'V.A', 'sim_nao', 'ponto', 9.0),
     Coluna('vale_transporte', 'VALE TRANSP', 'Vale transp.', 'vale_transporte', 'rh', 12.55),
     Coluna('periculosidade', 'PERICULOSIDADE', 'Periculosidade', 'percentual', 'rh', 16.11, fracao_no_xlsx=True),
 ]

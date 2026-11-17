@@ -8,7 +8,17 @@
 // caixinha), e o servidor devolve o valor já formatado. Enter e as setas
 // para cima/baixo andam pela coluna, como numa planilha; Esc desfaz o que foi
 // digitado.
+//
+// A aba Vale alimentação (folha/templates/folha/vale_alimentacao.html) usa a
+// mesma grade, só com a caixinha do V.A e a última alteração de cada pessoa.
 document.addEventListener('DOMContentLoaded', function () {
+    var competencia = document.querySelector('[data-va-competencia]');
+    if (competencia) {
+        competencia.addEventListener('change', function () {
+            window.location.href = competencia.value;
+        });
+    }
+
     var progresso = document.getElementById('calculo-progresso');
     if (progresso) {
         var barra = progresso.querySelector('[data-progresso-barra]');
@@ -81,6 +91,19 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // Só na aba Vale alimentação: quem alterou, os filtros da linha e o total de marcados.
+    function atualizarValeAlimentacao(linha, input, rastro) {
+        var celulaRastro = linha.querySelector('[data-rastro]');
+        if (!celulaRastro || input.dataset.campo !== 'vale_alimentacao') return;
+        if (rastro) {
+            celulaRastro.textContent = rastro;
+            linha.setAttribute('data-alterado', '');
+        }
+        linha.toggleAttribute('data-sem-va', !input.checked);
+        var total = document.querySelector('[data-va-marcados]');
+        if (total) total.textContent = grade.querySelectorAll('input[data-campo="vale_alimentacao"]:checked').length;
+    }
+
     function mostrarErro(celula, input, mensagem) {
         celula.classList.add('is-erro');
         celula.title = mensagem;
@@ -125,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 celula.classList.add('is-salvo');
                 setTimeout(function () { celula.classList.remove('is-salvo'); }, 1200);
                 atualizarAvisos(linha, dados.avisos);
+                atualizarValeAlimentacao(linha, input, dados.rastro);
             })
             .catch(function () {
                 celula.classList.remove('is-salvando');
@@ -168,15 +192,22 @@ document.addEventListener('DOMContentLoaded', function () {
     var busca = document.getElementById('busca-folha');
     var soComAvisos = document.getElementById('so-com-avisos');
 
+    // Caixinhas de filtro: data-filtro="x" mostra só as linhas com o atributo data-x.
+    var filtros = document.querySelectorAll('input[data-filtro]');
+
     function filtrar() {
         var termo = busca ? busca.value.trim().toLowerCase() : '';
         var avisos = soComAvisos && soComAvisos.checked;
+        var exigidos = Array.prototype.filter.call(filtros, function (filtro) { return filtro.checked; })
+            .map(function (filtro) { return 'data-' + filtro.dataset.filtro; });
         grade.querySelectorAll('tbody tr[data-url]').forEach(function (linha) {
             var bate = !termo || linha.dataset.busca.indexOf(termo) !== -1;
-            linha.hidden = !bate || (avisos && !linha.hasAttribute('data-tem-aviso'));
+            var temTodos = exigidos.every(function (atributo) { return linha.hasAttribute(atributo); });
+            linha.hidden = !bate || !temTodos || (avisos && !linha.hasAttribute('data-tem-aviso'));
         });
     }
 
     if (busca) busca.addEventListener('input', filtrar);
     if (soComAvisos) soComAvisos.addEventListener('change', filtrar);
+    filtros.forEach(function (filtro) { filtro.addEventListener('change', filtrar); });
 });

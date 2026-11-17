@@ -17,6 +17,13 @@ urlpatterns = [
     path('<int:fechamento_id>/planilha.xlsx', views.exportar_xlsx_view, name='exportar_xlsx'),
     path('<int:fechamento_id>/fechamento.pdf', views.exportar_pdf_view, name='exportar_pdf'),
 
+    path('vale-alimentacao/', views.vale_alimentacao_view, name='vale_alimentacao'),
+    path('vale-alimentacao/<int:fechamento_id>/', views.vale_alimentacao_view, name='vale_alimentacao_do_mes'),
+    path(
+        'vale-alimentacao/<int:fechamento_id>/vale-alimentacao.xlsx',
+        views.exportar_vale_alimentacao_view, name='exportar_vale_alimentacao',
+    ),
+
     path('premios/', views.premios_view, name='premios'),
     path('premios/<int:regra_id>/editar/', views.editar_regra_view, name='editar_regra'),
     path('premios/<int:regra_id>/excluir/', views.excluir_regra_view, name='excluir_regra'),

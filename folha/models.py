@@ -15,14 +15,14 @@ from funcionarios.utils import MESES
 # - copiados do mês anterior: só o que é fixo da pessoa (VT e periculosidade);
 # - das regras de prêmios: programa (`RegraPremioPrograma`), incentivo
 #   (`RegraPremio`) e safra (`RegraPremioSafra`);
-# - do cálculo do ponto: horas, faltas, atestados e assiduidade;
+# - do cálculo do ponto: horas, faltas, atestados, assiduidade e vale-alimentação;
 # - em branco: o resto (bônus, descontos, reembolso, comissões, 13º), que o
 #   RH lança mês a mês.
 CAMPOS_COPIADOS = ['vt_seis_porcento', 'vt_valor', 'periculosidade']
 CAMPOS_DAS_REGRAS = ['premio_programa', 'premio_incentivo', 'premio_safra']
 CAMPOS_DO_PONTO = [
     'adicional_noturno_minutos', 'he_50_minutos', 'he_100_minutos', 'faltas_minutos',
-    'faltas_dias', 'atestados_dias', 'assiduidade',
+    'faltas_dias', 'atestados_dias', 'assiduidade', 'vale_alimentacao',
 ]
 
 
@@ -116,6 +116,10 @@ class LinhaFechamento(models.Model):
     faltas_dias = models.PositiveSmallIntegerField(default=0)
     atestados_dias = models.PositiveSmallIntegerField(default=0)
     assiduidade = models.BooleanField(default=True)
+    # Recebe o vale-alimentação no mês (pedido do usuário em 17/11/2026). Mesma
+    # regra da assiduidade: faltou, perdeu. O gestor marca de novo quem recebe
+    # mesmo com falta (aba "Vale alimentação" ou a grade), e o RH confere.
+    vale_alimentacao = models.BooleanField(default=True)
 
     # O último resultado do cálculo do ponto: {'valores': {campo: valor}, ...}.
     # Campo cujo valor atual difere do calculado foi corrigido pelo RH, e o

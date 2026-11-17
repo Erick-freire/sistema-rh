@@ -439,8 +439,9 @@ class ViewsTests(BaseFolhaTestCase):
         self.assertEqual(aba['G2'].value, 1.0)  # H.E. 50%: 1h = 1.00
         self.assertEqual(aba['G2'].number_format, '0.00')
         self.assertEqual(aba['R2'].value, 20)  # faltas (dias)
-        self.assertEqual(aba['S2'].value, 'NÃO')
-        self.assertEqual((aba['T2'].value, aba['T2'].number_format), (0.06, '0%'))
+        self.assertEqual(aba['S2'].value, 'NÃO')  # assiduidade
+        self.assertEqual((aba['T1'].value, aba['T2'].value), ('V.A', 'NÃO'))  # faltou: sem vale-alimentação
+        self.assertEqual((aba['U2'].value, aba['U2'].number_format), (0.06, '0%'))
 
     def test_exportar_pdf(self):
         fechamento = self._abrir()
@@ -948,6 +949,188 @@ class MigracaoDasRegrasDeSafraTests(TestCase):
         self.assertEqual(list(RegraPremio.objects.values_list('tipo', flat=True)), ['premio_incentivo'])
 
 
+class MigracaoDoValeAlimentacaoTests(BaseFolhaTestCase):
+    """Linhas que já existiam ganham o V.A pela assiduidade calculada (migração 0006)."""
+
+    def test_va_das_linhas_existentes_segue_a_assiduidade_calculada(self):
+        fechamento = Fechamento.objects.create(competencia=AGOSTO)
+        bruno = Funcionario.objects.create(nome='Bruno', matricula='2', cargo='X', setor=self.setor, cpf='22222222222')
+        calculada = LinhaFechamento.objects.create(
+            fechamento=fechamento, funcionario=self.ana, nome='Ana', assiduidade=True,  # o RH abonou à mão
+            ponto_calculado={'valores': {'assiduidade': False, 'faltas_dias': 2}},
+        )
+        importada = LinhaFechamento.objects.create(
+            fechamento=fechamento, funcionario=bruno, nome='Bruno', assiduidade=False, ponto_calculado={'valores': {}},
+        )
+
+        migracao = importlib.import_module('folha.migrations.0006_vale_alimentacao')
+        migracao.preencher_das_linhas_existentes(django_apps, None)
+
+        calculada.refresh_from_db()
+        importada.refresh_from_db()
+        self.assertFalse(calculada.vale_alimentacao)
+        self.assertIs(calculada.ponto_calculado['valores']['vale_alimentacao'], False)
+        self.assertFalse(calculada.editado_pelo_rh('vale_alimentacao'))
+        self.assertFalse(importada.vale_alimentacao)
+        self.assertEqual(importada.ponto_calculado, {'valores': {}})
+
+
+class ValeAlimentacaoTests(BaseFolhaTestCase):
+    """
+    V.A: mesma regra da assiduidade (faltou, perdeu); o gestor marca de novo
+    quem recebe mesmo com falta, o RH confere e baixa a lista dos marcados.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.gestor = Funcionario.objects.create(
+            nome='Gil Gestor', matricula='2001', cargo='Gerente', setor=self.setor, cpf='22200000000',
+        )
+        self.setor.gestor = self.gestor
+        self.setor.save()
+        self.user_gestor = User.objects.create_user(username='gilgestor', password='senha123')
+        Usuario.objects.create(user=self.user_gestor, funcionario=self.gestor, papel='gestor')
+        self.bruno = Funcionario.objects.create(
+            nome='Bruno Financeiro', matricula='2002', cargo='Analista', setor=Setor.objects.create(nome='Financeiro'),
+            cpf='02200000001',
+        )
+        rh = Funcionario.objects.create(
+            nome='Rh Teste', matricula='9999', cargo='RH', setor=self.setor, cpf='99999999999', status='em_validacao',
+        )
+        self.user_rh = User.objects.create_user(username='rhteste', password='senha123')
+        Usuario.objects.create(user=self.user_rh, funcionario=rh, papel='rh')
+
+        self.fechamento = self._abrir_calculado()  # Ana (faltou 20 dias), Gil e Bruno (sem jornada: sem falta)
+        self.linha_ana = self.fechamento.linhas.get(funcionario=self.ana)
+        self.linha_bruno = self.fechamento.linhas.get(funcionario=self.bruno)
+
+    def _marcar(self, linha, marcado=True):
+        return self.client.post(
+            reverse('folha:salvar_celula', args=[linha.id]), {'campo': 'vale_alimentacao', 'valor': '1' if marcado else ''},
+        )
+
+    def test_coluna_va_vem_logo_depois_da_assiduidade(self):
+        campos = [coluna.campo for coluna in colunas.COLUNAS]
+        self.assertEqual(campos[campos.index('assiduidade') + 1], 'vale_alimentacao')
+        self.assertEqual(colunas.COLUNAS_POR_CAMPO['vale_alimentacao'].tipo, 'sim_nao')
+
+    def test_faltou_perdeu_como_a_assiduidade(self):
+        self.assertFalse(self.linha_ana.vale_alimentacao)
+        self.assertTrue(self.linha_bruno.vale_alimentacao)
+        for linha in self.fechamento.linhas.all():
+            self.assertEqual(linha.vale_alimentacao, linha.assiduidade)
+
+    def test_gestor_abona_o_va_da_equipe_e_o_recalculo_mantem(self):
+        self.client.force_login(self.user_gestor)
+
+        resposta = self._marcar(self.linha_ana)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertTrue(resposta.json()['marcado'])
+        self.assertTrue(resposta.json()['editado'])
+        self.assertIn('Gil (gestor) marcou em', resposta.json()['rastro'])
+        services.recalcular_fechamento(self.fechamento)
+        self.linha_ana.refresh_from_db()
+        self.assertTrue(self.linha_ana.vale_alimentacao)
+        self.assertFalse(self.linha_ana.assiduidade)  # o V.A foi abonado, a assiduidade não
+
+    def test_gestor_ve_e_altera_so_a_equipe(self):
+        self.client.force_login(self.user_gestor)
+
+        resposta = self.client.get(reverse('folha:vale_alimentacao'))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual([item['linha'] for item in resposta.context['lista']], [self.linha_ana])
+        self.assertEqual(resposta.context['com_falta'], 1)
+        self.assertNotContains(resposta, 'Baixar Excel')
+        self.assertNotContains(resposta, 'Regras de prêmios')
+        self.assertEqual(self._marcar(self.linha_bruno, False).status_code, 404)
+        self.linha_bruno.refresh_from_db()
+        self.assertTrue(self.linha_bruno.vale_alimentacao)
+
+    def test_gestor_nao_baixa_a_lista(self):
+        self.client.force_login(self.user_gestor)
+
+        resposta = self.client.get(reverse('folha:exportar_vale_alimentacao', args=[self.fechamento.id]))
+
+        self.assertRedirects(resposta, reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_rh_ve_todos_e_quem_o_gestor_abonou(self):
+        self.client.force_login(self.user_gestor)
+        self._marcar(self.linha_ana)
+        self.client.force_login(self.user_rh)
+
+        resposta = self.client.get(reverse('folha:vale_alimentacao_do_mes', args=[self.fechamento.id]))
+
+        self.assertEqual(len(resposta.context['lista']), 3)
+        self.assertEqual(resposta.context['marcados'], 3)
+        self.assertEqual(resposta.context['alterados'], 1)
+        self.assertContains(resposta, 'Gil (gestor) marcou em')
+        self.assertContains(resposta, 'Baixar Excel')
+        # O RH também altera, e o histórico é o mesmo da grade.
+        self.assertEqual(self._marcar(self.linha_ana, False).status_code, 200)
+        self.assertEqual(
+            list(AlteracaoCelula.objects.filter(campo='vale_alimentacao').values_list('valor_novo', flat=True)),
+            ['NÃO', 'SIM'],
+        )
+
+    def test_exporta_so_os_marcados(self):
+        self.client.force_login(self.user_rh)
+
+        resposta = self.client.get(reverse('folha:exportar_vale_alimentacao', args=[self.fechamento.id]))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertIn('VALE ALIMENTACAO AGOSTO 2026.xlsx', resposta['Content-Disposition'])
+        self.assertEqual(resposta['Cache-Control'], 'private')
+        aba = openpyxl.load_workbook(io.BytesIO(resposta.content)).active
+        self.assertEqual([celula.value for celula in aba[1]], ['EMP', 'MATRÍCULA', 'NOME', 'CPF', 'SETOR', 'CARGO'])
+        self.assertEqual(
+            [tuple(linha) for linha in aba.iter_rows(min_row=2, values_only=True)],
+            [
+                (453, 2002, 'Bruno Financeiro', '02200000001', 'Financeiro', 'Analista'),
+                (453, 2001, 'Gil Gestor', '22200000000', 'Produção', 'Gerente'),
+            ],
+        )
+
+    def test_com_o_ponto_por_calcular_mostra_o_progresso_e_nao_exporta(self):
+        services.marcar_para_recalcular(self.fechamento)
+        self.client.force_login(self.user_rh)
+
+        pagina = self.client.get(reverse('folha:vale_alimentacao'))
+        exportar = self.client.get(reverse('folha:exportar_vale_alimentacao', args=[self.fechamento.id]))
+
+        self.assertContains(pagina, 'Calculando o ponto')
+        self.assertEqual(pagina.context['lista'], [])
+        self.assertRedirects(
+            exportar, reverse('folha:vale_alimentacao_do_mes', args=[self.fechamento.id]), fetch_redirect_response=False,
+        )
+
+    def test_fechado_trava_a_lista(self):
+        services.fechar(self.fechamento, self.user_rh)
+        self.client.force_login(self.user_rh)
+
+        resposta = self.client.get(reverse('folha:vale_alimentacao'))
+
+        self.assertEqual(resposta.context['fechamento'], self.fechamento)
+        self.assertContains(resposta, 'a lista está travada')
+        self.assertEqual(self._marcar(self.linha_ana).status_code, 409)
+
+    def test_sem_fechamento(self):
+        self.fechamento.delete()
+        self.client.force_login(self.user_rh)
+
+        resposta = self.client.get(reverse('folha:vale_alimentacao'))
+
+        self.assertContains(resposta, 'Nenhum fechamento ainda')
+
+    def test_abre_no_fechamento_aberto_mais_recente(self):
+        services.fechar(self.fechamento, self.user_rh)
+        julho = Fechamento.objects.create(competencia=JULHO)
+        self.client.force_login(self.user_rh)
+
+        self.assertEqual(self.client.get(reverse('folha:vale_alimentacao')).context['fechamento'], julho)
+
+
 class ImportarPlanilhaTests(TestCase):
     def setUp(self):
         setor = Setor.objects.create(nome='Produção')
@@ -1008,6 +1191,21 @@ class ImportarPlanilhaTests(TestCase):
         linha.refresh_from_db()
         self.assertEqual(linha.he_50_minutos, 380)
         self.assertEqual(linha.premio_programa, Decimal('75'))
+
+    def test_planilha_de_antes_da_coluna_va_ainda_importa(self):
+        sem_va = [coluna for coluna in colunas.COLUNAS if coluna.campo != 'vale_alimentacao']
+        linha = dict(zip((coluna.campo for coluna in colunas.COLUNAS), self._linha(
+            codigo_empresa=453, matricula=1435, nome='ANA', assiduidade='NÃO', vale_transporte=0.06,
+        )))
+        caminho = self._planilha(
+            [[linha[coluna.campo] for coluna in sem_va]], cabecalho=[coluna.cabecalho for coluna in sem_va],
+        )
+
+        call_command('importar_fechamento_planilha', caminho, competencia='2026-09', stdout=io.StringIO())
+
+        importada = LinhaFechamento.objects.get()
+        self.assertFalse(importada.vale_alimentacao)  # sem a coluna: a regra da assiduidade
+        self.assertTrue(importada.vt_seis_porcento)
 
     def test_recusa_planilha_em_outro_layout(self):
         caminho = self._planilha([], cabecalho=['NOME', 'CPF'])

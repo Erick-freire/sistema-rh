@@ -61,11 +61,54 @@ def gerar_xlsx(fechamento):
     return saida.getvalue()
 
 
+def nome_arquivo_vale_alimentacao(fechamento):
+    return f'VALE ALIMENTACAO {fechamento.competencia_extenso.split("/")[0].upper()} {fechamento.competencia.year}.xlsx'
+
+
+# (cabeçalho, largura, valor da linha). CPF como texto: número perderia o zero à esquerda.
+_COLUNAS_VA = [
+    ('EMP', 9, lambda linha: linha.codigo_empresa),
+    ('MATRÍCULA', 11, lambda linha: int(linha.matricula) if linha.matricula.isdigit() else linha.matricula),
+    ('NOME', 45, lambda linha: linha.nome),
+    ('CPF', 15, lambda linha: linha.funcionario.cpf),
+    ('SETOR', 28, lambda linha: linha.funcionario.setor.nome if linha.funcionario.setor_id else ''),
+    ('CARGO', 30, lambda linha: ' '.join((linha.funcionario.cargo or '').split())),
+]
+
+
+def gerar_xlsx_vale_alimentacao(fechamento):
+    """Quem recebe o vale-alimentação no mês (os marcados), para a empresa que credita o vale."""
+    planilha = Workbook()
+    aba = planilha.active
+    aba.title = 'Vale alimentação'
+
+    for indice, (cabecalho, largura, _) in enumerate(_COLUNAS_VA, start=1):
+        celula = aba.cell(row=1, column=indice, value=cabecalho)
+        celula.font, celula.fill, celula.border = _FONTE_AZUL, _AZUL, _BORDA
+        celula.alignment = Alignment(horizontal='center', vertical='center')
+        aba.column_dimensions[celula.column_letter].width = largura
+
+    linhas = fechamento.linhas.filter(vale_alimentacao=True).select_related('funcionario__setor')
+    for numero_linha, linha in enumerate(linhas, start=2):
+        for indice, (cabecalho, _, valor) in enumerate(_COLUNAS_VA, start=1):
+            celula = aba.cell(row=numero_linha, column=indice, value=valor(linha))
+            celula.font, celula.border = _FONTE, _BORDA
+            if cabecalho == 'CPF':
+                celula.number_format = '@'
+
+    aba.freeze_panes = 'A2'
+    aba.auto_filter.ref = aba.dimensions
+
+    saida = io.BytesIO()
+    planilha.save(saida)
+    return saida.getvalue()
+
+
 # O xhtml2pdf não calcula a largura das colunas pelo conteúdo: sem largura
 # fixa ele espreme tudo. Em cm; somam ~27,9 dos 28,1 úteis do A4 deitado, e
 # cada coluna cabe a maior palavra do rótulo ("Periculosidade", "Assiduidade").
 _LARGURA_PDF_CM = {
-    'codigo_empresa': 0.75, 'matricula': 0.85, 'nome': 5.0, 'periculosidade': 1.7,
+    'codigo_empresa': 0.75, 'matricula': 0.85, 'nome': 4.0, 'periculosidade': 1.7, 'vale_alimentacao': 1.0,
     'moeda': 1.25, 'horas': 1.05, 'dias': 1.1, 'sim': 0.9, 'sim_nao': 1.35, 'percentual': 1.0, 'vale_transporte': 1.2,
 }
 

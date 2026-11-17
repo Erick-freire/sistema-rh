@@ -56,7 +56,9 @@ def calcular_ponto(funcionario, competencia):
     """
     As colunas do ponto de um funcionário na competência, mais os alertas do
     cálculo. Atestados = dias corridos de atestado dentro do mês. Assiduidade
-    é a do cálculo (perde com Dia Falta) -- o RH ajusta quando precisar.
+    é a do cálculo (perde com Dia Falta) -- o RH ajusta quando precisar. O
+    vale-alimentação segue a mesma regra (faltou, perdeu); o gestor ou o RH
+    marca de novo quem recebe mesmo assim.
     """
     inicio, fim = periodo_da_competencia(competencia)
     totais = calcular_periodo(funcionario, inicio, fim)['totais']
@@ -70,6 +72,7 @@ def calcular_ponto(funcionario, competencia):
             'faltas_dias': totais['dias_falta'],
             'atestados_dias': _dias_de_atestado(funcionario, inicio, fim),
             'assiduidade': not totais['perdeu_assiduidade'],
+            'vale_alimentacao': not totais['perdeu_assiduidade'],
         },
         'dias_sem_jornada': totais['dias_sem_jornada'],
         'dias_com_marcacao_impar': totais['dias_com_marcacao_impar'],

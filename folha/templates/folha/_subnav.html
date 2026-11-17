@@ -1,6 +1,9 @@
-{% if usuario_atual.eh_dp_ou_rh %}{# O gestor não mexe nas regras de prêmios: valem para a empresa toda. #}
+{% with nome=request.resolver_match.url_name %}
 <div class="tabs">
-    <a href="{% url 'folha:listar' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar' %} is-ativo{% endif %}">Fechamentos</a>
-    <a href="{% url 'folha:premios' %}" class="tabs__link{% if request.resolver_match.url_name == 'premios' or request.resolver_match.url_name == 'editar_regra' or request.resolver_match.url_name == 'regra_programa' or request.resolver_match.url_name == 'regra_safra' %} is-ativo{% endif %}">Regras de prêmios</a>
+    <a href="{% url 'folha:listar' %}" class="tabs__link{% if nome == 'listar' %} is-ativo{% endif %}">Fechamentos</a>
+    {% if usuario_atual.eh_dp_ou_rh %}{# O gestor não mexe nas regras de prêmios: valem para a empresa toda. #}
+    <a href="{% url 'folha:premios' %}" class="tabs__link{% if nome == 'premios' or nome == 'editar_regra' or nome == 'regra_programa' or nome == 'regra_safra' %} is-ativo{% endif %}">Regras de prêmios</a>
+    {% endif %}
+    <a href="{% url 'folha:vale_alimentacao' %}" class="tabs__link{% if nome == 'vale_alimentacao' or nome == 'vale_alimentacao_do_mes' %} is-ativo{% endif %}">Vale alimentação</a>
 </div>
-{% endif %}
+{% endwith %}

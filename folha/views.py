@@ -44,6 +44,19 @@ def _quem(user):
         return user.get_full_name() or user.username
 
 
+def _rastro(alteracao):
+    """'Gil (gestor) marcou em 17/11 14:30': a última alteração, como a aba de vale-alimentação mostra."""
+    if alteracao is None:
+        return ''
+    quem = _quem(alteracao.alterado_por)
+    try:
+        quem = f'{quem} ({alteracao.alterado_por.usuario.get_papel_display().lower()})'
+    except (AttributeError, Usuario.DoesNotExist):
+        pass
+    acao = {'SIM': 'marcou', 'NÃO': 'desmarcou'}.get(alteracao.valor_novo, f'mudou para {alteracao.valor_novo or "em branco"}')
+    return f'{quem} {acao} em {timezone.localtime(alteracao.alterado_em):%d/%m %H:%M}'
+
+
 def _celula(linha, coluna, alteracao=None):
     """`alteracao`: a última `AlteracaoCelula` desta célula, se houver -- vira o texto do mouse."""
     celula = {
@@ -262,6 +275,7 @@ def salvar_celula_view(request, linha_id):
         'marcado': celula['marcado'],
         'editado': celula['editado'],
         'titulo': celula['titulo'],
+        'rastro': _rastro(alteracao),
         'avisos': services.avisos(linha),
     })
 
@@ -419,6 +433,83 @@ def exportar_pdf_view(request, fechamento_id):
         messages.error(request, 'Não foi possível gerar o PDF. Tente novamente.')
         return redirect('folha:detalhe', fechamento_id=fechamento.id)
     return _baixar(pdf, exportacao.nome_arquivo(fechamento, 'pdf'), 'application/pdf')
+
+
+# ---------- Vale-alimentação ----------
+# Quem recebe o V.A no mês é a coluna `vale_alimentacao` do fechamento: começa
+# pela regra da assiduidade (faltou, perdeu), o gestor marca de novo quem
+# recebe mesmo com falta e o RH confere e baixa a lista para a empresa que
+# credita o vale. A aba é outra vista da mesma coluna: grava pela grade
+# (`salvar_celula_view`), com as mesmas permissões e o mesmo histórico.
+
+CAMPO_VA = 'vale_alimentacao'
+
+
+def _fechamento_do_va(fechamento_id):
+    """O fechamento pedido, ou o aberto mais recente (sem nenhum aberto, o último)."""
+    if fechamento_id is not None:
+        return get_object_or_404(Fechamento, id=fechamento_id)
+    return Fechamento.objects.filter(status='aberto').first() or Fechamento.objects.first()
+
+
+def _sem_va_pela_regra(linha):
+    """Pela regra (a da assiduidade), não receberia: teve falta no mês. É o que o gestor confere."""
+    automaticos = linha.valores_automaticos(CAMPO_VA)
+    if automaticos and CAMPO_VA in automaticos:
+        return not automaticos[CAMPO_VA]
+    return linha.faltas_dias > 0  # linha importada da planilha: nada nela é automático
+
+
+@login_required
+@papel_required('rh', 'dp', 'gestor')
+def vale_alimentacao_view(request, fechamento_id=None):
+    fechamento = _fechamento_do_va(fechamento_id)
+    contexto = {'fechamento': fechamento, 'fechamentos': Fechamento.objects.all()}
+    if fechamento is None:
+        return render(request, 'folha/vale_alimentacao.html', contexto)
+
+    linhas = list(_da_equipe(request, fechamento.linhas.select_related('funcionario__setor')))
+    pendentes = sum(1 for linha in linhas if linha.ponto_pendente)
+    coluna = colunas.COLUNAS_POR_CAMPO[CAMPO_VA]
+    ultimas = {} if pendentes else _ultimas_alteracoes(linhas)
+    alteraveis = set(
+        request.user.usuario.funcionarios_que_altera()
+        .filter(id__in=[linha.funcionario_id for linha in linhas]).values_list('id', flat=True)
+    )
+    lista = [] if pendentes else [
+        {
+            'linha': linha,
+            'celula': _celula(linha, coluna, ultimas.get((linha.id, CAMPO_VA))),
+            'rastro': _rastro(ultimas.get((linha.id, CAMPO_VA))),
+            'perderia': _sem_va_pela_regra(linha),
+            'editavel': linha.funcionario_id in alteraveis,
+        }
+        for linha in linhas
+    ]
+    contexto.update({
+        'lista': lista,
+        'total_linhas': len(linhas),
+        'pendentes': pendentes,
+        'marcados': sum(1 for linha in linhas if linha.vale_alimentacao),
+        'com_falta': sum(1 for item in lista if item['perderia']),
+        'alterados': sum(1 for item in lista if item['rastro']),
+    })
+    return render(request, 'folha/vale_alimentacao.html', contexto)
+
+
+@login_required
+@papel_required('rh', 'dp')
+def exportar_vale_alimentacao_view(request, fechamento_id):
+    """A lista de quem recebe (os marcados), para a empresa que credita o vale."""
+    fechamento = get_object_or_404(Fechamento, id=fechamento_id)
+    if fechamento.linhas_pendentes().exists():
+        messages.error(request, 'O ponto ainda está sendo calculado. Aguarde terminar e tente de novo.')
+        return redirect('folha:vale_alimentacao_do_mes', fechamento_id=fechamento.id)
+    return _baixar(
+        exportacao.gerar_xlsx_vale_alimentacao(fechamento),
+        exportacao.nome_arquivo_vale_alimentacao(fechamento),
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 # ---------- Regras de prêmios ----------

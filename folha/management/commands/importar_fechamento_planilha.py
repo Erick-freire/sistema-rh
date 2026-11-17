@@ -66,8 +66,14 @@ class Command(BaseCommand):
             raise CommandError(f'Já existe fechamento para {mes:02d}/{ano}. Exclua-o pela tela antes de importar de novo.')
 
         aba = openpyxl.load_workbook(options['caminho_arquivo'], data_only=True).worksheets[0]
-        cabecalho = [_normalizar(celula.value) for celula in aba[1]][:len(COLUNAS)]
-        esperado = [_normalizar(coluna.cabecalho) for coluna in COLUNAS]
+        cabecalho = [_normalizar(celula.value) for celula in aba[1]]
+        # A coluna V.A entrou em 17/11/2026: as planilhas de antes não têm.
+        colunas_da_planilha = [
+            coluna for coluna in COLUNAS
+            if coluna.campo != 'vale_alimentacao' or _normalizar(coluna.cabecalho) in cabecalho
+        ]
+        cabecalho = cabecalho[:len(colunas_da_planilha)]
+        esperado = [_normalizar(coluna.cabecalho) for coluna in colunas_da_planilha]
         if cabecalho != esperado:
             diferentes = [f'{e!r} x {c!r}' for e, c in zip(esperado, cabecalho) if e != c]
             raise CommandError('A planilha não está no layout do fechamento: ' + '; '.join(diferentes))
@@ -82,7 +88,7 @@ class Command(BaseCommand):
                     observacao='Importado da planilha enviada à contabilidade',
                 )
                 for linha_planilha in aba.iter_rows(min_row=2, values_only=True):
-                    valores = dict(zip((coluna.campo for coluna in COLUNAS), linha_planilha))
+                    valores = dict(zip((coluna.campo for coluna in colunas_da_planilha), linha_planilha))
                     if valores['matricula'] in (None, '') or not valores['nome']:
                         continue
                     funcionario = funcionarios.get(str(valores['matricula']).strip())
@@ -120,6 +126,8 @@ class Command(BaseCommand):
                         faltas_dias=int(valores['faltas_dias'] or 0),
                         atestados_dias=int(valores['atestados_dias'] or 0),
                         assiduidade=_sim(valores['assiduidade']),
+                        # Sem a coluna V.A, a regra dela: a mesma da assiduidade.
+                        vale_alimentacao=_sim(valores.get('vale_alimentacao', valores['assiduidade'])),
                         # Automáticos "vazios": horas e prêmios vieram da planilha, e um
                         # recálculo (se reabrirem) não passa por cima deles.
                         ponto_calculado={'valores': {}},

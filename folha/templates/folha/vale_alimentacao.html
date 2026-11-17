@@ -1,0 +1,123 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons static %}
+
+{% block titulo %}Vale alimentação{% endblock %}
+
+{% block head_extra %}
+<script src="{% static_v 'js/folha.js' %}" defer></script>
+{% endblock %}
+
+{% block conteudo %}
+<h1>Fechamento de folha</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">
+    {% if usuario_atual.eh_dp_ou_rh %}
+    Quem recebe o vale-alimentação no mês. Quem teve falta começa desmarcado, como na assiduidade; os gestores marcam
+    de novo quem recebe mesmo assim, e aqui você confere o que cada um alterou antes de baixar a lista.
+    {% else %}
+    Quem da sua equipe recebe o vale-alimentação no mês. Quem teve falta começa desmarcado, como na assiduidade:
+    marque de novo quem deve receber mesmo assim. O RH confere e envia a lista.
+    {% endif %}
+</p>
+{% include 'folha/_subnav.html' %}
+
+{% if fechamento is None %}
+<div class="card">
+    <p>Nenhum fechamento ainda.{% if usuario_atual.eh_dp_ou_rh %} Abra a competência em <a href="{% url 'folha:listar' %}">Fechamentos</a>.{% else %} O RH abre o fechamento de cada mês.{% endif %}</p>
+</div>
+{% else %}
+
+<div class="folha-filtros">
+    <label for="va-competencia">Competência</label>
+    <select id="va-competencia" data-va-competencia>
+        {% for item in fechamentos %}
+        <option value="{% url 'folha:vale_alimentacao_do_mes' item.id %}"{% if item.id == fechamento.id %} selected{% endif %}>
+            {{ item.competencia_extenso|capfirst }}{% if not item.aberto %} (fechado){% endif %}
+        </option>
+        {% endfor %}
+    </select>
+    {% if fechamento.aberto %}
+        <span class="badge-status badge-status--pendente">Aberto</span>
+    {% else %}
+        <span class="badge-status badge-status--ativo">Fechado</span>
+    {% endif %}
+</div>
+
+{% if pendentes %}
+    {% include 'folha/_calculo_progresso.html' %}
+{% else %}
+
+{% if not fechamento.aberto %}
+<div class="alert alert--sucesso">{% icon 'lock' %}
+    <span>O fechamento de {{ fechamento.competencia_extenso }} foi fechado: a lista está travada. Para alterar, {% if usuario_atual.eh_dp_ou_rh %}reabra o fechamento{% else %}peça ao RH para reabrir{% endif %}.</span>
+</div>
+{% endif %}
+
+<div class="folha-acoes">
+    {% if usuario_atual.eh_dp_ou_rh %}
+    <a href="{% url 'folha:exportar_vale_alimentacao' fechamento.id %}" class="btn-primario btn-novo">{% icon 'download' %} Baixar Excel (marcados)</a>
+    {% endif %}
+    <a href="{% url 'folha:detalhe' fechamento.id %}" class="btn-outline">{% icon 'table' %} Abrir a grade do fechamento</a>
+</div>
+
+<div class="card">
+    <p class="va-resumo">
+        <strong data-va-marcados>{{ marcados }}</strong> de {{ total_linhas }} {% if not usuario_atual.eh_dp_ou_rh %}da sua equipe {% endif %}recebem o V.A
+        · {{ com_falta }} com falta no mês · {{ alterados }} alterado(s) à mão
+    </p>
+    <div class="folha-filtros">
+        <input type="search" id="busca-folha" placeholder="Buscar por nome, matrícula ou setor" aria-label="Buscar por nome, matrícula ou setor" autocomplete="off">
+        {% if com_falta %}
+        <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="com-falta"> Só os {{ com_falta }} com falta</label>
+        {% endif %}
+        <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="alterado"> Só os alterados à mão</label>
+        <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="sem-va"> Só quem não recebe</label>
+    </div>
+    <p class="folha-legenda">
+        Marcado = recebe o vale-alimentação. A caixinha começa pela regra da assiduidade (faltou, perdeu).
+        {% if fechamento.aberto %}Cada caixinha é salva ao clicar. <span class="folha-legenda__editada">Em destaque</span>:
+        diferente da regra, marcado ou desmarcado à mão (o recálculo do ponto não altera).{% endif %}
+    </p>
+
+    <div class="grade-folha" id="grade-folha" data-csrf="{{ csrf_token }}">
+        <table class="tabela-compacta va-tabela">
+            <thead>
+                <tr>
+                    <th class="grade-folha__fixa">Colaborador</th>
+                    <th>Setor</th>
+                    <th>Faltas (dias)</th>
+                    <th title="Vale alimentação">V.A</th>
+                    <th>Última alteração</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% spaceless %}
+                {% for item in lista %}
+                <tr data-url="{% url 'folha:salvar_celula' item.linha.id %}"
+                    data-busca="{{ item.linha.nome|lower }} {{ item.linha.matricula }} {{ item.linha.funcionario.setor.nome|lower }}"
+                    {% if item.perderia %} data-com-falta{% endif %}{% if item.rastro %} data-alterado{% endif %}{% if not item.linha.vale_alimentacao %} data-sem-va{% endif %}>
+                    <th scope="row" class="grade-folha__fixa">
+                        <div class="grade-folha__nome">
+                            <span>{{ item.linha.nome }}</span>
+                            {% if not item.editavel %}<span class="grade-folha__aviso" title="Só o gerente do RH altera esta linha (própria ou de DP/RH).">{% icon 'lock' %}</span>{% endif %}
+                            {% if item.linha.funcionario.status != 'ativo' %}<span class="badge-status badge-status--{{ item.linha.funcionario.status }}">{{ item.linha.funcionario.get_status_display }}</span>{% endif %}
+                        </div>
+                        <div class="grade-folha__id">EMP {{ item.linha.codigo_empresa|default:'—' }} · mat. {{ item.linha.matricula|default:'—' }}</div>
+                    </th>
+                    <td>{{ item.linha.funcionario.setor.nome|default:'—' }}</td>
+                    <td class="va-tabela__numero">{{ item.linha.faltas_dias|default:'' }}</td>
+                    <td class="grade-folha__celula grade-folha__celula--sim_nao{% if item.celula.editado %} is-editada{% endif %}"{% if item.celula.titulo %} title="{{ item.celula.titulo }}"{% endif %}>
+                        <input type="checkbox" data-campo="vale_alimentacao" aria-label="Recebe vale-alimentação: {{ item.linha.nome }}"{% if item.celula.marcado %} checked{% endif %}{% if not fechamento.aberto or not item.editavel %} disabled{% endif %}>
+                    </td>
+                    <td class="va-tabela__rastro" data-rastro>{{ item.rastro|default:'—' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">Ninguém {% if not usuario_atual.eh_dp_ou_rh %}da sua equipe {% endif %}neste fechamento.</td></tr>
+                {% endfor %}
+                {% endspaceless %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+{# O cálculo do ponto em lotes (static/js/folha.js): a página recarrega quando termina. #}
+<div class="card" id="calculo-progresso" data-url="{% url 'folha:calcular_lote' fechamento.id %}" data-csrf="{{ csrf_token }}"
+     data-total="{{ total_linhas }}" data-restantes="{{ pendentes }}">
+    <div class="card__header">
+        <span class="card__title">Calculando o ponto</span>
+    </div>
+    <p>Mantenha esta página aberta: leva cerca de 1 minuto para 300 pessoas. <span data-progresso-texto>Faltam {{ pendentes }} de {{ total_linhas }}.</span></p>
+    <progress class="folha-progresso" max="{{ total_linhas }}" value="0" data-progresso-barra></progress>
+    <p class="alert alert--erro" data-progresso-erro hidden></p>
+    <noscript><p class="alert alert--erro">O cálculo precisa de JavaScript ligado no navegador.</p></noscript>
+</div>
