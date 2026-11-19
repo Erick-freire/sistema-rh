@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     Atestado, Setor, Funcionario, Usuario, TipoDocumento, Documento, TermoComodato, ItemComodato, ItemCatalogoComodato,
     ItemCatalogoEPI, FichaEPI, ItemEPI, OcorrenciaEPI, MatrizEpiSetor, InscricaoPush,
+    SolicitacaoTrocaEPI,
 )
 
 
@@ -67,6 +68,13 @@ class OcorrenciaEPIAdmin(admin.ModelAdmin):
     list_display = ('funcionario', 'data_ocorrencia', 'item_catalogo', 'tecnico')
     list_filter = ('data_ocorrencia',)
     search_fields = ('funcionario__nome', 'descricao')
+
+
+@admin.register(SolicitacaoTrocaEPI)
+class SolicitacaoTrocaEPIAdmin(admin.ModelAdmin):
+    list_display = ('funcionario', 'item', 'status', 'criada_em', 'respondida_por')
+    list_filter = ('status',)
+    search_fields = ('funcionario__nome',)
 
 
 @admin.register(MatrizEpiSetor)

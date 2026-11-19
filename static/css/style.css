@@ -701,6 +701,10 @@ button:focus-visible, .btn:focus-visible {
 
 .btn-novo { margin-bottom: 16px; }
 
+/* Botão de liga/desliga ligado em verde (ex.: "Ativo" no catálogo de EPIs). */
+.btn--verde { background-color: var(--color-success); }
+.btn--verde:hover { background-color: #25653F; box-shadow: 0 6px 16px rgba(47, 125, 79, 0.3); }
+
 .btn-sm {
     padding: 7px 14px;
     font-size: 0.85rem;
@@ -800,6 +804,7 @@ button:focus-visible, .btn:focus-visible {
 }
 
 .badge-status--ativo,
+.badge-status--assinada,
 .badge-status--aprovada,
 .badge-status--aprovado { background-color: var(--color-success-bg); color: var(--color-success); }
 .badge-status--pendente,
@@ -1194,6 +1199,22 @@ a.item-card:hover, button.item-card:hover {
     margin-bottom: 20px;
 }
 .cards-lado-a-lado > .card { margin-bottom: 0; }
+
+/* Matrizes de EPI já criadas (Segurança do Trabalho): caixinha clicável que abre a edição. */
+.matriz-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.matriz-card { flex-direction: column; align-items: stretch; gap: 8px; color: inherit; }
+.matriz-card:hover { text-decoration: none; border-color: var(--color-border-strong); }
+.matriz-card.is-ativo { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.matriz-card__topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.matriz-card__acao {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.82rem; font-weight: 600; color: var(--color-primary-dark);
+}
 /* Meio card é estreito demais para dois campos de data lado a lado. */
 .cards-lado-a-lado .form-grid { grid-template-columns: 1fr; gap: 10px; }
 

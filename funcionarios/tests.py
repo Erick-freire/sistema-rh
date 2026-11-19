@@ -1576,6 +1576,7 @@ class EquipeDoRhComAcessoRhTests(TestCase):
         ('terceiros:listar_empresas', []),
         ('listar_fichas_epi', []), ('listar_epis_vencendo', []),
         ('gerenciar_matriz_epi', []), ('listar_ocorrencias_epi', []),
+        ('listar_catalogo_epi', []), ('cadastrar_epi_catalogo', []), ('listar_trocas_epi', []),
     ]
 
     def setUp(self):

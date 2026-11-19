@@ -438,6 +438,19 @@ class Usuario(models.Model):
         """Quem opera o módulo de EPI. O DP não entra: não é rotina dele."""
         return self.papel == 'seguranca_trabalho' or self.eh_rh()
 
+    def so_seguranca_trabalho(self):
+        """
+        Perfil de Segurança do Trabalho sem acesso de RH/DP (pedido do usuário,
+        19/11/2026): opera o módulo de EPI e vê a lista de funcionários, mas a
+        ficha que abre é só a de EPI (`funcionario_epi`) -- nada de documentos,
+        salário, ponto, férias ou acesso. Não entra em `funcionarios_que_opera`.
+        """
+        return self.papel == 'seguranca_trabalho' and not self.eh_dp_ou_rh()
+
+    def perfil_seguranca_alternavel(self):
+        """O RH liga/desliga o perfil de Segurança do Trabalho só em quem é colaborador (ou já é segurança)."""
+        return self.papel in ('colaborador', 'seguranca_trabalho')
+
     def setores_da_equipe(self):
         """Setores do gestor: o dele e os que ele responde (`Setor.gestor`). Vazio para quem não é gestor."""
         if self.papel != 'gestor':
@@ -744,10 +757,20 @@ class ItemComodato(models.Model):
 class ItemCatalogoEPI(models.Model):
     nome = models.CharField(max_length=100)
     numero_ca = models.CharField(
-        max_length=20, help_text='Número do Certificado de Aprovação (CA), exigido pela NR-6.'
+        max_length=20, blank=True,
+        help_text='Número do Certificado de Aprovação (CA), exigido pela NR-6. '
+                  'Em branco para item sem CA (uniforme, carneira).'
     )
     validade_ca = models.DateField(
         null=True, blank=True, help_text='Data de validade do CA deste modelo de EPI.'
+    )
+    durabilidade = models.CharField(
+        max_length=60, blank=True, help_text='Periodicidade de referência para a troca. Ex.: "6 a 12 meses".'
+    )
+    criterio_substituicao = models.TextField(blank=True)
+    avisar_troca = models.BooleanField(
+        default=True,
+        help_text='Avisa a Segurança do Trabalho quando a data de troca deste EPI vence numa ficha.',
     )
     ativo = models.BooleanField(default=True)
 
@@ -755,7 +778,12 @@ class ItemCatalogoEPI(models.Model):
         ordering = ['nome']
 
     def __str__(self):
-        return f'{self.nome} (CA {self.numero_ca})'
+        return f'{self.nome} (CA {self.numero_ca})' if self.numero_ca else self.nome
+
+    def em_uso(self):
+        """Já foi entregue, está numa matriz ou numa ocorrência: excluir apagaria histórico, só inativar."""
+        return (self.fichas.exists() or self.matriz_setores.exists()
+                or self.ocorrenciaepi_set.exists())
 
 
 class FichaEPI(models.Model):
@@ -769,7 +797,8 @@ class FichaEPI(models.Model):
     ]
 
     funcionario = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='fichas_epi')
-    data_entrega = models.DateField()
+    # Não se digita: é o dia em que a ficha assinada pelo colaborador é validada.
+    data_entrega = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='aguardando_assinatura')
 
     data_devolucao = models.DateField(null=True, blank=True)
@@ -816,6 +845,20 @@ class ItemEPI(models.Model):
     def __str__(self):
         return f'{self.item_catalogo.nome} ({self.quantidade}x)'
 
+    @classmethod
+    def com_aviso_de_troca(cls):
+        """Troca vencida (hoje inclusive) de EPI com o aviso automático ligado no catálogo.
+
+        Desligado não troca EPI, devolve: esse cai em "Devolução pendente".
+        """
+        return cls.objects.filter(
+            item_catalogo__avisar_troca=True, devolvido=False,
+            data_vencimento__isnull=False, data_vencimento__lte=timezone.now().date(),
+        ).exclude(ficha__funcionario__status='inativo')
+
+    def texto_aviso_troca(self):
+        return f'EPI {self.item_catalogo.nome} do funcionário {self.ficha.funcionario.nome} está vencido.'
+
 
 class OcorrenciaEPI(models.Model):
     funcionario = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='ocorrencias_epi')
@@ -831,8 +874,106 @@ class OcorrenciaEPI(models.Model):
     foto = models.ImageField(upload_to='epi/ocorrencias/', null=True, blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
 
+    # Aviso: só informa colaborador e gestor, sem consequência. Advertência:
+    # vai para o gestor aprovar; aprovada, o colaborador perde assiduidade e
+    # vale-alimentação no mês da ocorrência (ver folha.services.calcular_ponto).
+    TIPO_CHOICES = [
+        ('aviso', 'Apenas aviso'),
+        ('advertencia', 'Advertência'),
+    ]
+    STATUS_ADVERTENCIA_CHOICES = [
+        ('pendente_gestor', 'Aguardando aprovação do gestor'),
+        ('aprovada', 'Advertência aplicada'),
+        ('recusada', 'Recusada pelo gestor'),
+    ]
+    tipo = models.CharField(max_length=12, choices=TIPO_CHOICES, default='aviso')
+    status_advertencia = models.CharField(max_length=16, choices=STATUS_ADVERTENCIA_CHOICES, blank=True)
+    decidido_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    decidido_em = models.DateTimeField(null=True, blank=True)
+    motivo_recusa = models.TextField(blank=True)
+
+    # Termo de advertência: gerado quando o gestor aprova; o colaborador
+    # assina e a Segurança do Trabalho/RH valida (mesmo ciclo da ficha de EPI).
+    STATUS_ASSINATURA_CHOICES = [
+        ('aguardando_assinatura', 'Aguardando assinatura do colaborador'),
+        ('em_validacao', 'Assinada, aguardando validação'),
+        ('assinada', 'Assinatura validada'),
+    ]
+    status_assinatura = models.CharField(max_length=25, choices=STATUS_ASSINATURA_CHOICES, blank=True)
+    arquivo_advertencia = models.FileField(upload_to='epi/advertencias/', null=True, blank=True)
+    arquivo_advertencia_assinado = models.FileField(upload_to='epi/advertencias/assinadas/', null=True, blank=True)
+    motivo_rejeicao_assinatura = models.TextField(blank=True)
+    assinatura_validada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    assinatura_validada_em = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f'Ocorrência — {self.funcionario.nome} ({self.data_ocorrencia})'
+
+    @property
+    def advertencia_aplicada(self):
+        return self.tipo == 'advertencia' and self.status_advertencia == 'aprovada'
+
+    @property
+    def mes_da_perda(self):
+        """Advertência aprovada tira assiduidade e V.A do mês em que a ocorrência foi REGISTRADA (decisão de 18/11/2026)."""
+        return timezone.localtime(self.criado_em).date().replace(day=1)
+
+    @staticmethod
+    def gestores_que_aprovam(funcionario):
+        """
+        Quem aprova a advertência: o gestor que tem o colaborador na equipe
+        (`Usuario.equipe`). Gestor não está na equipe de ninguém, então
+        advertência para gestor não tem quem aprove.
+        """
+        if funcionario.setor_id is None or Usuario.objects.filter(funcionario=funcionario, papel='gestor').exists():
+            return User.objects.none()
+        return User.objects.filter(
+            models.Q(usuario__funcionario__setor_id=funcionario.setor_id)
+            | models.Q(usuario__funcionario__setores_gerenciados=funcionario.setor_id),
+            usuario__papel='gestor', is_active=True,
+        ).exclude(usuario__funcionario=funcionario).distinct()
+
+    @classmethod
+    def visiveis_ao_colaborador(cls, funcionario):
+        """O colaborador vê os avisos e as advertências aplicadas (a pendente e a recusada, não)."""
+        return cls.objects.filter(funcionario=funcionario).filter(
+            models.Q(tipo='aviso') | models.Q(tipo='advertencia', status_advertencia='aprovada')
+        )
+
+
+class SolicitacaoTrocaEPI(models.Model):
+    """Pedido do colaborador para trocar um EPI que ficou inutilizado antes da data de troca.
+
+    Confirmar baixa o item antigo e gera uma ficha nova (a entrega do substituto,
+    que o colaborador assina como qualquer ficha). Um pedido em aberto por item,
+    conferido no código: o MySQL ignora UniqueConstraint condicional.
+    """
+    STATUS_CHOICES = [
+        ('pendente', 'Aguardando análise'),
+        ('aprovada', 'Troca confirmada'),
+        ('recusada', 'Troca recusada'),
+    ]
+
+    item = models.ForeignKey(ItemEPI, on_delete=models.CASCADE, related_name='solicitacoes_troca')
+    funcionario = models.ForeignKey(Funcionario, on_delete=models.CASCADE, related_name='solicitacoes_troca_epi')
+    motivo = models.TextField(help_text='O que aconteceu com o EPI.')
+    foto = models.ImageField(upload_to='epi/trocas/', null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pendente')
+    criada_em = models.DateTimeField(auto_now_add=True)
+
+    respondida_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    respondida_em = models.DateTimeField(null=True, blank=True)
+    motivo_recusa = models.TextField(blank=True)
+    nova_ficha = models.ForeignKey(
+        FichaEPI, on_delete=models.SET_NULL, null=True, blank=True, related_name='trocas_atendidas',
+        help_text='Ficha da entrega do EPI substituto.',
+    )
+
+    class Meta:
+        ordering = ['-criada_em']
+
+    def __str__(self):
+        return f'Troca de {self.item.item_catalogo.nome} — {self.funcionario.nome}'
 
 
 class MatrizEpiSetor(models.Model):

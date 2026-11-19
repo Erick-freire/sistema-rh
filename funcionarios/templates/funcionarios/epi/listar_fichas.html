@@ -8,11 +8,18 @@ Fichas de EPI
 {% block conteudo %}
 {% include 'funcionarios/epi/_epi_tabs.html' %}
 
+{% if busca %}
+<p style="color: var(--color-text-muted);">
+    {{ fichas|length }} ficha{{ fichas|length|pluralize }} para "{{ busca }}". <a href="{% url 'listar_fichas_epi' %}">Limpar pesquisa</a>
+</p>
+{% endif %}
+
 <div class="table-responsive">
     <table>
         <thead>
             <tr>
                 <th>Funcionário</th>
+                <th>Setor</th>
                 <th>Cargo</th>
                 <th>EPIs</th>
                 <th>Status</th>
@@ -24,10 +31,11 @@ Fichas de EPI
             {% for ficha in fichas %}
             <tr{% if ficha.status == 'em_validacao' %} class="linha-aguardando-rh"{% endif %}>
                 <td>{{ ficha.funcionario.nome }}</td>
+                <td>{{ ficha.funcionario.setor.nome|default:"—" }}</td>
                 <td>{{ ficha.funcionario.cargo|default:"—" }}</td>
                 <td>{{ ficha.total_itens }}</td>
                 <td><span class="badge-status badge-status--{{ ficha.status }}">{{ ficha.get_status_display }}</span></td>
-                <td>{{ ficha.data_entrega|date:"d/m/Y" }}</td>
+                <td>{{ ficha.data_entrega|date:"d/m/Y"|default:"Na validação" }}</td>
                 <td>
                     {% if ficha.status == 'em_validacao' and ficha.arquivo_assinado %}
                     <button type="button" class="btn-primario btn-sm" data-abrir-termo
@@ -56,7 +64,7 @@ Fichas de EPI
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6">Nenhuma ficha de EPI cadastrada ainda.</td>
+                <td colspan="7">{% if busca %}Nenhuma ficha encontrada para "{{ busca }}".{% else %}Nenhuma ficha de EPI cadastrada ainda.{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -2,6 +2,15 @@
 <div class="acoes-linha">
     <h1 style="margin: 0;">Fichas de EPI</h1>
     <span class="acoes-linha__espaco"></span>
+    {% if request.resolver_match.url_name == 'listar_fichas_epi' %}
+    <form method="get" action="{% url 'listar_fichas_epi' %}" class="form-busca" style="margin: 0; flex: 0 1 380px;">
+        <div class="form-busca__campo">
+            {% icon 'search' %}
+            <input type="text" name="busca" placeholder="Pesquisar colaborador/setor" value="{{ busca }}" aria-label="Pesquisar ficha por funcionário ou setor">
+        </div>
+        <button type="submit" class="btn-outline">Pesquisar</button>
+    </form>
+    {% endif %}
     <a href="{% url 'criar_ficha_epi' %}" class="btn">{% icon 'plus' %} Nova Ficha</a>
 </div>
 
@@ -13,5 +22,9 @@
     <a href="{% url 'listar_epis_vencendo' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_epis_vencendo' %} is-ativo{% endif %}">
         Troca e devolução
         {% if total_pendencias_epi %}<span class="tabs__badge">{{ total_pendencias_epi }}</span>{% endif %}
+    </a>
+    <a href="{% url 'listar_trocas_epi' %}" class="tabs__link{% if request.resolver_match.url_name == 'listar_trocas_epi' %} is-ativo{% endif %}">
+        Solicitações de troca
+        {% if badge_trocas_solicitadas_epi %}<span class="tabs__badge">{{ badge_trocas_solicitadas_epi }}</span>{% endif %}
     </a>
 </div>

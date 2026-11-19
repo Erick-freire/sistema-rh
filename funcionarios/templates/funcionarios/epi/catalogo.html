@@ -1,0 +1,74 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Catálogo de EPIs
+{% endblock %}
+
+{% block conteudo %}
+{% include 'funcionarios/epi/_catalogo_tabs.html' %}
+
+<p style="color: var(--color-text-muted);">
+    {{ total_ativos }} EPI{{ total_ativos|pluralize }} ativo{{ total_ativos|pluralize }}.
+    O CA aparece na ficha de entrega; a validade é sinalizada quando faltam {{ limite_dias }} dias ou menos.
+</p>
+
+<div class="table-responsive desktop-only">
+    <table>
+        <thead>
+            <tr>
+                <th>EPI</th>
+                <th>CA</th>
+                <th>Validade do CA</th>
+                <th>Durabilidade</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <td>
+                    {{ item.nome }}
+                    {% if item.total_setores %}<div style="font-size: 0.8rem; color: var(--color-text-muted);">Na matriz de {{ item.total_setores }} setor{{ item.total_setores|pluralize:"es" }}</div>{% endif %}
+                </td>
+                <td>{{ item.numero_ca|default:"—" }}</td>
+                <td>
+                    {{ item.validade_ca|date:"d/m/Y"|default:"—" }}
+                    {% if item.situacao_ca == 'vencido' %}<span class="badge-status badge-status--rejeitado">Vencido</span>
+                    {% elif item.situacao_ca == 'vencendo' %}<span class="badge-status badge-status--pendente">Vencendo</span>{% endif %}
+                </td>
+                <td>{{ item.durabilidade|default:"—" }}</td>
+                <td><span class="badge-status badge-status--{% if item.ativo %}ativo{% else %}inativo{% endif %}">{% if item.ativo %}Ativo{% else %}Inativo{% endif %}</span></td>
+                <td><a href="{% url 'editar_epi_catalogo' item.id %}" class="btn-outline btn-sm">{% icon 'pen' %} Editar</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Nenhum EPI cadastrado. Use "Novo EPI" para começar.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="lista-cards mobile-only">
+    {% for item in itens %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ item.nome }}</div>
+                <div class="item-card__subtitulo">
+                    {% if item.numero_ca %}CA {{ item.numero_ca }}{% else %}Sem CA{% endif %}
+                    {% if item.validade_ca %} · válido até {{ item.validade_ca|date:"d/m/Y" }}{% endif %}
+                    {% if item.durabilidade %} · {{ item.durabilidade }}{% endif %}
+                </div>
+            </div>
+            {% if not item.ativo %}<span class="badge-status badge-status--inativo">Inativo</span>
+            {% elif item.situacao_ca == 'vencido' %}<span class="badge-status badge-status--rejeitado">CA vencido</span>
+            {% elif item.situacao_ca == 'vencendo' %}<span class="badge-status badge-status--pendente">CA vencendo</span>{% endif %}
+        </div>
+        <a href="{% url 'editar_epi_catalogo' item.id %}" class="btn-outline btn-sm" style="align-self: flex-start;">{% icon 'pen' %} Editar</a>
+    </div>
+    {% empty %}
+    <p>Nenhum EPI cadastrado. Use "Novo EPI" para começar.</p>
+    {% endfor %}
+</div>
+{% endblock %}

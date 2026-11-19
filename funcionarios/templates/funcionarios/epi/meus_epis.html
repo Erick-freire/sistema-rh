@@ -1,0 +1,103 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Meus EPIs
+{% endblock %}
+
+{% block conteudo %}
+<h1>Meus EPIs</h1>
+<p style="color: var(--color-text-muted);">
+    EPIs que estão com você. Se algum estragou ou ficou inutilizado antes da data de troca, peça a troca:
+    a Segurança do Trabalho analisa e, se confirmar, entrega um novo.
+</p>
+
+<div class="lista-cards">
+    {% for item in itens %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ item.item_catalogo }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}</div>
+                <div class="item-card__subtitulo">
+                    Entregue em {{ item.ficha.data_entrega|date:"d/m/Y"|default:"—" }}
+                    {% if item.data_vencimento %} · trocar em {{ item.data_vencimento|date:"d/m/Y" }}{% endif %}
+                </div>
+            </div>
+            {% if item.troca_pendente %}<span class="badge-status badge-status--pendente">Troca em análise</span>{% endif %}
+        </div>
+
+        {% if not item.troca_pendente %}
+        <details>
+            <summary class="btn-outline btn-sm" style="display: inline-flex; list-style: none; cursor: pointer;">{% icon 'alert-triangle' %} Solicitar troca</summary>
+            <form method="post" action="{% url 'solicitar_troca_epi' item.id %}" enctype="multipart/form-data" data-loading-form style="margin-top: 12px;">
+                {% csrf_token %}
+                <label for="motivo-{{ item.id }}">{{ form.motivo.label }}</label>
+                <textarea name="motivo" id="motivo-{{ item.id }}" rows="3" required placeholder="{{ form.motivo.field.widget.attrs.placeholder }}"></textarea>
+
+                <label for="foto-{{ item.id }}" style="margin-top: 10px;">{{ form.foto.label }}</label>
+                <input type="file" name="foto" id="foto-{{ item.id }}" accept="{{ form.foto.field.widget.attrs.accept }}" capture="environment">
+                <div style="font-size: 0.8rem; color: var(--color-text-muted);">Uma foto do EPI ajuda a Segurança do Trabalho a decidir a troca.</div>
+
+                <button type="submit" class="btn-primario btn-sm" style="margin-top: 12px;">Enviar pedido</button>
+            </form>
+        </details>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p>Nenhum EPI entregue a você no momento. Os EPIs aparecem aqui depois que a ficha de entrega assinada é validada.</p>
+    {% endfor %}
+</div>
+
+{% if ocorrencias %}
+<h2 style="margin-top: 32px;">Ocorrências de EPI</h2>
+<div class="lista-cards">
+    {% for ocorrencia in ocorrencias %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 6px;{% if ocorrencia.advertencia_aplicada %} border-left: 3px solid var(--color-error);{% endif %}">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{% if ocorrencia.advertencia_aplicada %}Advertência{% else %}Aviso{% endif %} de {{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</div>
+                <div class="item-card__subtitulo">
+                    {% if ocorrencia.item_catalogo %}{{ ocorrencia.item_catalogo.nome }}{% endif %}
+                    {% if ocorrencia.foto %}{% if ocorrencia.item_catalogo %} · {% endif %}<a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank">ver foto</a>{% endif %}
+                </div>
+            </div>
+            {% if ocorrencia.advertencia_aplicada %}
+            <span class="badge-status badge-status--rejeitado">Advertência</span>
+            {% else %}
+            <span class="badge-status badge-status--inativo">Aviso</span>
+            {% endif %}
+        </div>
+        <div style="white-space: pre-line;">{{ ocorrencia.descricao }}</div>
+        {% if ocorrencia.advertencia_aplicada %}
+        <div style="font-size: 0.85rem; color: var(--color-error);">
+            Com a advertência, você perde a assiduidade e o vale-alimentação de {{ ocorrencia.mes_da_perda|date:"m/Y" }}.
+            {% if ocorrencia.status_assinatura == 'aguardando_assinatura' %}Assine o termo em <a href="{% url 'meus_documentos' %}">Meus Documentos</a>.{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if solicitacoes %}
+<h2 style="margin-top: 32px;">Pedidos de troca</h2>
+<div class="lista-cards">
+    {% for solicitacao in solicitacoes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ solicitacao.item.item_catalogo.nome }}</div>
+                <div class="item-card__subtitulo">Pedido em {{ solicitacao.criada_em|date:"d/m/Y" }}{% if solicitacao.foto %} · <a href="{% url 'ver_foto_troca_epi' solicitacao.id %}" target="_blank">ver foto</a>{% endif %}</div>
+            </div>
+            <span class="badge-status badge-status--{% if solicitacao.status == 'aprovada' %}aprovado{% elif solicitacao.status == 'recusada' %}rejeitado{% else %}pendente{% endif %}">{{ solicitacao.get_status_display }}</span>
+        </div>
+        {% if solicitacao.status == 'recusada' %}
+        <div style="font-size: 0.85rem; color: var(--color-error);">Motivo da recusa: {{ solicitacao.motivo_recusa }}</div>
+        {% elif solicitacao.status == 'aprovada' %}
+        <div style="font-size: 0.85rem; color: var(--color-text-muted);">Assine a ficha do novo EPI em <a href="{% url 'meus_documentos' %}">Meus Documentos</a>.</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

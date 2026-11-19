@@ -1,0 +1,108 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Solicitações de troca de EPI
+{% endblock %}
+
+{% block conteudo %}
+{% include 'funcionarios/epi/_epi_tabs.html' %}
+
+<p style="color: var(--color-text-muted);">
+    Pedidos dos colaboradores para trocar EPI inutilizado antes da data de troca. Confirmar gera a ficha do novo EPI
+    para o colaborador assinar e tira o antigo de uso; recusar avisa o colaborador com o motivo.
+</p>
+
+<div class="lista-cards" style="margin-bottom: 32px;">
+    {% for solicitacao in pendentes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px; border-left: 3px solid var(--color-accent);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ solicitacao.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ solicitacao.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">
+                    {{ solicitacao.funcionario.setor.nome|default:"Sem setor" }} · pedido em {{ solicitacao.criada_em|date:"d/m/Y H:i" }}
+                </div>
+            </div>
+            <span class="badge-status badge-status--pendente">Aguardando análise</span>
+        </div>
+
+        <div>
+            <strong>{{ solicitacao.item.item_catalogo }}{% if solicitacao.item.quantidade > 1 %} ({{ solicitacao.item.quantidade }}x){% endif %}</strong>
+            <span style="color: var(--color-text-muted); font-size: 0.85rem;">
+                · entregue em {{ solicitacao.item.ficha.data_entrega|date:"d/m/Y"|default:"—" }}{% if solicitacao.item.data_vencimento %} · troca prevista para {{ solicitacao.item.data_vencimento|date:"d/m/Y" }}{% endif %}
+            </span>
+            <p style="margin: 6px 0 0;">{{ solicitacao.motivo|linebreaksbr }}</p>
+        </div>
+
+        {% if solicitacao.foto %}
+        <a href="{% url 'ver_foto_troca_epi' solicitacao.id %}" target="_blank" style="align-self: flex-start;">
+            <img src="{% url 'ver_foto_troca_epi' solicitacao.id %}" alt="Foto do EPI enviada por {{ solicitacao.funcionario.nome }}"
+                 style="max-width: 220px; max-height: 220px; border-radius: var(--radius); border: 1px solid var(--color-border); display: block;">
+        </a>
+        {% else %}
+        <span style="font-size: 0.85rem; color: var(--color-text-muted);">Sem foto.</span>
+        {% endif %}
+
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+            <form method="post" action="{% url 'confirmar_troca_epi' solicitacao.id %}" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin: 0;" data-loading-form>
+                {% csrf_token %}
+                {% with f=solicitacao.form_confirmar %}
+                <div>
+                    <label for="{{ f.quantidade.id_for_label }}" style="font-size: 0.8rem;">{{ f.quantidade.label }}</label>
+                    {{ f.quantidade }}
+                </div>
+                <div>
+                    <label for="{{ f.data_vencimento.id_for_label }}" style="font-size: 0.8rem;">{{ f.data_vencimento.label }}</label>
+                    {{ f.data_vencimento }}
+                </div>
+                {% endwith %}
+                <button type="submit" class="btn-primario btn-sm">{% icon 'check-circle' %} Confirmar troca</button>
+            </form>
+
+            <details>
+                <summary class="btn-outline btn-sm" style="display: inline-flex; list-style: none; cursor: pointer;">{% icon 'x' %} Recusar</summary>
+                <form method="post" action="{% url 'recusar_troca_epi' solicitacao.id %}" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                    {% csrf_token %}
+                    <input type="text" name="motivo_recusa" required placeholder="Motivo (o colaborador vai ver)" style="flex: 1; min-width: 220px;">
+                    <button type="submit" class="btn-sm" style="background-color: var(--color-error);">Recusar troca</button>
+                </form>
+            </details>
+        </div>
+    </div>
+    {% empty %}
+    <p>Nenhum pedido de troca aguardando análise.</p>
+    {% endfor %}
+</div>
+
+{% if respondidas %}
+<h2>Analisados</h2>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Funcionário</th>
+                <th>EPI</th>
+                <th>Pedido em</th>
+                <th>Resultado</th>
+                <th>Analisado por</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for solicitacao in respondidas %}
+            <tr>
+                <td>{{ solicitacao.funcionario.nome }}</td>
+                <td>{{ solicitacao.item.item_catalogo.nome }}{% if solicitacao.foto %} · <a href="{% url 'ver_foto_troca_epi' solicitacao.id %}" target="_blank">foto</a>{% endif %}</td>
+                <td>{{ solicitacao.criada_em|date:"d/m/Y" }}</td>
+                <td>
+                    <span class="badge-status badge-status--{% if solicitacao.status == 'aprovada' %}aprovado{% else %}rejeitado{% endif %}">{{ solicitacao.get_status_display }}</span>
+                    {% if solicitacao.status == 'recusada' %}<div style="font-size: 0.8rem; color: var(--color-text-muted);">{{ solicitacao.motivo_recusa }}</div>{% endif %}
+                </td>
+                <td>{{ solicitacao.respondida_por.usuario.funcionario.nome|default:solicitacao.respondida_por.username|default:"—" }} · {{ solicitacao.respondida_em|date:"d/m/Y" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

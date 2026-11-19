@@ -8,6 +8,16 @@ Fichas de EPI
 {% block conteudo %}
 {% include 'funcionarios/epi/_epi_tabs.html' %}
 
+{% if avisos_troca %}
+{# Só os EPIs com "Aviso automático sobre troca" ligado no catálogo. #}
+<div class="alert alert--erro" style="flex-direction: column; gap: 4px; margin-bottom: 24px;">
+    <strong>{% icon 'bell' %} Troca vencida</strong>
+    {% for item in avisos_troca %}
+    <span>{{ item.texto_aviso_troca }}{% if item.data_vencimento != hoje %} Trocar desde {{ item.data_vencimento|date:"d/m/Y" }}.{% else %} Trocar hoje.{% endif %}</span>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if devolucoes %}
 <h2>Devolução pendente</h2>
 <p style="color: var(--color-text-muted);">Colaboradores desligados que ainda estão com EPI. Marque o que foi devolvido; o que ficar desmarcado continua pendente.</p>
@@ -21,7 +31,7 @@ Fichas de EPI
             <div class="item-card__corpo">
                 <div class="item-card__titulo">{{ ficha.funcionario.nome }}</div>
                 <div class="item-card__subtitulo">
-                    {% if ficha.funcionario.matricula %}Matrícula {{ ficha.funcionario.matricula }} · {% endif %}entregue em {{ ficha.data_entrega|date:"d/m/Y" }}
+                    {% if ficha.funcionario.matricula %}Matrícula {{ ficha.funcionario.matricula }} · {% endif %}entregue em {{ ficha.data_entrega|date:"d/m/Y"|default:"—" }}
                 </div>
             </div>
             <span class="badge-status badge-status--erro">Desligado</span>
@@ -70,7 +80,7 @@ Fichas de EPI
                     </span>
                 </td>
                 <td>{{ item.item_catalogo }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}</td>
-                <td>{{ item.ficha.data_entrega|date:"d/m/Y" }}</td>
+                <td>{{ item.ficha.data_entrega|date:"d/m/Y"|default:"—" }}</td>
                 <td>{{ item.data_vencimento|date:"d/m/Y" }}</td>
                 <td>
                     {% if item.dias < 0 %}

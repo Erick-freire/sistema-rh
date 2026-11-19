@@ -16,17 +16,12 @@ Nova Ficha de EPI
     {{ form.non_field_errors }}
 
     <div class="card">
-        <h2 style="margin-top: 0;">1. Funcionário e data</h2>
+        <h2 style="margin-top: 0;">1. Funcionário</h2>
 
         <div class="form-grid form-grid--3">
             {% include 'funcionarios/epi/_busca_funcionario.html' with campo=form.funcionario %}
-
-            <div>
-                <label for="{{ form.data_entrega.id_for_label }}">{{ form.data_entrega.label }}</label>
-                {{ form.data_entrega }}
-                {{ form.data_entrega.errors }}
-            </div>
         </div>
+        <p style="color: var(--color-text-muted); font-size: 0.9rem;">A data da entrega é registrada automaticamente quando a ficha assinada pelo colaborador for validada.</p>
         <p id="aviso-matriz" style="color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 0;" hidden></p>
     </div>
 
@@ -129,6 +124,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (f) aplicarMatriz(f);
     });
     atualizarEtapas();
+    {% if not form.is_bound %}
+    // Veio da ficha de EPI do funcionário (?funcionario=): já sugere os EPIs do setor.
+    if (selectFuncionario.value) selectFuncionario.dispatchEvent(new Event('change'));
+    {% endif %}
 
     // ---------- Remover linha ----------
     document.querySelectorAll('.btn-excluir-linha').forEach(function (botao) {

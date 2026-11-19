@@ -1,0 +1,202 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{{ funcionario.nome }} — EPI
+{% endblock %}
+
+{% block conteudo %}
+{# Ficha do funcionário para a Segurança do Trabalho: só identificação e EPI (sem CPF, documentos, salário ou ponto). #}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_funcionarios' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {{ funcionario.nome }}
+    <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>
+</h1>
+<p class="item-card__subtitulo" style="margin-bottom: 20px;">{{ funcionario.cargo|default:"Sem cargo" }} · {{ funcionario.setor|default:"Sem setor" }}{% if funcionario.matricula %} · mat. {{ funcionario.matricula }}{% endif %}</p>
+
+{% if pode_receber %}
+<div class="acoes-linha" style="margin-bottom: 20px;">
+    <a href="{% url 'criar_ficha_epi' %}?funcionario={{ funcionario.id }}" class="btn btn-sm">{% icon 'plus' %} Nova ficha de EPI</a>
+    <a href="{% url 'criar_ocorrencia_epi' %}?funcionario={{ funcionario.id }}" class="btn-outline btn-sm">{% icon 'alert-triangle' %} Registrar não conformidade</a>
+</div>
+{% elif itens %}
+<div class="alert alert--erro">
+    {% icon 'alert-triangle' %}
+    <span>Desligado e ainda com EPI. Registre a devolução em <a href="{% url 'listar_epis_vencendo' %}">EPIs vencendo / devolução</a>.</span>
+</div>
+{% endif %}
+
+<div class="duas-colunas">
+    <div>
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
+                {% if funcionario.foto %}
+                <img src="{% url 'foto_funcionario' funcionario.id %}" alt="{{ funcionario.nome }}" style="width: 48px; height: 48px; border-radius: 999px; object-fit: cover;">
+                {% else %}
+                <span class="avatar avatar--lg">{{ funcionario.iniciais }}</span>
+                {% endif %}
+                <div>
+                    <div class="card__title">{{ funcionario.nome }}</div>
+                    <div style="color: var(--color-text-muted); font-size: 0.88rem;">{{ funcionario.cargo|default:"Sem cargo" }}</div>
+                </div>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Matrícula</span>
+                <span class="linha-dado__valor">{{ funcionario.matricula|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Setor</span>
+                <span class="linha-dado__valor">{{ funcionario.setor|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Cargo</span>
+                <span class="linha-dado__valor">{{ funcionario.cargo|default:"—" }}</span>
+            </div>
+            <div class="linha-dado">
+                <span class="linha-dado__rotulo">Admissão</span>
+                <span class="linha-dado__valor">{{ funcionario.data_admissao|date:"d/m/Y"|default:"—" }}</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">EPIs exigidos no setor</span>
+                {% if faltando_na_matriz %}<span class="badge-status badge-status--pendente">{{ faltando_na_matriz }} sem entrega</span>{% endif %}
+            </div>
+            {% if matriz %}
+                {% for linha in matriz %}
+                <div class="linha-dado">
+                    <span>{{ linha.item_catalogo }}{% if linha.quantidade_padrao > 1 %} ({{ linha.quantidade_padrao }}x){% endif %}</span>
+                    {% if linha.em_uso %}
+                    <span class="badge-status badge-status--ativo">Em uso</span>
+                    {% else %}
+                    <span class="badge-status badge-status--pendente">Não entregue</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% elif funcionario.setor %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem;">
+                O setor {{ funcionario.setor }} ainda não tem matriz de EPI. Monte em <a href="{% url 'gerenciar_matriz_epi' %}">EPIs e Matriz</a>.
+            </p>
+            {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.88rem;">Funcionário sem setor cadastrado.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">EPIs em uso</span>
+            </div>
+            <div class="lista-cards">
+                {% for item in itens %}
+                <div class="item-card"{% if item.troca_vencida %} style="border-left: 3px solid var(--color-error);"{% endif %}>
+                    <div class="item-card__corpo">
+                        <div class="item-card__titulo">{{ item.item_catalogo }}{% if item.quantidade > 1 %} ({{ item.quantidade }}x){% endif %}</div>
+                        <div class="item-card__subtitulo">
+                            Entregue em {{ item.ficha.data_entrega|date:"d/m/Y"|default:"—" }}
+                            {% if item.data_vencimento %} ·
+                            <span{% if item.troca_vencida %} style="color: var(--color-error); font-weight: 600;"{% endif %}>trocar em {{ item.data_vencimento|date:"d/m/Y" }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="item-card__extra">
+                        {% if item.troca_pendente %}
+                        <a href="{% url 'listar_trocas_epi' %}" class="badge-status badge-status--pendente">Troca pedida</a>
+                        {% elif item.troca_vencida %}
+                        <span class="badge-status badge-status--rejeitado">Troca vencida</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem;">Nenhum EPI em uso. Os EPIs aparecem aqui depois que a ficha assinada é validada.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Fichas de entrega</span>
+            </div>
+            <div class="lista-cards">
+                {% for ficha in fichas %}
+                <div class="item-card"{% if ficha.status == 'em_validacao' %} style="border-left: 3px solid var(--color-accent);"{% endif %}>
+                    <span style="color: var(--color-text-muted);">{% icon 'file' %}</span>
+                    <div class="item-card__corpo">
+                        <div class="item-card__titulo">Ficha de {{ ficha.gerado_em|date:"d/m/Y" }}</div>
+                        <div class="item-card__subtitulo">
+                            {{ ficha.total_itens }} EPI{{ ficha.total_itens|pluralize }}
+                            · entrega {{ ficha.data_entrega|date:"d/m/Y"|default:"na validação" }}
+                        </div>
+                    </div>
+                    <div class="item-card__extra">
+                        <span class="badge-status badge-status--{{ ficha.status }}">{{ ficha.get_status_display }}</span>
+                        {% if ficha.status == 'em_validacao' %}
+                        <a href="{% url 'listar_fichas_epi' %}?pendentes=1" class="btn-primario btn-sm">Validar</a>
+                        {% elif ficha.arquivo_assinado or ficha.arquivo_gerado %}
+                        <button type="button" class="btn-icone" title="Ver PDF" aria-label="Ver PDF" data-abrir-termo
+                                data-pdf="{% if ficha.arquivo_assinado %}{% url 'ver_ficha_epi' ficha.id 'assinado' %}{% else %}{% url 'ver_ficha_epi' ficha.id 'gerado' %}{% endif %}"
+                                data-titulo="Ficha de EPI — {{ funcionario.nome }}">{% icon 'eye' %}</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem;">Nenhuma ficha de EPI gerada.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Não conformidades</span>
+            </div>
+            <div class="lista-cards">
+                {% for ocorrencia in ocorrencias %}
+                <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 6px;{% if ocorrencia.advertencia_aplicada %} border-left: 3px solid var(--color-error);{% endif %}">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="item-card__corpo">
+                            <div class="item-card__titulo">{{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}{% if ocorrencia.item_catalogo %} · {{ ocorrencia.item_catalogo.nome }}{% endif %}</div>
+                            {% if ocorrencia.foto %}
+                            <div class="item-card__subtitulo"><a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank">ver foto</a></div>
+                            {% endif %}
+                        </div>
+                        {% if ocorrencia.tipo == 'advertencia' %}
+                        <span class="badge-status badge-status--{% if ocorrencia.status_advertencia == 'aprovada' %}rejeitado{% elif ocorrencia.status_advertencia == 'recusada' %}inativo{% else %}pendente{% endif %}">{{ ocorrencia.get_status_advertencia_display }}</span>
+                        {% else %}
+                        <span class="badge-status badge-status--inativo">Aviso</span>
+                        {% endif %}
+                    </div>
+                    <div style="white-space: pre-line; font-size: 0.88rem;">{{ ocorrencia.descricao }}</div>
+                </div>
+                {% empty %}
+                <p style="color: var(--color-text-muted); font-size: 0.88rem;">Nenhuma não conformidade registrada.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% if solicitacoes %}
+        <div class="card">
+            <div class="card__header">
+                <span class="card__title">Pedidos de troca</span>
+            </div>
+            <div class="lista-cards">
+                {% for solicitacao in solicitacoes %}
+                <div class="item-card">
+                    <div class="item-card__corpo">
+                        <div class="item-card__titulo">{{ solicitacao.item.item_catalogo.nome }}</div>
+                        <div class="item-card__subtitulo">Pedido em {{ solicitacao.criada_em|date:"d/m/Y" }}{% if solicitacao.foto %} · <a href="{% url 'ver_foto_troca_epi' solicitacao.id %}" target="_blank">ver foto</a>{% endif %}</div>
+                    </div>
+                    <div class="item-card__extra">
+                        <span class="badge-status badge-status--{% if solicitacao.status == 'aprovada' %}aprovado{% elif solicitacao.status == 'recusada' %}rejeitado{% else %}pendente{% endif %}">{{ solicitacao.get_status_display }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% include 'funcionarios/_modal_validar_arquivo.html' %}
+{% endblock %}

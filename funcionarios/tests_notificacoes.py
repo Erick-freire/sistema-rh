@@ -17,7 +17,9 @@ from ponto.models import AjustePonto, FuncionarioJornada
 from ponto.tests import _bater_ponto, _criar_equipamento, _criar_horario_util
 
 from .models import (
-    Documento, FichaEPI, Funcionario, InscricaoPush, Setor, SolicitacaoFerias, TermoComodato, TipoDocumento, Usuario,
+    Documento, FichaEPI, Funcionario, InscricaoPush, ItemCatalogoEPI, ItemEPI, OcorrenciaEPI, Setor, SolicitacaoFerias,
+    TermoComodato,
+    TipoDocumento, Usuario,
 )
 from .pwa_views import CHAVE_SESSAO_PUSH
 
@@ -324,6 +326,76 @@ class DocumentosEComodatoPushTests(BasePush):
             call_command('lembrar_pendencias', stdout=StringIO())
 
         self.webpush.assert_not_called()
+
+
+@PUSH_LIGADO
+class TrocaEpiVencidaPushTests(BasePush):
+    def setUp(self):
+        super().setUp()
+        self.tecnico = self._pessoa('Eva Tecnica', '55555555555', 'seguranca_trabalho', self.setor)
+        self._inscrever(self.tecnico)
+        self._inscrever(self.gestor)
+        funcionario = self.colaborador.usuario.funcionario
+        hoje = date.today()
+        self.ficha = FichaEPI.objects.create(funcionario=funcionario, data_entrega=hoje - timedelta(days=60))
+        self.capacete = ItemCatalogoEPI.objects.create(nome='Capacete', numero_ca='1')
+        self.luva = ItemCatalogoEPI.objects.create(nome='Luva', numero_ca='2', avisar_troca=False)
+        ItemEPI.objects.create(ficha=self.ficha, item_catalogo=self.capacete, data_vencimento=hoje - timedelta(days=1))
+        ItemEPI.objects.create(ficha=self.ficha, item_catalogo=self.luva, data_vencimento=hoje - timedelta(days=1))
+
+    def test_lembrete_avisa_a_seguranca_so_dos_epis_marcados(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('lembrar_pendencias', stdout=StringIO())
+
+        self.assertEqual(self._destinatarios(), [self.tecnico.username])
+        self.assertEqual(self._payloads()[0]['corpo'], 'EPI Capacete do funcionário Ana Colaboradora está vencido.')
+        self.assertEqual(self._payloads()[0]['url'], reverse('listar_epis_vencendo'))
+
+    def test_sem_epi_marcado_vencido_nao_avisa(self):
+        self.capacete.avisar_troca = False
+        self.capacete.save()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('lembrar_pendencias', stdout=StringIO())
+
+        self.webpush.assert_not_called()
+
+
+@PUSH_LIGADO
+class OcorrenciaEpiPushTests(BasePush):
+    """Aviso: colaborador e gestor. Advertência: gestor aprova; aprovada, colaborador e RH ficam sabendo."""
+
+    def setUp(self):
+        super().setUp()
+        for user in (self.colaborador, self.gestor, self.gestor_outro_setor, self.rh):
+            self._inscrever(user)
+        self.funcionario = self.colaborador.usuario.funcionario
+
+    def _registrar(self, tipo):
+        self.client.force_login(self.rh)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('criar_ocorrencia_epi'), {
+                'funcionario': self.funcionario.id, 'data_ocorrencia': date.today().isoformat(),
+                'tipo': tipo, 'descricao': 'Sem protetor auricular.', 'item_catalogo': '',
+            })
+        return OcorrenciaEPI.objects.get()
+
+    def test_aviso_vai_para_gestor_e_colaborador(self):
+        self._registrar('aviso')
+        self.assertEqual(sorted(self._destinatarios()), sorted([self.gestor.username, self.colaborador.username]))
+
+    def test_advertencia_vai_so_para_o_gestor_e_aprovada_avisa_colaborador(self):
+        ocorrencia = self._registrar('advertencia')
+        self.assertEqual(self._destinatarios(), [self.gestor.username])
+        self.assertEqual(self._payloads()[0]['url'], reverse('ocorrencias_equipe'))
+
+        self.webpush.reset_mock()
+        self.client.force_login(self.gestor)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('aprovar_advertencia_epi', args=[ocorrencia.id]))
+        self.assertEqual(sorted(self._destinatarios()), sorted([self.colaborador.username, self.rh.username]))
+        corpo_colaborador = next(p['corpo'] for p in self._payloads() if p['titulo'] == 'Você recebeu uma advertência')
+        self.assertIn('assiduidade e o vale-alimentação', corpo_colaborador)
 
 
 @PUSH_LIGADO

@@ -2,13 +2,14 @@ from django.core.management.base import BaseCommand
 from django.urls import reverse
 
 from funcionarios import notificacoes
-from funcionarios.models import Usuario
+from funcionarios.models import ItemEPI, Usuario
 
 
 class Command(BaseCommand):
     help = (
         'Manda uma notificação push para quem tem documento a enviar, contrato ou termo de '
-        'comodato a assinar. Rodado todo dia pelo Agendador de Tarefas (scripts/lembrar_pendencias.bat).'
+        'comodato a assinar, e avisa a Segurança do Trabalho dos EPIs com troca vencida. '
+        'Rodado todo dia pelo Agendador de Tarefas (scripts/lembrar_pendencias.bat).'
     )
 
     def handle(self, *args, **options):
@@ -44,6 +45,15 @@ class Command(BaseCommand):
             avisados += 1
 
         self.stdout.write(f'{avisados} colaborador(es) avisado(s).')
+
+        # Segurança do Trabalho: troca vencida dos EPIs com o aviso automático ligado.
+        trocas = list(
+            ItemEPI.com_aviso_de_troca()
+            .select_related('ficha__funcionario', 'item_catalogo')
+            .order_by('data_vencimento', 'ficha__funcionario__nome')
+        )
+        notificacoes.epis_com_troca_vencida(trocas, em_segundo_plano=False)
+        self.stdout.write(f'{len(trocas)} EPI(s) com troca vencida avisado(s) à Segurança do Trabalho.')
 
     def _pendencias(self, funcionario):
         itens = []

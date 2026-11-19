@@ -1,0 +1,15 @@
+{% load rh_icons %}
+{% with nome=request.resolver_match.url_name %}
+<div class="acoes-linha">
+    <h1 style="margin: 0;">EPIs</h1>
+    <span class="acoes-linha__espaco"></span>
+    {% if nome == 'listar_catalogo_epi' %}
+    <a href="{% url 'cadastrar_epi_catalogo' %}" class="btn">{% icon 'plus' %} Novo EPI</a>
+    {% endif %}
+</div>
+
+<div class="tabs">
+    <a href="{% url 'listar_catalogo_epi' %}" class="tabs__link{% if nome == 'listar_catalogo_epi' %} is-ativo{% endif %}">Catálogo e CA</a>
+    <a href="{% url 'gerenciar_matriz_epi' %}" class="tabs__link{% if nome == 'gerenciar_matriz_epi' %} is-ativo{% endif %}">Matriz por setor</a>
+</div>
+{% endwith %}

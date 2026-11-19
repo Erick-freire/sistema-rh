@@ -9,14 +9,15 @@ a Segurança do Trabalho / jurídico antes de usar.
 <html>
 <head>
 <style>
-    @page { size: A4; margin: 2.5cm; }
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 11pt; color: #222; }
-    .logo { width: 140px; margin-bottom: 20px; }
-    h1 { text-align: center; font-size: 14pt; text-transform: uppercase; }
-    p { text-align: justify; line-height: 1.5; }
+    /* Cabe numa página A4 só: margens, entrelinha e espaços enxutos. */
+    @page { size: A4; margin: 1.8cm 2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #222; }
+    .logo { width: 120px; margin-bottom: 8px; }
+    h1 { text-align: center; font-size: 13pt; text-transform: uppercase; margin: 6px 0 10px; }
+    p { text-align: justify; line-height: 1.35; margin: 0 0 6px; }
     .negrito { font-weight: bold; }
-    .assinatura { margin-top: 60px; }
-    .linha-assinatura { border-top: 1px solid #000; width: 350px; margin-bottom: 4px; }
+    .assinatura { width: 350px; margin-top: 40px; }
+    .linha-assinatura { border-top: 1px solid #000; padding-top: 4px; }
 </style>
 </head>
 <body>
@@ -67,17 +68,16 @@ a Segurança do Trabalho / jurídico antes de usar.
 
 <p>
     {% for item in itens %}
-        <span class="negrito">{{ item.item_catalogo.nome }} (CA {{ item.item_catalogo.numero_ca }})</span>{% if item.quantidade > 1 %} — quantidade: {{ item.quantidade }}{% endif %}{% if not forloop.last %}; {% endif %}
+        <span class="negrito">{{ item.item_catalogo.nome }}{% if item.item_catalogo.numero_ca %} (CA {{ item.item_catalogo.numero_ca }}){% endif %}</span>{% if item.quantidade > 1 %} — quantidade: {{ item.quantidade }}{% endif %}{% if not forloop.last %}; {% endif %}
     {% endfor %}
 </p>
 
 <p>Anápolis - GO, {{ data_extenso }}.</p>
 
-<div class="assinatura">
-    <br>
-    <hr class="linha-assinatura">
-    <p class="negrito">COLABORADOR</p>
-</div>
+{# Linha e "COLABORADOR" juntos: nunca fica só a palavra na página seguinte. #}
+<table class="assinatura" width="55%">
+    <tr><td class="linha-assinatura negrito">COLABORADOR</td></tr>
+</table>
 
 </body>
 </html>

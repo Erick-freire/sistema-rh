@@ -6,7 +6,7 @@ Matriz de EPI por Setor
 {% endblock %}
 
 {% block conteudo %}
-<h1>Matriz de EPI por Setor</h1>
+{% include 'funcionarios/epi/_catalogo_tabs.html' %}
 <p style="color: var(--color-text-muted);">Os EPIs marcados aqui são pré-preenchidos na ficha de entrega quando um funcionário do setor é escolhido.</p>
 
 <div class="card">
@@ -24,8 +24,26 @@ Matriz de EPI por Setor
     </form>
 </div>
 
+{% if matrizes %}
+<h2>Matrizes criadas</h2>
+<div class="matriz-cards">
+    {% for item in matrizes %}
+    <a href="?setor={{ item.id }}#editar-matriz" class="item-card matriz-card{% if item.id == setor.id %} is-ativo{% endif %}"{% if item.id == setor.id %} aria-current="true"{% endif %}>
+        <div class="matriz-card__topo">
+            <span class="item-card__titulo">{{ item.nome }}</span>
+            <span class="badge-status badge-status--ativo">{{ item.total }} EPI{{ item.total|pluralize }}</span>
+        </div>
+        <div class="item-card__subtitulo">
+            {% for linha in item.itens_matriz %}{{ linha.item_catalogo.nome }}{% if linha.quantidade_padrao > 1 %} ({{ linha.quantidade_padrao }}x){% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}
+        </div>
+        <span class="matriz-card__acao">{% icon 'pen' %} {% if item.id == setor.id %}Editando{% else %}Editar{% endif %}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if setor %}
-<form method="post" class="card">
+<form method="post" class="card" id="editar-matriz">
     {% csrf_token %}
     <input type="hidden" name="setor" value="{{ setor.id }}">
     <h2 style="margin-top: 0;">EPIs obrigatórios — {{ setor.nome }}</h2>
@@ -53,7 +71,7 @@ Matriz de EPI por Setor
     </div>
     <button type="submit" class="btn-primario" style="margin-top: 20px;">Salvar matriz</button>
     {% else %}
-    <p>Nenhum EPI ativo no catálogo. Cadastre os EPIs pelo admin antes de montar a matriz.</p>
+    <p>Nenhum EPI ativo no catálogo. <a href="{% url 'cadastrar_epi_catalogo' %}">Cadastre os EPIs</a> antes de montar a matriz.</p>
     {% endif %}
 </form>
 {% endif %}

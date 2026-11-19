@@ -31,6 +31,23 @@ Registrar Não Conformidade
         </div>
     </div>
 
+    <fieldset style="margin-top: 16px; border: none; padding: 0;">
+        <legend style="font-weight: 600; margin-bottom: 6px;">{{ form.tipo.label }}</legend>
+        {% for opcao in form.tipo %}
+        <label style="display: flex; align-items: flex-start; gap: 8px; font-weight: 500; margin-bottom: 6px;">
+            {{ opcao.tag }}
+            <span>
+                {{ opcao.choice_label }}
+                <span style="display: block; font-weight: 400; font-size: 0.82rem; color: var(--color-text-muted);">
+                    {% if opcao.data.value == 'aviso' %}Só informa o colaborador e o gestor do ocorrido, sem consequência.
+                    {% else %}Vai para o gestor aprovar. Aprovada, o colaborador perde a assiduidade e o vale-alimentação deste mês e assina o termo de advertência.{% endif %}
+                </span>
+            </span>
+        </label>
+        {% endfor %}
+        {{ form.tipo.errors }}
+    </fieldset>
+
     <div style="margin-top: 16px;">
         <label for="{{ form.descricao.id_for_label }}">{{ form.descricao.label }}</label>
         {{ form.descricao }}

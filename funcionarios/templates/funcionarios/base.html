@@ -95,6 +95,12 @@
                         {% if badge_ajustes_pendentes and not usuario_atual.eh_dp_ou_rh %}<span class="nav-badge">{{ badge_ajustes_pendentes }}</span>{% endif %}
                     </a>
                 </li>
+                <li class="{% if request.resolver_match.url_name == 'ocorrencias_equipe' %}active{% endif %}">
+                    <a href="{% url 'ocorrencias_equipe' %}">
+                        {% icon 'alert-triangle' %} Ocorrências de EPI
+                        {% if badge_advertencias_epi %}<span class="nav-badge">{{ badge_advertencias_epi }}</span>{% endif %}
+                    </a>
+                </li>
                 {% endif %}
                 {% if usuario_atual.eh_dp_ou_rh %}
                 <li class="{% if request.resolver_match.app_name == 'ponto' and 'ponto_equipe' not in request.resolver_match.url_name %}active{% endif %}">
@@ -133,18 +139,27 @@
             {% if usuario_atual.eh_seguranca_ou_rh %}
             <div class="sidebar__section">Segurança do Trabalho</div>
             <ul>
-                <li class="{% if request.resolver_match.url_name == 'listar_fichas_epi' or request.resolver_match.url_name == 'criar_ficha_epi' or request.resolver_match.url_name == 'listar_epis_vencendo' %}active{% endif %}">
-                    {# Validar ficha vem antes: se não houver, o atalho leva às devoluções pendentes. #}
-                    <a href="{% if badge_fichas_epi %}{% url 'listar_fichas_epi' %}?pendentes=1{% elif badge_devolucoes_epi %}{% url 'listar_epis_vencendo' %}{% else %}{% url 'listar_fichas_epi' %}{% endif %}">
+                {% if usuario_atual.so_seguranca_trabalho %}
+                {# RH/DP já têm "Funcionários" em Gestão; aqui a lista abre a ficha de EPI de cada um. #}
+                <li class="{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'funcionario_epi' %}active{% endif %}">
+                    <a href="{% url 'listar_funcionarios' %}">{% icon 'users' %} Funcionários</a>
+                </li>
+                {% endif %}
+                <li class="{% if request.resolver_match.url_name == 'listar_fichas_epi' or request.resolver_match.url_name == 'criar_ficha_epi' or request.resolver_match.url_name == 'listar_epis_vencendo' or request.resolver_match.url_name == 'listar_trocas_epi' %}active{% endif %}">
+                    {# Validar ficha vem antes; depois os pedidos de troca; por fim devoluções e trocas vencidas. #}
+                    <a href="{% if badge_fichas_epi %}{% url 'listar_fichas_epi' %}?pendentes=1{% elif badge_trocas_solicitadas_epi %}{% url 'listar_trocas_epi' %}{% elif badge_devolucoes_epi or badge_trocas_epi %}{% url 'listar_epis_vencendo' %}{% else %}{% url 'listar_fichas_epi' %}{% endif %}">
                         {% icon 'check-square' %} Fichas de EPI
-                        {% if badge_fichas_epi or badge_devolucoes_epi %}<span class="nav-badge">{{ badge_fichas_epi|add:badge_devolucoes_epi }}</span>{% endif %}
+                        {% if badge_fichas_epi or badge_devolucoes_epi or badge_trocas_epi or badge_trocas_solicitadas_epi %}<span class="nav-badge">{{ badge_fichas_epi|add:badge_devolucoes_epi|add:badge_trocas_epi|add:badge_trocas_solicitadas_epi }}</span>{% endif %}
                     </a>
                 </li>
-                <li class="{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' %}active{% endif %}">
-                    <a href="{% url 'gerenciar_matriz_epi' %}">{% icon 'briefcase' %} Matriz por Setor</a>
+                <li class="{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' or 'catalogo' in request.resolver_match.url_name %}active{% endif %}">
+                    <a href="{% url 'listar_catalogo_epi' %}">{% icon 'briefcase' %} EPIs e Matriz</a>
                 </li>
                 <li class="{% if request.resolver_match.url_name == 'listar_ocorrencias_epi' or request.resolver_match.url_name == 'criar_ocorrencia_epi' %}active{% endif %}">
-                    <a href="{% url 'listar_ocorrencias_epi' %}">{% icon 'alert-triangle' %} Não Conformidades</a>
+                    <a href="{% url 'listar_ocorrencias_epi' %}{% if badge_advertencias_assinadas_epi %}?pendentes=1{% endif %}">
+                        {% icon 'alert-triangle' %} Não Conformidades
+                        {% if badge_advertencias_assinadas_epi %}<span class="nav-badge">{{ badge_advertencias_assinadas_epi }}</span>{% endif %}
+                    </a>
                 </li>
             </ul>
             {% endif %}
@@ -178,6 +193,11 @@
                 <li class="{% if request.resolver_match.url_name == 'minhas_assinaturas' %}active{% endif %}">
                     <a href="{% url 'minhas_assinaturas' %}">{% icon 'pen' %} Assinar com Gov.br</a>
                 </li>
+                {% if tem_epi_em_uso %}
+                <li class="{% if request.resolver_match.url_name == 'meus_epis' %}active{% endif %}">
+                    <a href="{% url 'meus_epis' %}">{% icon 'check-square' %} Meus EPIs</a>
+                </li>
+                {% endif %}
                 <li class="{% if request.resolver_match.url_name == 'meu_perfil' %}active{% endif %}">
                     <a href="{% url 'meu_perfil' %}">{% icon 'user' %} Meu Perfil</a>
                 </li>
@@ -308,17 +328,20 @@
     </a>
     <label for="menu-toggle" class="bottom-nav__item">
         {% icon 'menu' %} Mais
-        {% if badge_terceiros or badge_comodatos or badge_pedidos_senha or badge_fichas_epi or badge_devolucoes_epi %}<span class="bottom-nav__dot"></span>{% endif %}
+        {% if badge_terceiros or badge_comodatos or badge_pedidos_senha or badge_fichas_epi or badge_devolucoes_epi or badge_trocas_epi or badge_trocas_solicitadas_epi %}<span class="bottom-nav__dot"></span>{% endif %}
     </label>
 </nav>
 {% elif usuario_atual.eh_seguranca_ou_rh %}
 <nav class="bottom-nav">
+    <a href="{% url 'listar_funcionarios' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_funcionarios' or request.resolver_match.url_name == 'funcionario_epi' %} active{% endif %}">
+        {% icon 'users' %} Pessoas
+    </a>
     <a href="{% url 'listar_fichas_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_fichas_epi' or request.resolver_match.url_name == 'criar_ficha_epi' or request.resolver_match.url_name == 'listar_epis_vencendo' %} active{% endif %}">
         {% icon 'check-square' %} Fichas
-        {% if badge_fichas_epi or badge_devolucoes_epi %}<span class="bottom-nav__dot"></span>{% endif %}
+        {% if badge_fichas_epi or badge_devolucoes_epi or badge_trocas_epi or badge_trocas_solicitadas_epi %}<span class="bottom-nav__dot"></span>{% endif %}
     </a>
-    <a href="{% url 'gerenciar_matriz_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' %} active{% endif %}">
-        {% icon 'briefcase' %} Matriz
+    <a href="{% url 'listar_catalogo_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'gerenciar_matriz_epi' or 'catalogo' in request.resolver_match.url_name %} active{% endif %}">
+        {% icon 'briefcase' %} EPIs
     </a>
     <a href="{% url 'listar_ocorrencias_epi' %}" class="bottom-nav__item{% if request.resolver_match.url_name == 'listar_ocorrencias_epi' or request.resolver_match.url_name == 'criar_ocorrencia_epi' %} active{% endif %}">
         {% icon 'alert-triangle' %} Ocorrências

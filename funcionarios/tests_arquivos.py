@@ -352,11 +352,16 @@ class FotoDePerfilTests(MidiaTemporariaMixin, TestCase):
 
         self.assertEqual(self._baixar(self.url).status_code, 200)
 
+    def test_seguranca_do_trabalho_ve_a_foto_de_qualquer_um(self):
+        # A ficha de EPI do funcionário (lista de Funcionários da Segurança) mostra a foto.
+        self._logar('77777777777', 'seguranca_trabalho', self.expedicao)
+
+        self.assertEqual(self._baixar(self.url).status_code, 200)
+
     def test_quem_nao_opera_o_funcionario_nao_ve(self):
         casos = (
             ('55555555555', 'gestor', self.expedicao),
             ('66666666666', 'colaborador', self.producao),
-            ('77777777777', 'seguranca_trabalho', self.producao),
         )
         for cpf, papel, setor in casos:
             with self.subTest(papel=papel):

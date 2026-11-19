@@ -1,0 +1,66 @@
+{% comment %}
+Termo de advertência por não conformidade no uso de EPI. Gerado quando o
+gestor aprova a advertência; o colaborador assina e devolve em Meus
+Documentos. Mesmo layout da ficha de EPI (uma página A4). Revisar o texto com
+o jurídico / DP antes de usar em produção.
+{% endcomment %}
+<html>
+<head>
+<style>
+    @page { size: A4; margin: 1.8cm 2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 10.5pt; color: #222; }
+    .logo { width: 120px; margin-bottom: 8px; }
+    h1 { text-align: center; font-size: 13pt; text-transform: uppercase; margin: 6px 0 14px; }
+    p { text-align: justify; line-height: 1.35; margin: 0 0 8px; }
+    .negrito { font-weight: bold; }
+    .ocorrido { border: 1px solid #999; padding: 8px 10px; margin: 0 0 10px; }
+    .assinaturas { margin-top: 48px; }
+    .assinaturas td { border-top: 1px solid #000; padding-top: 4px; vertical-align: top; }
+</style>
+</head>
+<body>
+
+<img class="logo" src="{{ caminho_logo }}">
+
+<h1>Advertência disciplinar — uso de EPI</h1>
+
+<p>
+    Ao(À) colaborador(a) <span class="negrito">{{ funcionario.nome }}</span>, inscrito(a) no CPF nº
+    <span class="negrito">{{ cpf_formatado }}</span>, função <span class="negrito">{{ funcionario.cargo|default:"—" }}</span>,
+    setor <span class="negrito">{{ funcionario.setor.nome|default:"—" }}</span>.
+</p>
+
+<p>
+    A empresa <span class="negrito">SOTRIGO SOCIEDADE TRITICOLA DE GOIAS LTDA</span>, inscrita no CNPJ nº
+    <span class="negrito">04.577.125/0001-30</span>, na qualidade de sua Empregadora, vem por meio desta aplicar-lhe
+    <span class="negrito">ADVERTÊNCIA</span>, em razão da não conformidade no uso de Equipamento de Proteção Individual
+    constatada em <span class="negrito">{{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</span>{% if ocorrencia.item_catalogo %},
+    referente ao EPI <span class="negrito">{{ ocorrencia.item_catalogo.nome }}{% if ocorrencia.item_catalogo.numero_ca %} (CA {{ ocorrencia.item_catalogo.numero_ca }}){% endif %}</span>{% endif %}:
+</p>
+
+<div class="ocorrido">{{ ocorrencia.descricao|linebreaksbr }}</div>
+
+<p>
+    O uso do EPI fornecido pela empresa é obrigação do empregado, nos termos da Norma Regulamentadora nº 6 (NR-6), e a
+    recusa injustificada ao seu uso constitui ato faltoso, conforme o art. 158, parágrafo único, alínea "b", da
+    Consolidação das Leis do Trabalho (CLT). A reincidência poderá acarretar a aplicação das demais penalidades
+    previstas na legislação trabalhista.
+</p>
+
+<p>
+    Em decorrência desta advertência, o(a) colaborador(a) perde a <span class="negrito">assiduidade</span> e o
+    <span class="negrito">vale-alimentação</span> referentes a <span class="negrito">{{ mes_da_perda }}</span>.
+</p>
+
+<p>Anápolis - GO, {{ data_extenso }}.</p>
+
+<table class="assinaturas" width="100%">
+    <tr>
+        <td width="46%" class="negrito">COLABORADOR(A) — ciente</td>
+        <td width="8%" style="border-top: none;"></td>
+        <td width="46%"><span class="negrito">GESTOR(A) RESPONSÁVEL</span>{% if gestor %}<br>{{ gestor }}{% endif %}</td>
+    </tr>
+</table>
+
+</body>
+</html>

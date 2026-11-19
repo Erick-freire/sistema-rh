@@ -3,7 +3,7 @@ import unicodedata
 from django import forms
 from .models import (
     Atestado, Funcionario, Documento, SolicitacaoFerias, AvisoFerias, TipoDocumento, TermoComodato, ItemComodato,
-    ItemCatalogoComodato, FichaEPI, ItemEPI, ItemCatalogoEPI, OcorrenciaEPI,
+    ItemCatalogoComodato, FichaEPI, ItemEPI, ItemCatalogoEPI, OcorrenciaEPI, SolicitacaoTrocaEPI,
 )
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
@@ -345,15 +345,49 @@ ItemComodatoFormSet = inlineformset_factory(
 
 # ---------- EPI ----------
 
-class FichaEPIForm(forms.ModelForm):
-    data_entrega = forms.DateField(
+class ItemCatalogoEPIForm(forms.ModelForm):
+    validade_ca = forms.DateField(
+        required=False,
         widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
-        label='Data da entrega',
+        label='Validade do CA',
     )
 
     class Meta:
+        model = ItemCatalogoEPI
+        fields = ['nome', 'numero_ca', 'validade_ca', 'durabilidade', 'criterio_substituicao', 'avisar_troca', 'ativo']
+        labels = {
+            'avisar_troca': 'Aviso automático sobre troca',
+            'nome': 'EPI',
+            'numero_ca': 'Número do CA',
+            'durabilidade': 'Durabilidade / periodicidade de referência',
+            'criterio_substituicao': 'Critério de substituição',
+            'ativo': 'Ativo (aparece na ficha de entrega e na matriz)',
+        }
+        widgets = {'criterio_substituicao': forms.Textarea(attrs={'rows': 4})}
+
+    def clean_nome(self):
+        nome = self.cleaned_data['nome'].strip()
+        # A collation do MySQL já ignora caixa e acento: "Óculos" == "oculos".
+        repetido = ItemCatalogoEPI.objects.filter(nome__iexact=nome).exclude(pk=self.instance.pk)
+        if repetido.exists():
+            raise forms.ValidationError('Já existe um EPI com esse nome no catálogo.')
+        return nome
+
+    def clean_numero_ca(self):
+        return self.cleaned_data['numero_ca'].strip()
+
+    def clean(self):
+        dados = super().clean()
+        if dados.get('validade_ca') and not dados.get('numero_ca'):
+            self.add_error('validade_ca', 'Informe o número do CA para registrar a validade.')
+        return dados
+
+
+class FichaEPIForm(forms.ModelForm):
+    # A data da entrega não é digitada: é gravada quando a ficha assinada é validada.
+    class Meta:
         model = FichaEPI
-        fields = ['funcionario', 'data_entrega']
+        fields = ['funcionario']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -413,9 +447,12 @@ class OcorrenciaEPIForm(forms.ModelForm):
 
     class Meta:
         model = OcorrenciaEPI
-        fields = ['funcionario', 'data_ocorrencia', 'descricao', 'item_catalogo', 'foto']
-        labels = {'descricao': 'Descrição', 'item_catalogo': 'EPI relacionado (opcional)', 'foto': 'Foto (opcional)'}
-        widgets = {'descricao': forms.Textarea(attrs={'rows': 4})}
+        fields = ['funcionario', 'data_ocorrencia', 'tipo', 'descricao', 'item_catalogo', 'foto']
+        labels = {
+            'descricao': 'Descrição', 'item_catalogo': 'EPI relacionado (opcional)', 'foto': 'Foto (opcional)',
+            'tipo': 'Consequência',
+        }
+        widgets = {'descricao': forms.Textarea(attrs={'rows': 4}), 'tipo': forms.RadioSelect}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -425,3 +462,47 @@ class OcorrenciaEPIForm(forms.ModelForm):
 
     def clean_foto(self):
         return validar_upload(self.cleaned_data.get('foto'), EXTENSOES_IMAGEM)
+
+    def clean(self):
+        dados = super().clean()
+        funcionario = dados.get('funcionario')
+        if dados.get('tipo') == 'advertencia' and funcionario and not OcorrenciaEPI.gestores_que_aprovam(funcionario).exists():
+            # Sem gestor, a advertência ficaria parada sem ninguém para aprovar.
+            self.add_error('tipo', 'Este colaborador não tem gestor no sistema para aprovar a advertência. '
+                                   'Registre como aviso ou ajuste o gestor do setor.')
+        return dados
+
+
+class SolicitacaoTrocaEPIForm(forms.ModelForm):
+    """Pedido de troca feito pelo colaborador em Meus EPIs."""
+
+    class Meta:
+        model = SolicitacaoTrocaEPI
+        fields = ['motivo', 'foto']
+        labels = {'motivo': 'O que aconteceu com o EPI?', 'foto': 'Foto do EPI (opcional)'}
+        widgets = {'motivo': forms.Textarea(attrs={
+            'rows': 3, 'placeholder': 'Ex.: a luva rasgou na palma durante a limpeza da máquina.',
+        })}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['foto'].widget.attrs['accept'] = ACCEPT_IMAGEM
+
+    def clean_motivo(self):
+        motivo = self.cleaned_data['motivo'].strip()
+        if not motivo:
+            raise forms.ValidationError('Conte o que aconteceu com o EPI.')
+        return motivo
+
+    def clean_foto(self):
+        return validar_upload(self.cleaned_data.get('foto'), EXTENSOES_IMAGEM)
+
+
+class ConfirmarTrocaEPIForm(forms.Form):
+    """Confirmação da troca pelo RH: gera a ficha do EPI substituto."""
+    quantidade = forms.IntegerField(min_value=1, initial=1, label='Quantidade entregue')
+    data_vencimento = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        label='Trocar em (opcional)',
+    )

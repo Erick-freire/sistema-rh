@@ -11,10 +11,10 @@
 <h1>Fechamento de folha</h1>
 <p class="item-card__subtitulo" style="margin-bottom: 20px;">
     {% if usuario_atual.eh_dp_ou_rh %}
-    Quem recebe o vale-alimentação no mês. Quem teve falta começa desmarcado, como na assiduidade; os gestores marcam
+    Quem recebe o vale-alimentação no mês. Quem teve falta ou advertência de EPI aprovada começa desmarcado, como na assiduidade; os gestores marcam
     de novo quem recebe mesmo assim, e aqui você confere o que cada um alterou antes de baixar a lista.
     {% else %}
-    Quem da sua equipe recebe o vale-alimentação no mês. Quem teve falta começa desmarcado, como na assiduidade:
+    Quem da sua equipe recebe o vale-alimentação no mês. Quem teve falta ou advertência de EPI aprovada começa desmarcado, como na assiduidade:
     marque de novo quem deve receber mesmo assim. O RH confere e envia a lista.
     {% endif %}
 </p>
@@ -62,12 +62,12 @@
 <div class="card">
     <p class="va-resumo">
         <strong data-va-marcados>{{ marcados }}</strong> de {{ total_linhas }} {% if not usuario_atual.eh_dp_ou_rh %}da sua equipe {% endif %}recebem o V.A
-        · {{ com_falta }} com falta no mês · {{ alterados }} alterado(s) à mão
+        · {{ com_falta }} com falta ou advertência no mês · {{ alterados }} alterado(s) à mão
     </p>
     <div class="folha-filtros">
         <input type="search" id="busca-folha" placeholder="Buscar por nome, matrícula ou setor" aria-label="Buscar por nome, matrícula ou setor" autocomplete="off">
         {% if com_falta %}
-        <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="com-falta"> Só os {{ com_falta }} com falta</label>
+        <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="com-falta"> Só os {{ com_falta }} com falta ou advertência</label>
         {% endif %}
         <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="alterado"> Só os alterados à mão</label>
         <label class="folha-filtros__opcao"><input type="checkbox" data-filtro="sem-va"> Só quem não recebe</label>

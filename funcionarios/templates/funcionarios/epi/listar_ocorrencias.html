@@ -38,9 +38,11 @@ Não Conformidades
                 <th>Data</th>
                 <th>Funcionário</th>
                 <th>EPI</th>
+                <th>Tipo</th>
                 <th>Descrição</th>
                 <th>Registrado por</th>
                 <th>Foto</th>
+                <th>Termo</th>
             </tr>
         </thead>
         <tbody>
@@ -49,6 +51,14 @@ Não Conformidades
                 <td>{{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</td>
                 <td>{{ ocorrencia.funcionario.nome }}</td>
                 <td>{{ ocorrencia.item_catalogo.nome|default:"—" }}</td>
+                <td>
+                    {% if ocorrencia.tipo == 'advertencia' %}
+                    <span class="badge-status badge-status--{% if ocorrencia.status_advertencia == 'aprovada' %}rejeitado{% elif ocorrencia.status_advertencia == 'recusada' %}inativo{% else %}pendente{% endif %}">{{ ocorrencia.get_status_advertencia_display }}</span>
+                    {% if ocorrencia.status_advertencia == 'recusada' %}<div style="font-size: 0.8rem; color: var(--color-text-muted);">{{ ocorrencia.motivo_recusa }}</div>{% endif %}
+                    {% else %}
+                    <span class="badge-status badge-status--inativo">Aviso</span>
+                    {% endif %}
+                </td>
                 <td style="white-space: pre-line;">{{ ocorrencia.descricao }}</td>
                 <td>{{ ocorrencia.tecnico.usuario.funcionario.nome|default:ocorrencia.tecnico.username|default:"—" }}</td>
                 <td>
@@ -56,13 +66,42 @@ Não Conformidades
                     <a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank" title="Ver foto">{% icon 'camera' %}</a>
                     {% else %}—{% endif %}
                 </td>
+                <td>
+                    {% if ocorrencia.advertencia_aplicada %}
+                        {% if ocorrencia.status_assinatura == 'em_validacao' and ocorrencia.arquivo_advertencia_assinado %}
+                        <button type="button" class="btn-primario btn-sm" data-abrir-termo
+                                data-pdf="{% url 'ver_advertencia_epi' ocorrencia.id 'assinado' %}"
+                                data-titulo="Termo de advertência — {{ ocorrencia.funcionario.nome }}"
+                                data-aprovar="{% url 'aprovar_assinatura_advertencia' ocorrencia.id %}"
+                                data-rejeitar-titulo="Rejeitar termo assinado"
+                                data-rejeitar="{% url 'rejeitar_assinatura_advertencia' ocorrencia.id %}">
+                            {% icon 'eye' %} Validar
+                        </button>
+                        {% elif not ocorrencia.arquivo_advertencia %}
+                        <form method="post" action="{% url 'gerar_pdf_advertencia' ocorrencia.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm">Gerar termo</button>
+                        </form>
+                        {% else %}
+                        <span class="badge-status badge-status--{{ ocorrencia.status_assinatura }}">{{ ocorrencia.get_status_assinatura_display }}</span>
+                        <button type="button" class="btn-outline btn-sm" style="margin-top: 4px;" data-abrir-termo
+                                data-pdf="{% if ocorrencia.arquivo_advertencia_assinado %}{% url 'ver_advertencia_epi' ocorrencia.id 'assinado' %}{% else %}{% url 'ver_advertencia_epi' ocorrencia.id 'gerado' %}{% endif %}"
+                                data-titulo="Termo de advertência — {{ ocorrencia.funcionario.nome }}">
+                            Ver termo
+                        </button>
+                        {% endif %}
+                    {% else %}—{% endif %}
+                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6">Nenhuma não conformidade registrada{% if busca or de or ate %} com esses filtros{% endif %}.</td>
+                <td colspan="8">Nenhuma não conformidade registrada{% if busca or de or ate %} com esses filtros{% endif %}.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+{% url 'listar_ocorrencias_epi' as url_lista %}
+{% include 'funcionarios/_modal_validar_arquivo.html' with proximo=url_lista|add:'?pendentes=1' abrir_pendente=abrir_pendente %}
 {% endblock %}

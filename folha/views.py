@@ -453,7 +453,7 @@ def _fechamento_do_va(fechamento_id):
 
 
 def _sem_va_pela_regra(linha):
-    """Pela regra (a da assiduidade), não receberia: teve falta no mês. É o que o gestor confere."""
+    """Pela regra (a da assiduidade), não receberia: teve falta ou advertência no mês. É o que o gestor confere."""
     automaticos = linha.valores_automaticos(CAMPO_VA)
     if automaticos and CAMPO_VA in automaticos:
         return not automaticos[CAMPO_VA]

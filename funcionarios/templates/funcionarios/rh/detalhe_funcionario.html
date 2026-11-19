@@ -150,6 +150,7 @@
             </form>
             {% else %}
             <p style="color: var(--color-text-muted); font-size: 0.88rem;">Este funcionário já possui acesso ao sistema.</p>
+            <p style="font-size: 0.88rem; margin-top: 6px;">Perfil: <strong>{{ funcionario.usuario.get_papel_display }}{% if funcionario.usuario.acesso_rh and funcionario.usuario.papel != 'rh' %} + RH{% endif %}</strong></p>
             {% if funcionario.usuario.login_gestor %}
             <p style="font-size: 0.88rem; margin-top: 6px;">Entra com o CPF ou com o usuário <strong style="font-family: var(--font-mono);">{{ funcionario.usuario.login_gestor }}</strong>.</p>
             {% endif %}
@@ -172,6 +173,19 @@
                     {% endif %}
                 </form>
                 {% endif %}
+            {% endif %}
+            {% if usuario_atual.eh_rh and funcionario.usuario.perfil_seguranca_alternavel %}
+            {# Colaborador <-> Segurança do Trabalho: aba de Segurança + lista de funcionários, sem as funções de RH/DP. #}
+            <form method="post" action="{% url 'alternar_seguranca_trabalho' funcionario.id %}" style="margin-top: 12px;">
+                {% csrf_token %}
+                {% if funcionario.usuario.papel == 'seguranca_trabalho' %}
+                <button type="submit" class="btn-outline btn-sm">{% icon 'check-square' %} Remover perfil de Segurança do Trabalho</button>
+                {% else %}
+                <button type="submit" class="btn-outline btn-sm"
+                        data-confirmar="Dar o perfil de Segurança do Trabalho para {{ funcionario.nome }}? A pessoa passa a operar o módulo de EPI e a ver a lista de funcionários (só a parte de EPI de cada um)."
+                        data-confirmar-titulo="Perfil de Segurança do Trabalho">{% icon 'check-square' %} Dar perfil de Segurança do Trabalho</button>
+                {% endif %}
+            </form>
             {% endif %}
             {% endif %}
         </div>

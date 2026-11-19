@@ -60,13 +60,16 @@ Meus Documentos
 
 {% if fichas_epi %}
 <div class="card" style="border-left: 3px solid var(--color-accent);">
-    <div class="card__title" style="margin-bottom: 12px;">Fichas de EPI</div>
+    <div class="card__header" style="margin-bottom: 12px;">
+        <span class="card__title">Fichas de EPI</span>
+        <a href="{% url 'meus_epis' %}" class="card__link">Meus EPIs · solicitar troca {% icon 'chevron-right' %}</a>
+    </div>
     <div class="lista-cards">
         {% for ficha in fichas_epi %}
         <div class="item-card item-card--termo">
             <div class="item-card__corpo">
                 <div class="item-card__titulo">Entrega de EPI</div>
-                <div class="item-card__subtitulo">{{ ficha.data_entrega|date:"d/m/Y" }}</div>
+                <div class="item-card__subtitulo">{{ ficha.data_entrega|default:ficha.gerado_em|date:"d/m/Y" }}</div>
                 {% if ficha.motivo_rejeicao and ficha.status == 'aguardando_assinatura' %}
                 <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pela Segurança do Trabalho: {{ ficha.motivo_rejeicao }}. Envie a ficha assinada novamente.</div>
                 {% endif %}
@@ -82,6 +85,37 @@ Meus Documentos
             </form>
             {% elif ficha.arquivo_assinado %}
             <a href="{% url 'ver_ficha_epi' ficha.id 'assinado' %}" target="_blank" title="Ver ficha assinada" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if advertencias_epi %}
+<div class="card" style="border-left: 3px solid var(--color-error);">
+    <div class="card__title" style="margin-bottom: 12px;">Advertências</div>
+    <div class="lista-cards">
+        {% for ocorrencia in advertencias_epi %}
+        <div class="item-card item-card--termo">
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">Termo de advertência (EPI)</div>
+                <div class="item-card__subtitulo">Ocorrência de {{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</div>
+                {% if ocorrencia.motivo_rejeicao_assinatura and ocorrencia.status_assinatura == 'aguardando_assinatura' %}
+                <div style="font-size: 0.85rem; color: var(--color-error); margin-top: 4px;">Assinatura recusada pela Segurança do Trabalho: {{ ocorrencia.motivo_rejeicao_assinatura }}. Envie o termo assinado novamente.</div>
+                {% endif %}
+            </div>
+            <span class="badge-status badge-status--{{ ocorrencia.status_assinatura }}">{{ ocorrencia.get_status_assinatura_display }}</span>
+
+            {% if ocorrencia.status_assinatura == 'aguardando_assinatura' %}
+            <a href="{% url 'ver_advertencia_epi' ocorrencia.id 'gerado' %}" target="_blank" class="btn btn-sm">{% icon 'download' %} Baixar</a>
+            <form method="post" action="{% url 'reenviar_advertencia_assinada' ocorrencia.id %}" enctype="multipart/form-data" style="margin: 0;">
+                {% csrf_token %}
+                <input type="file" accept="{% accept_documento %}" name="arquivo_assinado" id="arquivo-advertencia-{{ ocorrencia.id }}" style="display: none;" required onchange="this.form.submit()">
+                <label for="arquivo-advertencia-{{ ocorrencia.id }}" class="btn btn-sm">{% icon 'upload' %} Enviar assinado</label>
+            </form>
+            {% elif ocorrencia.arquivo_advertencia_assinado %}
+            <a href="{% url 'ver_advertencia_epi' ocorrencia.id 'assinado' %}" target="_blank" title="Ver termo assinado" style="color: var(--color-text-muted);">{% icon 'download' %}</a>
             {% endif %}
         </div>
         {% endfor %}

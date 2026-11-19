@@ -1,0 +1,116 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+{% if item %}Editar EPI{% else %}Novo EPI{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+<h1 class="titulo-com-voltar">
+    <a href="{% url 'listar_catalogo_epi' %}" aria-label="Voltar">{% icon 'arrow-left' %}</a>
+    {% if item %}{{ item.nome }}{% else %}Novo EPI{% endif %}
+</h1>
+
+<form method="post" class="card" data-loading-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="form-grid form-grid--3">
+        <div>
+            <label for="{{ form.nome.id_for_label }}">{{ form.nome.label }}</label>
+            {{ form.nome }}
+            {{ form.nome.errors }}
+        </div>
+        <div>
+            <label for="{{ form.numero_ca.id_for_label }}">{{ form.numero_ca.label }}</label>
+            {{ form.numero_ca }}
+            <div style="font-size: 0.8rem; color: var(--color-text-muted);">Em branco para item sem CA (uniforme, carneira).</div>
+            {{ form.numero_ca.errors }}
+        </div>
+        <div>
+            <label for="{{ form.validade_ca.id_for_label }}">{{ form.validade_ca.label }}</label>
+            {{ form.validade_ca }}
+            {{ form.validade_ca.errors }}
+        </div>
+    </div>
+
+    <div style="margin-top: 16px; max-width: 360px;">
+        <label for="{{ form.durabilidade.id_for_label }}">{{ form.durabilidade.label }}</label>
+        {{ form.durabilidade }}
+        <div style="font-size: 0.8rem; color: var(--color-text-muted);">{{ form.durabilidade.help_text }}</div>
+        {{ form.durabilidade.errors }}
+    </div>
+
+    <div style="margin-top: 16px;">
+        <label for="{{ form.criterio_substituicao.id_for_label }}">{{ form.criterio_substituicao.label }}</label>
+        {{ form.criterio_substituicao }}
+        {{ form.criterio_substituicao.errors }}
+    </div>
+
+    {# Cada checkbox continua sendo o campo enviado; o botão ao lado só o marca/desmarca. #}
+    <div style="margin-top: 16px;">
+        <input type="checkbox" name="{{ form.avisar_troca.html_name }}" id="{{ form.avisar_troca.id_for_label }}" hidden{% if form.avisar_troca.value %} checked{% endif %}>
+        <button type="button" class="{% if form.avisar_troca.value %}btn{% else %}btn-outline{% endif %} btn-sm" data-alterna="{{ form.avisar_troca.id_for_label }}" data-classe-ligado="btn"
+                aria-pressed="{% if form.avisar_troca.value %}true{% else %}false{% endif %}">
+            <span data-icone-ligado{% if not form.avisar_troca.value %} hidden{% endif %}>{% icon 'bell-ring' %}</span>
+            <span data-icone-desligado{% if form.avisar_troca.value %} hidden{% endif %}>{% icon 'bell' %}</span>
+            Aviso automático sobre troca
+        </button>
+        <div data-estado data-texto-ligado="Ligado: avisa a Segurança do Trabalho quando a data de troca deste EPI vence numa ficha. Vale ao salvar."
+             data-texto-desligado="Desligado: este EPI não gera aviso de troca. Vale ao salvar."
+             style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 6px;">
+            {% if form.avisar_troca.value %}Ligado: avisa a Segurança do Trabalho quando a data de troca deste EPI vence numa ficha.{% else %}Desligado: este EPI não gera aviso de troca.{% endif %} Vale ao salvar.
+        </div>
+        {{ form.avisar_troca.errors }}
+    </div>
+
+    <div style="margin-top: 16px;">
+        <input type="checkbox" name="{{ form.ativo.html_name }}" id="{{ form.ativo.id_for_label }}" hidden{% if form.ativo.value %} checked{% endif %}>
+        <button type="button" class="{% if form.ativo.value %}btn btn--verde{% else %}btn-outline{% endif %} btn-sm" data-alterna="{{ form.ativo.id_for_label }}" data-classe-ligado="btn btn--verde"
+                aria-pressed="{% if form.ativo.value %}true{% else %}false{% endif %}">
+            <span data-icone-ligado{% if not form.ativo.value %} hidden{% endif %}>{% icon 'check-square' %}</span>
+            <span data-icone-desligado{% if form.ativo.value %} hidden{% endif %}>{% icon 'x' %}</span>
+            {{ form.ativo.label }}
+        </button>
+        <div data-estado data-texto-ligado="Ativo: aparece na ficha de entrega e na matriz. Vale ao salvar."
+             data-texto-desligado="Inativo: some da ficha de entrega e da matriz, mas continua nas fichas já emitidas. Vale ao salvar."
+             style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 6px;">
+            {% if form.ativo.value %}Ativo: aparece na ficha de entrega e na matriz.{% else %}Inativo: some da ficha de entrega e da matriz, mas continua nas fichas já emitidas.{% endif %} Vale ao salvar.
+        </div>
+        {{ form.ativo.errors }}
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;">
+        <button type="submit" class="btn-primario">Salvar</button>
+        <a href="{% url 'listar_catalogo_epi' %}" class="btn-outline">Cancelar</a>
+    </div>
+</form>
+
+{% if pode_excluir %}
+<form method="post" action="{% url 'excluir_epi_catalogo' item.id %}" style="margin-top: 12px;"
+      onsubmit="return confirm('Excluir {{ item.nome|escapejs }} do catálogo?');">
+    {% csrf_token %}
+    <button type="submit" class="btn-outline btn-sm">{% icon 'trash' %} Excluir do catálogo</button>
+</form>
+{% elif item %}
+<p style="font-size: 0.85rem; color: var(--color-text-muted); margin-top: 12px;">
+    Este EPI já foi usado em ficha, matriz ou ocorrência; para tirá-lo de uso, desmarque "Ativo".
+</p>
+{% endif %}
+
+<script>
+document.querySelectorAll('[data-alterna]').forEach(function (botao) {
+    var campo = document.getElementById(botao.dataset.alterna);
+    var estado = botao.parentElement.querySelector('[data-estado]');
+    botao.addEventListener('click', function () {
+        var ligado = !campo.checked;
+        campo.checked = ligado;
+        botao.className = (ligado ? botao.dataset.classeLigado : 'btn-outline') + ' btn-sm';
+        botao.setAttribute('aria-pressed', ligado ? 'true' : 'false');
+        botao.querySelector('[data-icone-ligado]').hidden = !ligado;
+        botao.querySelector('[data-icone-desligado]').hidden = ligado;
+        estado.textContent = ligado ? estado.dataset.textoLigado : estado.dataset.textoDesligado;
+    });
+});
+</script>
+{% endblock %}

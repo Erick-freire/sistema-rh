@@ -464,15 +464,16 @@ def atualizar_foto_view(request):
 @login_required
 def ver_foto_funcionario_view(request, funcionario_id):
     """
-    Foto de perfil: o próprio colaborador e quem opera ele (DP/RH, gestor da
-    equipe) -- a mesma regra da ficha do funcionário. Para os demais, 404 em
-    vez de redirect com mensagem: quem pede a foto é um <img>, não uma pessoa.
+    Foto de perfil: o próprio colaborador, quem opera ele (DP/RH, gestor da
+    equipe) e a Segurança do Trabalho, que abre a ficha de EPI de qualquer um
+    -- a mesma regra das fichas. Para os demais, 404 em vez de redirect com
+    mensagem: quem pede a foto é um <img>, não uma pessoa.
     """
     funcionario = get_object_or_404(Funcionario, id=funcionario_id)
     usuario = usuario_de(request.user)
     if usuario is None or not funcionario.foto:
         raise Http404
-    if not (usuario.funcionario_id == funcionario.id or usuario.opera(funcionario)):
+    if not (usuario.funcionario_id == funcionario.id or usuario.opera(funcionario) or usuario.eh_seguranca_ou_rh()):
         raise Http404
     return resposta_de_arquivo_revalidada(request, funcionario.foto)
 
@@ -538,6 +539,11 @@ def meus_documentos_view(request):
     comodatos = funcionario.comodatos.exclude(status='aguardando_contrato').order_by('-gerado_em')
     # Só aparece para o colaborador depois que o PDF foi gerado.
     fichas_epi = funcionario.fichas_epi.exclude(arquivo_gerado='').exclude(arquivo_gerado__isnull=True).order_by('-gerado_em')
+    # Termos de advertência de EPI aprovados pelo gestor, para assinar.
+    advertencias_epi = (
+        funcionario.ocorrencias_epi.filter(tipo='advertencia', status_advertencia='aprovada')
+        .exclude(arquivo_advertencia='').exclude(arquivo_advertencia__isnull=True).order_by('-criado_em')
+    )
 
     tipos_obrigatorios = funcionario.tipos_documentos_iniciais()
     tipos_pendentes = funcionario.tipos_documentos_nunca_enviados()
@@ -555,6 +561,7 @@ def meus_documentos_view(request):
         'funcionario': funcionario,
         'comodatos':comodatos,
         'fichas_epi': fichas_epi,
+        'advertencias_epi': advertencias_epi,
     })
 
 
@@ -576,10 +583,16 @@ def assinatura_gov_view(request):
         .exclude(arquivo_gerado='').exclude(arquivo_gerado__isnull=True).order_by('-gerado_em')
     )
 
+    advertencias_epi = (
+        funcionario.ocorrencias_epi.filter(status_assinatura='aguardando_assinatura')
+        .exclude(arquivo_advertencia='').exclude(arquivo_advertencia__isnull=True).order_by('-criado_em')
+    )
+
     return render(request, 'funcionarios/assinatura_gov.html', {
         'contrato_documento': contrato_documento,
         'comodatos': comodatos,
         'fichas_epi': fichas_epi,
+        'advertencias_epi': advertencias_epi,
     })
 
 
@@ -637,15 +650,19 @@ def ver_comodato_view(request, comodato_id, versao):
 # ---------- Funcionários (RH / Gestor) ----------
 
 @login_required
-@papel_required('rh', 'dp', 'gestor')
+@papel_required('rh', 'dp', 'gestor', 'seguranca_trabalho')
 def listar_funcionarios_view(request):
     usuario = request.user.usuario
     tem_acesso_total = usuario.eh_dp_ou_rh()
+    # Segurança do Trabalho: todos os funcionários, mas cada linha abre só a ficha de EPI.
+    modo_epi = usuario.so_seguranca_trabalho()
     escopo = request.GET.get('escopo', 'todos') if tem_acesso_total else 'meu_setor'
     status_filtro = request.GET.get('status', 'ativo')
     busca = request.GET.get('busca', '').strip()
 
-    if not tem_acesso_total:
+    if modo_epi:
+        base_qs = Funcionario.objects.all()
+    elif not tem_acesso_total:
         # O gestor vê a equipe: o setor dele e os setores em que é o responsável.
         base_qs = usuario.equipe()
     elif escopo == 'todos':
@@ -662,12 +679,17 @@ def listar_funcionarios_view(request):
     else:
         funcionarios = base_qs.filter(status=status_filtro)
 
-    if busca:
+    if busca and modo_epi:
+        # Sem CPF: a Segurança não vê o CPF, então também não o usa para achar alguém.
+        funcionarios = funcionarios.filter(
+            Q(nome__icontains=busca) | Q(matricula__icontains=busca) | Q(setor__nome__icontains=busca)
+        )
+    elif busca:
         funcionarios = funcionarios.filter(
             Q(nome__icontains=busca) | Q(cpf__icontains=busca)
         )
 
-    funcionarios = funcionarios.order_by('nome')
+    funcionarios = funcionarios.select_related('setor').order_by('nome')
 
     paginator = Paginator(funcionarios, 50)
     numero_pagina = request.GET.get('page', 1)
@@ -686,6 +708,7 @@ def listar_funcionarios_view(request):
         'contagem_pendentes': contagem_pendentes,
         'contagem_inativos': contagem_inativos,
         'tem_acesso_total': tem_acesso_total,
+        'modo_epi': modo_epi,
         'escopo': escopo,
     })
 
@@ -969,6 +992,41 @@ def alternar_acesso_rh_view(request, funcionario_id):
         messages.success(request, f'Acesso ao RH concedido para {funcionario.nome}.')
     else:
         messages.success(request, f'Acesso ao RH removido de {funcionario.nome}.')
+
+    return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+
+@login_required
+@papel_required('rh')  # como o acesso de RH: quem dá perfil no sistema é o RH, não o DP
+@require_POST
+def alternar_seguranca_trabalho_view(request, funcionario_id):
+    """
+    Liga/desliga o perfil de Segurança do Trabalho (`Usuario.so_seguranca_trabalho`).
+    Só troca entre Colaborador e Segurança do Trabalho: gestor, DP e RH têm o
+    papel definido em outro lugar e não são rebaixados por este botão.
+    """
+    funcionario = get_object_or_404(Funcionario, id=funcionario_id)
+
+    if not hasattr(funcionario, 'usuario'):
+        messages.error(request, 'Este funcionário ainda não tem acesso ao sistema.')
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    usuario = funcionario.usuario
+    if not usuario.perfil_seguranca_alternavel():
+        messages.error(
+            request,
+            f'{funcionario.nome} tem o papel {usuario.get_papel_display()}. '
+            'O perfil de Segurança do Trabalho é dado só a quem é Colaborador.',
+        )
+        return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
+
+    usuario.papel = 'colaborador' if usuario.papel == 'seguranca_trabalho' else 'seguranca_trabalho'
+    usuario.save(update_fields=['papel'])
+
+    if usuario.papel == 'seguranca_trabalho':
+        messages.success(request, f'{funcionario.nome} agora tem o perfil de Segurança do Trabalho.')
+    else:
+        messages.success(request, f'Perfil de Segurança do Trabalho removido de {funcionario.nome}.')
 
     return redirect('detalhe_funcionario', funcionario_id=funcionario.id)
 

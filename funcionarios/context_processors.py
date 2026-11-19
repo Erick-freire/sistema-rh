@@ -3,7 +3,10 @@ from django.conf import settings
 from ponto.models import AjustePonto
 from terceiros.models import EmpresaTerceira
 
-from .models import AvisoFerias, FichaEPI, SolicitacaoFerias, SolicitacaoSenha, TermoComodato, Usuario
+from .models import (
+    AvisoFerias, FichaEPI, ItemEPI, OcorrenciaEPI, SolicitacaoFerias, SolicitacaoSenha, SolicitacaoTrocaEPI,
+    TermoComodato, Usuario,
+)
 from .perfis import responsavel_terceiro_de
 from .pwa_views import CHAVE_SESSAO_PUSH
 
@@ -83,6 +86,24 @@ def usuario_logado(request):
         contexto['badge_fichas_epi'] = FichaEPI.objects.filter(status='em_validacao').count()
         # Colaboradores desligados que ainda estão com EPI.
         contexto['badge_devolucoes_epi'] = FichaEPI.com_devolucao_pendente().count()
+        # Troca vencida de EPI com o aviso automático ligado no catálogo.
+        contexto['badge_trocas_epi'] = ItemEPI.com_aviso_de_troca().count()
+        # Pedidos de troca de EPI feitos pelos colaboradores, aguardando análise.
+        contexto['badge_trocas_solicitadas_epi'] = SolicitacaoTrocaEPI.objects.filter(status='pendente').count()
+        # Termos de advertência que o colaborador devolveu assinados.
+        contexto['badge_advertencias_assinadas_epi'] = OcorrenciaEPI.objects.filter(status_assinatura='em_validacao').count()
+
+    if usuario.papel == 'gestor':
+        # Advertências de EPI da equipe esperando a aprovação do gestor.
+        contexto['badge_advertencias_epi'] = OcorrenciaEPI.objects.filter(
+            funcionario__in=usuario.equipe(), tipo='advertencia', status_advertencia='pendente_gestor',
+        ).count()
+
+    # "Meus EPIs" aparece para quem tem EPI entregue (ficha validada) em uso
+    # ou alguma ocorrência de EPI para ver.
+    contexto['tem_epi_em_uso'] = ItemEPI.objects.filter(
+        ficha__funcionario_id=usuario.funcionario_id, ficha__status='ativo', devolvido=False,
+    ).exists() or OcorrenciaEPI.visiveis_ao_colaborador(usuario.funcionario_id).exists()
 
     if usuario.papel == 'colaborador':
         funcionario = usuario.funcionario

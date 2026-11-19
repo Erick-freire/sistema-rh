@@ -8,13 +8,13 @@ periculosidade vêm copiados do fechamento anterior; o resto começa em branco
 (ver `models.CAMPOS_COPIADOS`).
 """
 import calendar
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
 
-from funcionarios.models import Funcionario
+from funcionarios.models import Funcionario, OcorrenciaEPI
 from funcionarios.utils import formatar_moeda
 from ponto.calculos import calcular_periodo
 
@@ -56,12 +56,21 @@ def calcular_ponto(funcionario, competencia):
     """
     As colunas do ponto de um funcionário na competência, mais os alertas do
     cálculo. Atestados = dias corridos de atestado dentro do mês. Assiduidade
-    é a do cálculo (perde com Dia Falta) -- o RH ajusta quando precisar. O
+    é a do cálculo (perde com Dia Falta ou com advertência de EPI aprovada,
+    registrada no mês) -- o RH ajusta quando precisar. O
     vale-alimentação segue a mesma regra (faltou, perdeu); o gestor ou o RH
     marca de novo quem recebe mesmo assim.
     """
     inicio, fim = periodo_da_competencia(competencia)
     totais = calcular_periodo(funcionario, inicio, fim)['totais']
+    # Advertência de EPI aprovada pelo gestor: perde como se tivesse faltado, no
+    # mês em que a ocorrência foi REGISTRADA (decisão do usuário em 18/11/2026).
+    advertencias = OcorrenciaEPI.objects.filter(
+        funcionario=funcionario, tipo='advertencia', status_advertencia='aprovada',
+        criado_em__gte=timezone.make_aware(datetime.combine(inicio, time.min)),
+        criado_em__lt=timezone.make_aware(datetime.combine(fim + timedelta(days=1), time.min)),
+    ).count()
+    perdeu = totais['perdeu_assiduidade'] or advertencias > 0
     return {
         'valores': {
             # Convertidas (hora de 52min30s), decisão do DP em 30/10/2026.
@@ -71,9 +80,10 @@ def calcular_ponto(funcionario, competencia):
             'faltas_minutos': _minutos(totais['falta_segundos']),
             'faltas_dias': totais['dias_falta'],
             'atestados_dias': _dias_de_atestado(funcionario, inicio, fim),
-            'assiduidade': not totais['perdeu_assiduidade'],
-            'vale_alimentacao': not totais['perdeu_assiduidade'],
+            'assiduidade': not perdeu,
+            'vale_alimentacao': not perdeu,
         },
+        'advertencias': advertencias,
         'dias_sem_jornada': totais['dias_sem_jornada'],
         'dias_com_marcacao_impar': totais['dias_com_marcacao_impar'],
         'calculado_em': timezone.now().isoformat(),

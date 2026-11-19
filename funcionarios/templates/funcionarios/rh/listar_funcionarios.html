@@ -8,8 +8,13 @@ Funcionários
 {% block conteudo %}
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
     <h1>Funcionários</h1>
+    {% if not modo_epi %}
     <a href="{% url 'cadastrar_funcionario' %}" class="btn btn-novo" style="margin-bottom: 0;">{% icon 'plus' %} Novo funcionário</a>
+    {% endif %}
 </div>
+{% if modo_epi %}
+<p style="color: var(--color-text-muted); margin-top: -8px;">Clique em um funcionário para ver os EPIs, as fichas de entrega e as não conformidades dele.</p>
+{% endif %}
 
 <div class="acoes-linha">
     <form method="get" class="form-busca">
@@ -17,7 +22,7 @@ Funcionários
         <input type="hidden" name="escopo" value="{{ escopo }}">
         <div class="form-busca__campo">
             {% icon 'search' %}
-            <input type="text" name="busca" placeholder="Buscar por nome ou CPF" value="{{ busca }}">
+            <input type="text" name="busca" placeholder="{% if modo_epi %}Buscar por nome, matrícula ou setor{% else %}Buscar por nome ou CPF{% endif %}" value="{{ busca }}">
         </div>
         <button type="submit" class="btn-outline">Buscar</button>
     </form>
@@ -50,14 +55,15 @@ Funcionários
         </thead>
         <tbody>
             {% for funcionario in pagina %}
-            <tr class="tabela-linha--link" data-href="{% url 'detalhe_funcionario' funcionario.id %}">
+            {% if modo_epi %}{% url 'funcionario_epi' funcionario.id as url_ficha %}{% else %}{% url 'detalhe_funcionario' funcionario.id as url_ficha %}{% endif %}
+            <tr class="tabela-linha--link" data-href="{{ url_ficha }}">
                 <td>
                     <span class="tabela-nome">
                         <span class="avatar avatar--sm">{{ funcionario.iniciais }}</span>
                         {{ funcionario.nome }}
                     </span>
                 </td>
-                <td>{{ funcionario.matricula }}</td>
+                <td>{{ funcionario.matricula|default:"—" }}</td>
                 <td>{{ funcionario.cargo }}</td>
                 <td>{{ funcionario.setor }}</td>
                 <td>
@@ -76,12 +82,13 @@ Funcionários
 
 <div class="lista-cards mobile-only">
     {% for funcionario in pagina %}
-    <a href="{% url 'detalhe_funcionario' funcionario.id %}" class="item-card">
+    {% if modo_epi %}{% url 'funcionario_epi' funcionario.id as url_ficha %}{% else %}{% url 'detalhe_funcionario' funcionario.id as url_ficha %}{% endif %}
+    <a href="{{ url_ficha }}" class="item-card">
         <span class="avatar">{{ funcionario.iniciais }}</span>
         <div class="item-card__corpo">
             <div class="item-card__titulo">{{ funcionario.nome }}</div>
             <div class="item-card__subtitulo">{{ funcionario.cargo }} · {{ funcionario.setor }}</div>
-            <div class="item-card__subtitulo">mat. {{ funcionario.matricula }}</div>
+            {% if funcionario.matricula %}<div class="item-card__subtitulo">mat. {{ funcionario.matricula }}</div>{% endif %}
         </div>
         <div class="item-card__extra">
             <span class="badge-status badge-status--{{ funcionario.status }}">{{ funcionario.get_status_display }}</span>

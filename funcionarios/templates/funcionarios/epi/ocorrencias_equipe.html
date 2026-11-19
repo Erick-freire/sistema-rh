@@ -1,0 +1,101 @@
+{% extends 'funcionarios/base.html' %}
+{% load rh_icons %}
+
+{% block titulo %}
+Ocorrências de EPI da equipe
+{% endblock %}
+
+{% block conteudo %}
+<h1>Ocorrências de EPI da equipe</h1>
+<p style="color: var(--color-text-muted);">
+    Não conformidades registradas pela Segurança do Trabalho para a sua equipe. As advertências precisam da sua aprovação:
+    aprovada, o colaborador perde a assiduidade e o vale-alimentação do mês em que a ocorrência foi registrada e recebe o
+    termo de advertência para assinar; recusada, fica registrada só como ocorrência.
+</p>
+
+<h2>Advertências para aprovar</h2>
+<div class="lista-cards" style="margin-bottom: 32px;">
+    {% for ocorrencia in pendentes %}
+    <div class="item-card" style="flex-direction: column; align-items: stretch; gap: 12px; border-left: 3px solid var(--color-accent);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="avatar avatar--sm">{{ ocorrencia.funcionario.iniciais }}</span>
+            <div class="item-card__corpo">
+                <div class="item-card__titulo">{{ ocorrencia.funcionario.nome }}</div>
+                <div class="item-card__subtitulo">
+                    {{ ocorrencia.funcionario.setor.nome|default:"Sem setor" }} · ocorrência em {{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}
+                    · registrada por {{ ocorrencia.tecnico.usuario.funcionario.nome|default:ocorrencia.tecnico.username|default:"—" }}
+                </div>
+            </div>
+            <span class="badge-status badge-status--pendente">Aguardando você</span>
+        </div>
+
+        <div>
+            {% if ocorrencia.item_catalogo %}<strong>{{ ocorrencia.item_catalogo.nome }}</strong>{% endif %}
+            <p style="margin: 4px 0 0; white-space: pre-line;">{{ ocorrencia.descricao }}</p>
+        </div>
+
+        {% if ocorrencia.foto %}
+        <a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank" style="align-self: flex-start;">
+            <img src="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" alt="Foto da ocorrência de {{ ocorrencia.funcionario.nome }}"
+                 style="max-width: 220px; max-height: 220px; border-radius: var(--radius); border: 1px solid var(--color-border); display: block;">
+        </a>
+        {% endif %}
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+            <form method="post" action="{% url 'aprovar_advertencia_epi' ocorrencia.id %}" style="margin: 0;"
+                  onsubmit="return confirm('Aprovar a advertência? {{ ocorrencia.funcionario.nome|escapejs }} perde a assiduidade e o vale-alimentação de {{ ocorrencia.mes_da_perda|date:'m/Y' }} e recebe o termo para assinar.');">
+                {% csrf_token %}
+                <button type="submit" class="btn-primario btn-sm">{% icon 'check-circle' %} Aprovar advertência</button>
+            </form>
+            <details>
+                <summary class="btn-outline btn-sm" style="display: inline-flex; list-style: none; cursor: pointer;">{% icon 'x' %} Recusar</summary>
+                <form method="post" action="{% url 'recusar_advertencia_epi' ocorrencia.id %}" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                    {% csrf_token %}
+                    <input type="text" name="motivo_recusa" required placeholder="Motivo (a Segurança do Trabalho vai ver)" style="flex: 1; min-width: 220px;">
+                    <button type="submit" class="btn-sm" style="background-color: var(--color-error);">Recusar advertência</button>
+                </form>
+            </details>
+        </div>
+    </div>
+    {% empty %}
+    <p>Nenhuma advertência aguardando aprovação.</p>
+    {% endfor %}
+</div>
+
+<h2>Histórico da equipe</h2>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Funcionário</th>
+                <th>EPI</th>
+                <th>Tipo</th>
+                <th>Descrição</th>
+                <th>Foto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ocorrencia in historico %}
+            <tr>
+                <td>{{ ocorrencia.data_ocorrencia|date:"d/m/Y" }}</td>
+                <td>{{ ocorrencia.funcionario.nome }}</td>
+                <td>{{ ocorrencia.item_catalogo.nome|default:"—" }}</td>
+                <td>
+                    {% if ocorrencia.tipo == 'advertencia' %}
+                    <span class="badge-status badge-status--{% if ocorrencia.status_advertencia == 'aprovada' %}rejeitado{% else %}inativo{% endif %}">{{ ocorrencia.get_status_advertencia_display }}</span>
+                    {% if ocorrencia.decidido_por %}<div style="font-size: 0.8rem; color: var(--color-text-muted);">por {{ ocorrencia.decidido_por.usuario.funcionario.nome|default:ocorrencia.decidido_por.username }} em {{ ocorrencia.decidido_em|date:"d/m/Y" }}</div>{% endif %}
+                    {% else %}
+                    <span class="badge-status badge-status--inativo">Aviso</span>
+                    {% endif %}
+                </td>
+                <td style="white-space: pre-line;">{{ ocorrencia.descricao }}</td>
+                <td>{% if ocorrencia.foto %}<a href="{% url 'ver_foto_ocorrencia_epi' ocorrencia.id %}" target="_blank" title="Ver foto">{% icon 'camera' %}</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Nenhuma ocorrência registrada para a sua equipe.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

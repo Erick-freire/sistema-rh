@@ -325,6 +325,123 @@ def ficha_epi_assinada_enviada(ficha):
     )
 
 
+def epis_com_troca_vencida(itens, em_segundo_plano=True):
+    """Aviso diário de troca vencida dos EPIs com o aviso automático ligado no catálogo.
+
+    `itens` são `ItemEPI` (com ficha__funcionario e item_catalogo carregados).
+    Um aviso só, com a mesma tag: o do dia seguinte substitui o anterior no aparelho.
+    """
+    itens = list(itens)
+    if not itens:
+        return
+    if len(itens) == 1:
+        titulo = 'EPI com troca vencida'
+        corpo = itens[0].texto_aviso_troca()
+    else:
+        titulo = f'{len(itens)} EPIs com troca vencida'
+        corpo = ' '.join(item.texto_aviso_troca() for item in itens[:3])
+        if len(itens) > 3:
+            corpo += f' E mais {len(itens) - 3}.'
+    notificar(
+        _usuarios_seguranca_rh(), titulo, corpo, reverse('listar_epis_vencendo'),
+        tag='epi-troca-vencida', em_segundo_plano=em_segundo_plano,
+    )
+
+
+def troca_epi_solicitada(solicitacao):
+    funcionario = solicitacao.funcionario
+    notificar(
+        _usuarios_seguranca_rh(),
+        'Pedido de troca de EPI',
+        f'{funcionario.nome} pediu a troca de {solicitacao.item.item_catalogo.nome}. Falta analisar.',
+        reverse('listar_trocas_epi'),
+        tag=f'epi-troca-{solicitacao.id}',
+        exceto=_user_de(funcionario),
+    )
+
+
+def troca_epi_respondida(solicitacao):
+    epi = solicitacao.item.item_catalogo.nome
+    if solicitacao.status == 'aprovada':
+        titulo = 'Troca de EPI confirmada'
+        corpo = f'A troca de {epi} foi confirmada. Assine a ficha do novo EPI em Meus Documentos.'
+        url = reverse('meus_documentos')
+    else:
+        titulo = 'Troca de EPI recusada'
+        corpo = f'A troca de {epi} foi recusada: {solicitacao.motivo_recusa}'
+        url = reverse('meus_epis')
+    notificar(_user_do_funcionario(solicitacao.funcionario), titulo, corpo, url, tag=f'epi-troca-{solicitacao.id}')
+
+
+def ocorrencia_epi_registrada(ocorrencia):
+    """Aviso: colaborador e gestor ficam sabendo. Advertência: só o gestor, para aprovar."""
+    from django.utils.text import Truncator
+
+    from .models import OcorrenciaEPI
+
+    funcionario = ocorrencia.funcionario
+    resumo = Truncator(' '.join(ocorrencia.descricao.split())).chars(120)
+    gestores = OcorrenciaEPI.gestores_que_aprovam(funcionario)
+    tag = f'epi-ocorrencia-{ocorrencia.id}'
+    if ocorrencia.tipo == 'advertencia':
+        notificar(
+            gestores, 'Advertência para aprovar',
+            f'{funcionario.nome}: {resumo} Aprovada, perde assiduidade e vale-alimentação do mês.',
+            reverse('ocorrencias_equipe'), tag=tag, exceto=ocorrencia.tecnico,
+        )
+        return
+    notificar(
+        gestores, 'Ocorrência de EPI na equipe', f'Aviso para {funcionario.nome}: {resumo}',
+        reverse('ocorrencias_equipe'), tag=tag, exceto=ocorrencia.tecnico,
+    )
+    notificar(
+        _user_do_funcionario(funcionario), 'Aviso da Segurança do Trabalho', resumo, reverse('meus_epis'), tag=tag,
+    )
+
+
+def advertencia_epi_decidida(ocorrencia):
+    funcionario = ocorrencia.funcionario
+    tag = f'epi-ocorrencia-{ocorrencia.id}'
+    if ocorrencia.status_advertencia == 'aprovada':
+        mes = ocorrencia.mes_da_perda.strftime('%m/%Y')
+        notificar(
+            _user_do_funcionario(funcionario), 'Você recebeu uma advertência',
+            f'Advertência de {ocorrencia.data_ocorrencia:%d/%m/%Y} sobre uso de EPI. '
+            f'Você perde a assiduidade e o vale-alimentação de {mes}. Assine o termo em Meus Documentos.',
+            reverse('meus_documentos'), tag=tag,
+        )
+        titulo, corpo = 'Advertência aprovada', f'O gestor aprovou a advertência de {funcionario.nome}.'
+    else:
+        titulo = 'Advertência recusada'
+        corpo = f'O gestor recusou a advertência de {funcionario.nome}: {ocorrencia.motivo_recusa}'
+    notificar(
+        _usuarios_seguranca_rh(), titulo, corpo, reverse('listar_ocorrencias_epi'),
+        tag=tag, exceto=ocorrencia.decidido_por,
+    )
+
+
+def advertencia_assinada_enviada(ocorrencia):
+    funcionario = ocorrencia.funcionario
+    notificar(
+        _usuarios_seguranca_rh(),
+        'Termo de advertência assinado recebido',
+        f'{funcionario.nome} enviou o termo de advertência assinado. Falta validar.',
+        reverse('listar_ocorrencias_epi') + '?pendentes=1',
+        tag=f'epi-advertencia-assinada-{ocorrencia.id}',
+        exceto=_user_de(funcionario),
+    )
+
+
+def assinatura_advertencia_rejeitada(ocorrencia):
+    notificar(
+        _user_do_funcionario(ocorrencia.funcionario),
+        'Termo de advertência recusado',
+        f'A assinatura do termo de advertência foi recusada: {ocorrencia.motivo_rejeicao_assinatura}. Envie de novo.',
+        reverse('meus_documentos'),
+        tag=f'epi-ocorrencia-{ocorrencia.id}',
+    )
+
+
 def comodato_para_assinar(comodato):
     notificar(
         _user_do_funcionario(comodato.funcionario),
